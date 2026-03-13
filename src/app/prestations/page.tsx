@@ -3,28 +3,41 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { Search, Filter } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import PrestationTable from "@/components/PrestationTable";
-import { Prestation } from "@/lib/constants";
+import EditPrestationModal from "@/components/EditPrestationModal";
+import { Prestation, Prestataire } from "@/lib/constants";
 
 const STATUTS = ["Tous", "EMAIL ENVOYÉ", "CONFIRMÉ", "EN ATTENTE PRESTA", "PRESTATAIRE REFUSÉ – À RÉAFFECTER", "TERMINÉ", "ANNULÉ"];
 
 export default function PrestationsPage() {
-  const [data, setData]       = useState<Prestation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
-  const [search, setSearch]   = useState("");
-  const [statut, setStatut]   = useState("Tous");
+  const [data, setData]                   = useState<Prestation[]>([]);
+  const [prestataires, setPrestataires]   = useState<Prestataire[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState<string | null>(null);
+  const [search, setSearch]               = useState("");
+  const [statut, setStatut]               = useState("Tous");
+  const [editing, setEditing]             = useState<Prestation | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/prestations");
-      if (!res.ok) throw new Error((await res.json()).error);
-      setData(await res.json());
+      const [resPres, resPresta] = await Promise.all([
+        fetch("/api/prestations"),
+        fetch("/api/prestataires"),
+      ]);
+      if (!resPres.ok) throw new Error((await resPres.json()).error);
+      setData(await resPres.json());
+      if (resPresta.ok) setPrestataires(await resPresta.json());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur");
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const handleSaved = useCallback((row: number, updates: Record<string, string>) => {
+    setData((prev) =>
+      prev.map((p) => (p.row === row ? { ...p, ...updates } : p))
+    );
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -87,10 +100,22 @@ export default function PrestationsPage() {
               <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
             </div>
           ) : (
-            <PrestationTable prestations={filtered} />
+            <PrestationTable
+              prestations={filtered}
+              onEdit={setEditing}
+            />
           )}
         </div>
       </div>
+
+      {editing && (
+        <EditPrestationModal
+          prestation={editing}
+          prestataires={prestataires}
+          onClose={() => setEditing(null)}
+          onSaved={handleSaved}
+        />
+      )}
     </div>
   );
 }

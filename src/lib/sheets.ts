@@ -14,7 +14,44 @@ function getAuth() {
 
   return new google.auth.GoogleAuth({
     credentials,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+}
+
+const EDITABLE_FIELDS: Record<string, number> = {
+  prix        : COL.PRIX,
+  envoyer     : COL.ENVOYER,
+  statut      : COL.STATUT,
+  prestataire : COL.PRESTATAIRE,
+  emailPresta : COL.EMAIL_PRESTA,
+  commentaire : COL.COMMENTAIRE,
+  statutPresta: COL.STATUT_PRESTA,
+  genDevis    : COL.GEN_DEVIS,
+  date        : COL.DATE,
+  heure       : COL.HEURE,
+};
+
+export async function updatePrestation(
+  row: number,
+  updates: Record<string, string>,
+  sheetName: string = SHEET_NAME
+): Promise<void> {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+
+  const data = Object.entries(updates)
+    .filter(([key]) => key in EDITABLE_FIELDS)
+    .map(([key, value]) => {
+      const colIndex = EDITABLE_FIELDS[key];
+      const colLetter = String.fromCharCode(65 + colIndex);
+      return { range: `${sheetName}!${colLetter}${row}`, values: [[value]] };
+    });
+
+  if (data.length === 0) return;
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: getSpreadsheetId(),
+    requestBody: { valueInputOption: "USER_ENTERED", data },
   });
 }
 
