@@ -1,0 +1,165 @@
+"use client";
+import { useEffect, useState, useCallback } from "react";
+import {
+  Users, Briefcase, TrendingUp, Wrench,
+  AlertTriangle, Clock, FileText, CalendarCheck
+} from "lucide-react";
+import StatCard from "@/components/StatCard";
+import PrestationTable from "@/components/PrestationTable";
+import Topbar from "@/components/Topbar";
+import StatusBadge from "@/components/StatusBadge";
+import dynamic from "next/dynamic";
+import { Prestation, Prestataire } from "@/lib/constants";
+
+const RevenueChart = dynamic(() => import("@/components/RevenueChart"), { ssr: false });
+const TypeChart    = dynamic(() => import("@/components/TypeChart"),    { ssr: false });
+
+interface Stats {
+  totalPrestations : number;
+  totalClients     : number;
+  totalPrestataires: number;
+  totalCA          : number;
+  upcoming         : number;
+  toReassign       : number;
+  waitingPresta    : number;
+  devisGeneres     : number;
+  prestations      : Prestation[];
+  prestataires     : Prestataire[];
+  archive          : Prestation[];
+  upcomingList     : Prestation[];
+  toReassignList   : Prestation[];
+}
+
+export default function HomePage() {
+  const [stats, setStats]     = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/dashboard");
+      if (!res.ok) throw new Error((await res.json()).error || "Erreur serveur");
+      setStats(await res.json());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erreur inconnue");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="flex flex-col min-h-screen">
+      <Topbar
+        title="Tableau de bord"
+        subtitle="Vue d'ensemble KinouClean"
+        onRefresh={load}
+        loading={loading}
+        alerts={(stats?.toReassign || 0)}
+      />
+
+      <div className="flex-1 p-6 space-y-6">
+
+        {error && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex gap-4">
+            <AlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" size={20} />
+            <div>
+              <p className="font-semibold text-amber-800">Connexion Google Sheets requise</p>
+              <p className="text-sm text-amber-700 mt-1">{error}</p>
+              <p className="text-sm text-amber-600 mt-2">
+                Configurez <code className="bg-amber-100 px-1 rounded">.env.local</code> avec vos credentials Google —{" "}
+                <a href="/configuration" className="underline font-medium">voir Configuration</a>.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {stats && stats.toReassign > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3">
+            <AlertTriangle className="text-red-500 flex-shrink-0" size={18} />
+            <p className="text-sm text-red-700 font-medium">
+              {stats.toReassign} prestation{stats.toReassign > 1 ? "s" : ""} refusée{stats.toReassign > 1 ? "s" : ""} à réaffecter
+            </p>
+            <a href="/prestations" className="ml-auto text-sm text-red-600 underline font-medium">Voir</a>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard title="Chiffre d'affaires" value={stats ? `${stats.totalCA.toFixed(0)} €` : "—"} subtitle="Total toutes prestations" icon={TrendingUp} color="green" />
+          <StatCard title="Prestations actives" value={stats?.totalPrestations ?? "—"} subtitle="En cours" icon={Briefcase} color="blue" />
+          <StatCard title="Clients" value={stats?.totalClients ?? "—"} subtitle="Clients uniques" icon={Users} color="purple" />
+          <StatCard title="Prestataires" value={stats?.totalPrestataires ?? "—"} subtitle="Équipe active" icon={Wrench} color="orange" />
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard title="Interventions à venir" value={stats?.upcoming ?? "—"} subtitle="Confirmées" icon={CalendarCheck} color="blue" />
+          <StatCard title="En attente prestataire" value={stats?.waitingPresta ?? "—"} subtitle="Proposition envoyée" icon={Clock} color="orange" />
+          <StatCard title="À réaffecter" value={stats?.toReassign ?? "—"} subtitle="Prestataire refusé" icon={AlertTriangle} color="red" alert={(stats?.toReassign || 0) > 0} />
+          <StatCard title="Devis générés" value={stats?.devisGeneres ?? "—"} subtitle="PDF créés" icon={FileText} color="gray" />
+        </div>
+
+        {stats && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+              <h2 className="font-semibold text-gray-800 mb-4">CA mensuel {new Date().getFullYear()}</h2>
+              <RevenueChart prestations={[...stats.prestations, ...stats.archive]} />
+            </div>
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+              <h2 className="font-semibold text-gray-800 mb-4">Types de prestations</h2>
+              <TypeChart prestations={[...stats.prestations, ...stats.archive]} />
+            </div>
+          </div>
+        )}
+
+        {stats && stats.upcomingList.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-gray-800">Prochaines interventions</h2>
+              <a href="/prestations" className="text-sm text-blue-600 hover:underline font-medium">Voir tout</a>
+            </div>
+            <div className="space-y-3">
+              {stats.upcomingList.map((p) => (
+                <div key={p.row} className="flex items-center gap-4 p-3 rounded-xl bg-blue-50 border border-blue-100">
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <CalendarCheck size={18} className="text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 truncate">{p.prenom} {p.nom}</p>
+                    <p className="text-sm text-gray-500 truncate">{p.typePresta} — {p.adresse}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-sm font-semibold text-blue-700">{p.date}</p>
+                    {p.heure && <p className="text-xs text-gray-400">{p.heure}</p>}
+                  </div>
+                  <StatusBadge statut={p.statut} small />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {stats && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-gray-800">Prestations récentes</h2>
+              <a href="/prestations" className="text-sm text-blue-600 hover:underline font-medium">Voir tout</a>
+            </div>
+            <PrestationTable prestations={stats.prestations.slice(0, 8)} />
+          </div>
+        )}
+
+        {loading && !stats && (
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center">
+              <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-gray-500 text-sm">Chargement des données...</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
