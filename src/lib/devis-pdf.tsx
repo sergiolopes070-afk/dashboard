@@ -277,43 +277,51 @@ export interface DevisData {
 
 const BRAND_BLUE = "#5B9BD5";
 
-/** Logo h2maison en SVG inline (évite toute dépendance externe) */
-function H2maisonLogo() {
+/** Logo Kinouclean en SVG inline (icône nettoyeur canapé + texte) */
+function KinoucleanLogo() {
   const c = BRAND_BLUE;
-  const sw = 2.2; // stroke-width
+  const sw = 2.2;
   return (
-    <Svg width={130} height={38} viewBox="0 0 340 80">
-      {/* ── Icône artisan ── */}
+    <Svg width={150} height={38} viewBox="0 0 390 80">
+      {/* ── Canapé (rectangle arrondi) ── */}
+      <Rect x="2" y="42" width="38" height="22" rx="4"
+        stroke={c} strokeWidth={sw} fill="none" />
+      <Rect x="0" y="36" width="8" height="12" rx="3"
+        stroke={c} strokeWidth={sw} fill="none" />
+      <Rect x="32" y="36" width="8" height="12" rx="3"
+        stroke={c} strokeWidth={sw} fill="none" />
+      <Line x1="8" y1="64" x2="8" y2="70" stroke={c} strokeWidth={sw} />
+      <Line x1="32" y1="64" x2="32" y2="70" stroke={c} strokeWidth={sw} />
+
+      {/* ── Personnage nettoyeur ── */}
       {/* Tête */}
-      <Circle cx="34" cy="13" r="9" stroke={c} strokeWidth={sw} fill="none" />
+      <Circle cx="52" cy="14" r="9" stroke={c} strokeWidth={sw} fill="none" />
       {/* Corps */}
-      <Line x1="34" y1="22" x2="31" y2="46" stroke={c} strokeWidth={sw} />
-      {/* Bras gauche → outil */}
-      <Line x1="32" y1="33" x2="57" y2="41" stroke={c} strokeWidth={sw} />
-      {/* Tournevis / visseuse */}
-      <Rect x="54" y="37" width="17" height="7" rx="3.5"
+      <Line x1="52" y1="23" x2="49" y2="46" stroke={c} strokeWidth={sw} />
+      {/* Bras gauche → outil nettoyage */}
+      <Line x1="50" y1="33" x2="30" y2="42" stroke={c} strokeWidth={sw} />
+      {/* Brosse / outil */}
+      <Rect x="20" y="39" width="14" height="7" rx="3"
         stroke={c} strokeWidth={1.8} fill="none"
-        transform="rotate(-18 62.5 40.5)" />
+        transform="rotate(15 27 42)" />
       {/* Bras droit */}
-      <Line x1="32" y1="33" x2="18" y2="42" stroke={c} strokeWidth={sw} />
-      {/* Jambe droite (agenouillée) */}
-      <Line x1="31" y1="46" x2="21" y2="63" stroke={c} strokeWidth={sw} />
-      <Line x1="21" y1="63" x2="14" y2="70" stroke={c} strokeWidth={sw} />
-      {/* Pied droit */}
-      <Line x1="14" y1="70" x2="28" y2="72" stroke={c} strokeWidth={sw} />
+      <Line x1="50" y1="33" x2="64" y2="40" stroke={c} strokeWidth={sw} />
+      {/* Jambe droite agenouillée */}
+      <Line x1="49" y1="46" x2="40" y2="60" stroke={c} strokeWidth={sw} />
+      <Line x1="40" y1="60" x2="33" y2="66" stroke={c} strokeWidth={sw} />
+      <Line x1="33" y1="66" x2="46" y2="68" stroke={c} strokeWidth={sw} />
       {/* Jambe gauche */}
-      <Line x1="31" y1="46" x2="43" y2="58" stroke={c} strokeWidth={sw} />
-      <Line x1="43" y1="58" x2="54" y2="56" stroke={c} strokeWidth={sw} />
-      {/* Étoile 1 (haut gauche) */}
-      <Path d="M10 22 L12 16 L14 22 L20 24 L14 26 L12 32 L10 26 L4 24 Z"
-        fill={c} />
-      {/* Étoile 2 (haut droite) */}
-      <Path d="M60 16 L61.5 12 L63 16 L67 17.5 L63 19 L61.5 23 L60 19 L56 17.5 Z"
-        fill={c} />
-      {/* ── Texte h2maison ── */}
-      <SvgText x="80" y="56"
+      <Line x1="49" y1="46" x2="58" y2="58" stroke={c} strokeWidth={sw} />
+      <Line x1="58" y1="58" x2="66" y2="56" stroke={c} strokeWidth={sw} />
+
+      {/* ── Étoiles/étincelles ── */}
+      <Path d="M68 10 L69.5 6 L71 10 L75 11.5 L71 13 L69.5 17 L68 13 L64 11.5 Z" fill={c} />
+      <Path d="M14 28 L15.5 24 L17 28 L21 29.5 L17 31 L15.5 35 L14 31 L10 29.5 Z" fill={c} />
+
+      {/* ── Texte Kinouclean ── */}
+      <SvgText x="85" y="56"
         style={{ fontSize: 46, fontFamily: "Helvetica-Bold", fill: c } as object}>
-        h2maison
+        Kinouclean
       </SvgText>
     </Svg>
   );
@@ -344,7 +352,7 @@ export function DevisPDF({ d }: { d: DevisData }) {
 
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <View style={styles.header}>
-          <H2maisonLogo />
+          <KinoucleanLogo />
           <View style={styles.headerRight}>
             <Text style={styles.devisTitle}>DEVIS</Text>
             <Text style={styles.devisRef}>N° {d.refNumber}</Text>
@@ -360,9 +368,9 @@ export function DevisPDF({ d }: { d: DevisData }) {
           {/* Émetteur */}
           <View style={styles.partyBox}>
             <Text style={styles.partyLabel}>Prestataire</Text>
-            <Text style={styles.partyName}>h2maison</Text>
-            <Text style={styles.partyLine}>Services à domicile professionnels</Text>
-            <Text style={styles.partyLine}>contact.h2maison@gmail.com</Text>
+            <Text style={styles.partyName}>KinouClean</Text>
+            <Text style={styles.partyLine}>Service de nettoyage professionnel</Text>
+            <Text style={styles.partyLine}>contact@kinouclean.fr</Text>
             <Text style={styles.partyLine}>Île-de-France</Text>
           </View>
           {/* Client */}
@@ -434,7 +442,7 @@ export function DevisPDF({ d }: { d: DevisData }) {
 
         {/* ── Footer ─────────────────────────────────────────────────────── */}
         <Text style={styles.footer}>
-          h2maison — Services à domicile professionnels — contact.h2maison@gmail.com — Île-de-France
+          KinouClean — Service de nettoyage professionnel — contact@kinouclean.fr — Île-de-France
         </Text>
 
       </Page>

@@ -36,10 +36,18 @@ function buildEmailHtml(data: {
           <!-- HEADER -->
           <tr>
             <td style="background:#2a3694;padding:36px 40px;text-align:center;">
-              <table cellpadding="0" cellspacing="0" style="display:inline-block;background:#1a1a2e;border-radius:10px;padding:14px 28px;">
+              <table cellpadding="0" cellspacing="0" style="display:inline-block;background:#1a1a2e;border-radius:10px;padding:16px 32px;">
                 <tr>
-                  <td style="color:#4a7fd4;font-size:20px;font-weight:bold;letter-spacing:1px;">
-                    🧹 Kinouclean
+                  <td align="center">
+                    <img
+                      src="https://lh3.googleusercontent.com/d/1JeOWpfLrxjZqlglaN7ayL460GTET432f"
+                      alt="KinouClean"
+                      width="160"
+                      style="display:block;max-width:160px;height:auto;"
+                    />
+                    <p style="margin:8px 0 0;color:#4a7fd4;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-family:Arial,sans-serif;">
+                      Service de nettoyage professionnel
+                    </p>
                   </td>
                 </tr>
               </table>
@@ -98,7 +106,12 @@ function buildEmailHtml(data: {
               <table cellpadding="0" cellspacing="0">
                 <tr>
                   <td style="padding-right:20px;vertical-align:middle;">
-                    <div style="color:#4a7fd4;font-size:13px;font-weight:bold;">🧹 Kinouclean</div>
+                    <img
+                      src="https://lh3.googleusercontent.com/d/1JeOWpfLrxjZqlglaN7ayL460GTET432f"
+                      alt="KinouClean"
+                      width="80"
+                      style="display:block;max-width:80px;height:auto;"
+                    />
                   </td>
                   <td style="border-left:3px solid #2a3694;padding-left:20px;vertical-align:middle;">
                     <p style="margin:0;color:#ffffff;font-weight:700;font-size:14px;">Gomes Lopes Sergio</p>
