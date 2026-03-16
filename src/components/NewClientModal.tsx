@@ -23,6 +23,7 @@ const TYPES_PRESTA = [
   "Débarras",
   "Après travaux",
   "Bureaux",
+  "Lavage Canapé",
   "Autre",
 ];
 

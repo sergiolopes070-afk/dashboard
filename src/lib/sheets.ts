@@ -232,6 +232,21 @@ export async function appendPrestation(fields: {
   if (error) throw new Error(error.message);
 }
 
+export async function createPrestataire(fields: {
+  nom: string;
+  email: string;
+  tel: string;
+}): Promise<void> {
+  if (!supabase) throw new Error("Supabase non configuré");
+  const { error } = await supabase.from("prestataires").insert({
+    nom  : fields.nom.trim(),
+    email: fields.email.trim(),
+    tel_wa: fields.tel.trim(),
+    actif: true,
+  });
+  if (error) throw new Error(error.message);
+}
+
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 
 export async function getDashboardStats() {

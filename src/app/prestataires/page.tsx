@@ -1,13 +1,15 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { Phone, Mail, Wrench } from "lucide-react";
+import { Phone, Mail, Wrench, UserPlus } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import NewPrestataireModal from "@/components/NewPrestataireModal";
 import { Prestataire } from "@/lib/constants";
 
 export default function PrestatairesPage() {
   const [data, setData]       = useState<Prestataire[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -26,11 +28,26 @@ export default function PrestatairesPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
+      {showModal && (
+        <NewPrestataireModal
+          onClose={() => setShowModal(false)}
+          onSaved={load}
+        />
+      )}
       <Topbar
         title="Prestataires"
         subtitle={`${data.length} prestataire${data.length > 1 ? "s" : ""} dans l'équipe`}
         onRefresh={load}
         loading={loading}
+        action={
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 transition-colors"
+          >
+            <UserPlus size={16} />
+            Nouveau prestataire
+          </button>
+        }
       />
       <div className="flex-1 p-6">
         {error && (
