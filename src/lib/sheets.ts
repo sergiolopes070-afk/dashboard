@@ -55,6 +55,7 @@ function rowToPrestation(row: Record<string, any>): Prestation {
 // ─── READ ────────────────────────────────────────────────────────────────────
 
 export async function getPrestations(): Promise<Prestation[]> {
+  if (!supabase) return [];
   const { data, error } = await supabase
     .from("prestations")
     .select("*, clients(*), prestataires(*)")
@@ -66,6 +67,7 @@ export async function getPrestations(): Promise<Prestation[]> {
 }
 
 export async function getPrestataires(): Promise<Prestataire[]> {
+  if (!supabase) return [];
   const { data, error } = await supabase
     .from("prestataires")
     .select("*")
@@ -81,6 +83,7 @@ export async function getPrestataires(): Promise<Prestataire[]> {
 }
 
 export async function getArchive(): Promise<Prestation[]> {
+  if (!supabase) return [];
   const { data, error } = await supabase
     .from("prestations")
     .select("*, clients(*), prestataires(*)")
@@ -97,6 +100,7 @@ export async function updatePrestation(
   id: string,
   updates: Record<string, string>
 ): Promise<void> {
+  if (!supabase) return;
   const prestaPatch: Record<string, unknown> = {};
   const clientPatch: Record<string, string>  = {};
   const CLIENT_FIELDS = ["nom", "prenom", "tel", "email", "adresse"] as const;
