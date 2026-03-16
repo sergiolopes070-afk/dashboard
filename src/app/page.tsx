@@ -2,12 +2,13 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Users, Briefcase, TrendingUp, Wrench,
-  AlertTriangle, Clock, FileText, CalendarCheck
+  AlertTriangle, Clock, FileText, CalendarCheck, UserPlus
 } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import PrestationTable from "@/components/PrestationTable";
 import Topbar from "@/components/Topbar";
 import StatusBadge from "@/components/StatusBadge";
+import NewClientModal from "@/components/NewClientModal";
 import dynamic from "next/dynamic";
 import { Prestation, Prestataire } from "@/lib/constants";
 
@@ -31,9 +32,10 @@ interface Stats {
 }
 
 export default function HomePage() {
-  const [stats, setStats]     = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
+  const [stats, setStats]         = useState<Stats | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
+  const [showNewClient, setShowNewClient] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +61,15 @@ export default function HomePage() {
         onRefresh={load}
         loading={loading}
         alerts={(stats?.toReassign || 0)}
+        action={
+          <button
+            onClick={() => setShowNewClient(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
+          >
+            <UserPlus size={15} />
+            Nouveau client
+          </button>
+        }
       />
 
       <div className="flex-1 p-6 space-y-6">
@@ -67,10 +78,10 @@ export default function HomePage() {
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex gap-4">
             <AlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" size={20} />
             <div>
-              <p className="font-semibold text-amber-800">Connexion Google Sheets requise</p>
+              <p className="font-semibold text-amber-800">Erreur de connexion Supabase</p>
               <p className="text-sm text-amber-700 mt-1">{error}</p>
               <p className="text-sm text-amber-600 mt-2">
-                Configurez <code className="bg-amber-100 px-1 rounded">.env.local</code> avec vos credentials Google —{" "}
+                Vérifiez <code className="bg-amber-100 px-1 rounded">.env.local</code> (SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY) —{" "}
                 <a href="/configuration" className="underline font-medium">voir Configuration</a>.
               </p>
             </div>
@@ -151,15 +162,24 @@ export default function HomePage() {
           </div>
         )}
 
-        {loading && !stats && (
-          <div className="flex items-center justify-center py-20">
-            <div className="text-center">
-              <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-gray-500 text-sm">Chargement des données...</p>
-            </div>
-          </div>
-        )}
       </div>
+
+      {showNewClient && (
+        <NewClientModal
+          prestataires={stats?.prestataires ?? []}
+          onClose={() => setShowNewClient(false)}
+          onSaved={() => { setShowNewClient(false); load(); }}
+        />
+      )}
+
+      {loading && !stats && (
+        <div className="flex items-center justify-center py-20">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-gray-500 text-sm">Chargement des données...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

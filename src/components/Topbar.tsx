@@ -8,9 +8,10 @@ interface TopbarProps {
   onRefresh?: () => void;
   loading?: boolean;
   alerts?: number;
+  action?: React.ReactNode;
 }
 
-export default function Topbar({ title, subtitle, onRefresh, loading, alerts }: TopbarProps) {
+export default function Topbar({ title, subtitle, onRefresh, loading, alerts, action }: TopbarProps) {
   const [spinning, setSpinning] = useState(false);
 
   const handleRefresh = () => {
@@ -27,6 +28,7 @@ export default function Topbar({ title, subtitle, onRefresh, loading, alerts }: 
         {subtitle && <p className="text-sm text-gray-400 mt-0.5">{subtitle}</p>}
       </div>
       <div className="flex items-center gap-3">
+        {action}
         {alerts && alerts > 0 ? (
           <div className="relative">
             <button className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors">

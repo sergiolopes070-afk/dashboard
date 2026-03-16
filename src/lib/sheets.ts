@@ -168,9 +168,20 @@ export async function appendPrestation(fields: {
   nom: string; prenom: string; tel: string; email: string;
   typePresta: string; quantite: string; adresse: string;
   date: string; heure: string; message: string; prix: string;
+  source?: string; statutClient?: string; prestataire?: string; statut?: string;
 }): Promise<void> {
   // Find or create client
   let clientId: string;
+  const clientData = {
+    nom    : fields.nom,
+    prenom : fields.prenom,
+    tel    : fields.tel,
+    email  : fields.email,
+    adresse: fields.adresse,
+    source : fields.source  || null,
+    statut : fields.statutClient || "NOUVEAU",
+  };
+
   if (fields.email) {
     const { data: existing } = await supabase
       .from("clients")
@@ -182,25 +193,28 @@ export async function appendPrestation(fields: {
       clientId = existing.id;
     } else {
       const { data: created, error } = await supabase
-        .from("clients")
-        .insert({ nom: fields.nom, prenom: fields.prenom, tel: fields.tel, email: fields.email, adresse: fields.adresse })
-        .select("id")
-        .single();
+        .from("clients").insert(clientData).select("id").single();
       if (error) throw new Error(error.message);
       clientId = created.id;
     }
   } else {
     const { data: created, error } = await supabase
-      .from("clients")
-      .insert({ nom: fields.nom, prenom: fields.prenom, tel: fields.tel, email: fields.email, adresse: fields.adresse })
-      .select("id")
-      .single();
+      .from("clients").insert(clientData).select("id").single();
     if (error) throw new Error(error.message);
     clientId = created.id;
   }
 
+  // Resolve prestataire UUID if provided
+  let prestataireId: string | null = null;
+  if (fields.prestataire) {
+    const { data } = await supabase
+      .from("prestataires").select("id").eq("nom", fields.prestataire).maybeSingle();
+    prestataireId = data?.id ?? null;
+  }
+
   const { error } = await supabase.from("prestations").insert({
     client_id         : clientId,
+    prestataire_id    : prestataireId,
     type_prestation   : fields.typePresta,
     quantite          : parseInt(fields.quantite) || 1,
     adresse           : fields.adresse,
@@ -208,6 +222,7 @@ export async function appendPrestation(fields: {
     heure_intervention: fields.heure || null,
     message           : fields.message,
     prix              : fields.prix ? parseFloat(fields.prix) : null,
+    statut            : fields.statut || "NOUVEAU",
     archive           : false,
   });
   if (error) throw new Error(error.message);
