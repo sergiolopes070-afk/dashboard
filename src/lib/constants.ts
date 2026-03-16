@@ -17,7 +17,7 @@ export type StatutPresta =
   | "";
 
 export interface Prestation {
-  row: number;
+  row: string; // UUID
   timestamp: string;
   nom: string;
   prenom: string;

@@ -7,7 +7,7 @@ interface EditPrestationModalProps {
   prestation: Prestation;
   prestataires: Prestataire[];
   onClose: () => void;
-  onSaved: (row: number, updates: Record<string, string>) => void;
+  onSaved: (row: string, updates: Record<string, string>) => void;
 }
 
 const STATUTS_CLIENT: StatutClient[] = [
@@ -109,7 +109,7 @@ export default function EditPrestationModal({
               Modifier — {prestation.prenom} {prestation.nom}
             </h2>
             <p className="text-xs text-gray-400 mt-0.5">
-              {prestation.typePresta} · Ligne {prestation.row}
+              {prestation.typePresta}
             </p>
           </div>
           <button
@@ -222,10 +222,10 @@ export default function EditPrestationModal({
             </div>
           </fieldset>
 
-          {/* Actions Google Sheets → déclenche GAS */}
+          {/* Actions */}
           <fieldset className="space-y-2">
             <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              Actions automatiques (Google Sheets)
+              Actions
             </legend>
             <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer">
               <input
@@ -235,20 +235,18 @@ export default function EditPrestationModal({
                 className="w-4 h-4 rounded text-blue-600"
               />
               <div>
-                <div className="text-sm font-medium text-gray-700">Envoyer email client</div>
-                <div className="text-xs text-gray-400">Colonne M → déclenche le script GAS</div>
+                <div className="text-sm font-medium text-gray-700">Email client envoyé</div>
               </div>
             </label>
             <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer">
               <input
                 type="checkbox"
-                checked={form.genDevis === "OUI"}
-                onChange={(e) => setForm((f) => ({ ...f, genDevis: e.target.checked ? "OUI" : "" }))}
+                checked={form.genDevis === "OUI" || form.genDevis === "FAIT"}
+                onChange={(e) => setForm((f) => ({ ...f, genDevis: e.target.checked ? "FAIT" : "" }))}
                 className="w-4 h-4 rounded text-blue-600"
               />
               <div>
-                <div className="text-sm font-medium text-gray-700">Générer devis PDF</div>
-                <div className="text-xs text-gray-400">Colonne V → déclenche le script GAS</div>
+                <div className="text-sm font-medium text-gray-700">Devis généré</div>
               </div>
             </label>
           </fieldset>

@@ -1,85 +1,65 @@
 import { supabase } from "./supabase";
 import { Prestation, Prestataire } from "./constants";
 
-// ─── Mapping DB row → Prestation ────────────────────────────────────────────
+// ─── Date helpers ────────────────────────────────────────────────────────────
 
-function rowToPrestation(row: Record<string, unknown>): Prestation {
-  const get = (key: string) => ((row[key] as string) || "").toString().trim();
+/** ISO YYYY-MM-DD → DD/MM/YYYY */
+function isoToFr(d: string | null): string {
+  if (!d) return "";
+  const p = d.split("-");
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d;
+}
+
+/** DD/MM/YYYY → ISO YYYY-MM-DD (or null) */
+function frToIso(d: string): string | null {
+  if (!d) return null;
+  const p = d.split("/");
+  return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : d || null;
+}
+
+// ─── Row mapper ──────────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowToPrestation(row: Record<string, any>): Prestation {
+  const client     = row.clients      || {};
+  const prestataire = row.prestataires || {};
+
   return {
-    row          : row.id as number,
-    timestamp    : get("timestamp"),
-    nom          : get("nom"),
-    prenom       : get("prenom"),
-    tel          : get("tel"),
-    email        : get("email"),
-    typePresta   : get("type_presta"),
-    quantite     : get("quantite"),
-    adresse      : get("adresse"),
-    date         : get("date"),
-    heure        : get("heure"),
-    message      : get("message"),
-    prix         : get("prix"),
-    envoyer      : get("envoyer"),
-    statut       : get("statut") as Prestation["statut"],
-    rappel       : get("rappel"),
-    avis         : get("avis"),
-    prestataire  : get("prestataire"),
-    emailPresta  : get("email_presta"),
-    commentaire  : get("commentaire"),
-    statutPresta : get("statut_presta") as Prestation["statutPresta"],
-    lienWA       : get("lien_wa"),
-    genDevis     : get("gen_devis"),
-    devisPDF     : get("devis_pdf"),
+    row          : row.id as string,
+    timestamp    : (row.created_at as string) || "",
+    nom          : client.nom      || "",
+    prenom       : client.prenom   || "",
+    tel          : client.tel      || "",
+    email        : client.email    || "",
+    typePresta   : row.type_prestation || "",
+    quantite     : String(row.quantite ?? ""),
+    adresse      : row.adresse     || "",
+    date         : isoToFr(row.date_intervention),
+    heure        : ((row.heure_intervention as string) || "").substring(0, 5),
+    message      : row.message     || "",
+    prix         : row.prix != null ? String(row.prix) : "",
+    envoyer      : row.mail_client_envoye ? "OUI" : "",
+    statut       : row.statut      || "" as Prestation["statut"],
+    rappel       : row.rappel_j1_envoye ? "OUI" : "",
+    avis         : "",
+    prestataire  : prestataire.nom   || "",
+    emailPresta  : prestataire.email || "",
+    commentaire  : row.commentaire || "",
+    statutPresta : row.statut_presta || "" as Prestation["statutPresta"],
+    lienWA       : row.lien_wa     || "",
+    genDevis     : row.devis_genere ? "FAIT" : "",
+    devisPDF     : row.devis_url   || "",
   };
 }
 
-// ─── Field mapping (Prestation key → DB column) ─────────────────────────────
-
-const FIELD_MAP: Record<string, string> = {
-  prix        : "prix",
-  envoyer     : "envoyer",
-  statut      : "statut",
-  prestataire : "prestataire",
-  emailPresta : "email_presta",
-  commentaire : "commentaire",
-  statutPresta: "statut_presta",
-  genDevis    : "gen_devis",
-  date        : "date",
-  heure       : "heure",
-  nom         : "nom",
-  prenom      : "prenom",
-  tel         : "tel",
-  email       : "email",
-  adresse     : "adresse",
-};
-
-// ─── CRUD ────────────────────────────────────────────────────────────────────
-
-export async function updatePrestation(
-  id: number,
-  updates: Record<string, string>
-): Promise<void> {
-  const patch: Record<string, string> = {};
-  for (const [key, value] of Object.entries(updates)) {
-    const col = FIELD_MAP[key];
-    if (col) patch[col] = value;
-  }
-  if (Object.keys(patch).length === 0) return;
-
-  const { error } = await supabase
-    .from("prestations")
-    .update(patch)
-    .eq("id", id);
-
-  if (error) throw new Error(error.message);
-}
+// ─── READ ────────────────────────────────────────────────────────────────────
 
 export async function getPrestations(): Promise<Prestation[]> {
   const { data, error } = await supabase
     .from("prestations")
-    .select("*")
-    .eq("archived", false)
-    .order("id", { ascending: true });
+    .select("*, clients(*), prestataires(*)")
+    .eq("archive", false)
+    .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
   return (data || []).map(rowToPrestation);
@@ -89,25 +69,99 @@ export async function getPrestataires(): Promise<Prestataire[]> {
   const { data, error } = await supabase
     .from("prestataires")
     .select("*")
+    .eq("actif", true)
     .order("nom", { ascending: true });
 
   if (error) throw new Error(error.message);
   return (data || []).map((r) => ({
-    nom  : (r.nom   || "").toString().trim(),
-    email: (r.email || "").toString().trim(),
-    tel  : (r.tel   || "").toString().trim(),
+    nom  : (r.nom    || "").trim(),
+    email: (r.email  || "").trim(),
+    tel  : (r.tel_wa || "").trim(),
   }));
 }
 
 export async function getArchive(): Promise<Prestation[]> {
   const { data, error } = await supabase
     .from("prestations")
-    .select("*")
-    .eq("archived", true)
-    .order("id", { ascending: true });
+    .select("*, clients(*), prestataires(*)")
+    .eq("archive", true)
+    .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
   return (data || []).map(rowToPrestation);
+}
+
+// ─── WRITE ───────────────────────────────────────────────────────────────────
+
+export async function updatePrestation(
+  id: string,
+  updates: Record<string, string>
+): Promise<void> {
+  const prestaPatch: Record<string, unknown> = {};
+  const clientPatch: Record<string, string>  = {};
+  const CLIENT_FIELDS = ["nom", "prenom", "tel", "email", "adresse"] as const;
+
+  for (const [key, value] of Object.entries(updates)) {
+    switch (key) {
+      case "statut":       prestaPatch.statut        = value;                           break;
+      case "statutPresta": prestaPatch.statut_presta = value;                           break;
+      case "prix":         prestaPatch.prix           = value ? parseFloat(value) : null; break;
+      case "date":         prestaPatch.date_intervention  = frToIso(value);             break;
+      case "heure":        prestaPatch.heure_intervention = value || null;              break;
+      case "envoyer":      prestaPatch.mail_client_envoye = value === "OUI";            break;
+      case "genDevis":     prestaPatch.devis_genere  = value === "OUI" || value === "FAIT"; break;
+      case "commentaire":  prestaPatch.commentaire   = value;                           break;
+      case "lienWA":       prestaPatch.lien_wa        = value;                          break;
+      case "devisPDF":     prestaPatch.devis_url      = value;                          break;
+      case "prestataire": {
+        if (value) {
+          const { data } = await supabase
+            .from("prestataires")
+            .select("id")
+            .eq("nom", value)
+            .maybeSingle();
+          prestaPatch.prestataire_id = data?.id ?? null;
+        } else {
+          prestaPatch.prestataire_id = null;
+        }
+        break;
+      }
+      case "emailPresta": break; // stored on prestataire row, not here
+      case "nom":     clientPatch.nom     = value; break;
+      case "prenom":  clientPatch.prenom  = value; break;
+      case "tel":     clientPatch.tel     = value; break;
+      case "email":   clientPatch.email   = value; break;
+      case "adresse": clientPatch.adresse = value; break;
+    }
+  }
+
+  if (Object.keys(prestaPatch).length > 0) {
+    const { error } = await supabase
+      .from("prestations")
+      .update(prestaPatch)
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  if (Object.keys(clientPatch).length > 0) {
+    const { data: presta, error: fetchErr } = await supabase
+      .from("prestations")
+      .select("client_id")
+      .eq("id", id)
+      .single();
+    if (fetchErr) throw new Error(fetchErr.message);
+
+    if (presta?.client_id) {
+      const { error } = await supabase
+        .from("clients")
+        .update(clientPatch)
+        .eq("id", presta.client_id);
+      if (error) throw new Error(error.message);
+    }
+  }
+
+  // Suppress "unused variable" warning for CLIENT_FIELDS
+  void CLIENT_FIELDS;
 }
 
 export async function appendPrestation(fields: {
@@ -115,24 +169,51 @@ export async function appendPrestation(fields: {
   typePresta: string; quantite: string; adresse: string;
   date: string; heure: string; message: string; prix: string;
 }): Promise<void> {
-  const { error } = await supabase.from("prestations").insert({
-    timestamp  : new Date().toLocaleString("fr-FR"),
-    nom        : fields.nom,
-    prenom     : fields.prenom,
-    tel        : fields.tel,
-    email      : fields.email,
-    type_presta: fields.typePresta,
-    quantite   : fields.quantite,
-    adresse    : fields.adresse,
-    date       : fields.date,
-    heure      : fields.heure,
-    message    : fields.message,
-    prix       : fields.prix,
-    archived   : false,
-  });
+  // Find or create client
+  let clientId: string;
+  if (fields.email) {
+    const { data: existing } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("email", fields.email)
+      .maybeSingle();
 
+    if (existing) {
+      clientId = existing.id;
+    } else {
+      const { data: created, error } = await supabase
+        .from("clients")
+        .insert({ nom: fields.nom, prenom: fields.prenom, tel: fields.tel, email: fields.email, adresse: fields.adresse })
+        .select("id")
+        .single();
+      if (error) throw new Error(error.message);
+      clientId = created.id;
+    }
+  } else {
+    const { data: created, error } = await supabase
+      .from("clients")
+      .insert({ nom: fields.nom, prenom: fields.prenom, tel: fields.tel, email: fields.email, adresse: fields.adresse })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    clientId = created.id;
+  }
+
+  const { error } = await supabase.from("prestations").insert({
+    client_id         : clientId,
+    type_prestation   : fields.typePresta,
+    quantite          : parseInt(fields.quantite) || 1,
+    adresse           : fields.adresse,
+    date_intervention : frToIso(fields.date),
+    heure_intervention: fields.heure || null,
+    message           : fields.message,
+    prix              : fields.prix ? parseFloat(fields.prix) : null,
+    archive           : false,
+  });
   if (error) throw new Error(error.message);
 }
+
+// ─── DASHBOARD ───────────────────────────────────────────────────────────────
 
 export async function getDashboardStats() {
   const [prestations, prestataires, archive] = await Promise.all([
@@ -152,26 +233,12 @@ export async function getDashboardStats() {
     return d >= today && ["EMAIL ENVOYÉ", "CONFIRMÉ"].includes(p.statut);
   });
 
-  const toReassign = prestations.filter(
-    (p) => p.statut === "PRESTATAIRE REFUSÉ – À RÉAFFECTER"
-  );
+  const toReassign   = prestations.filter((p) => p.statut === "PRESTATAIRE REFUSÉ – À RÉAFFECTER");
+  const waitingPresta = prestations.filter((p) => p.statutPresta === "EN ATTENTE PRESTA");
 
-  const waitingPresta = prestations.filter(
-    (p) => p.statutPresta === "EN ATTENTE PRESTA"
-  );
-
-  const allPrix = [...prestations, ...archive]
-    .map((p) => parseFloat(p.prix) || 0)
-    .filter((n) => n > 0);
-
-  const totalCA = allPrix.reduce((a, b) => a + b, 0);
-  const archiveCA = archive
-    .map((p) => parseFloat(p.prix) || 0)
-    .reduce((a, b) => a + b, 0);
-
-  const devisGeneres = [...prestations, ...archive].filter(
-    (p) => p.genDevis === "FAIT" || p.devisPDF
-  ).length;
+  const totalCA  = [...prestations, ...archive].map((p) => parseFloat(p.prix) || 0).reduce((a, b) => a + b, 0);
+  const archiveCA = archive.map((p) => parseFloat(p.prix) || 0).reduce((a, b) => a + b, 0);
+  const devisGeneres = [...prestations, ...archive].filter((p) => p.genDevis === "FAIT" || p.devisPDF).length;
 
   return {
     totalPrestations : prestations.length,

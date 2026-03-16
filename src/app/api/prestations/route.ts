@@ -17,7 +17,7 @@ export async function PUT(req: Request) {
   try {
     const body = await req.json();
     const { row, updates } = body as {
-      row: number;
+      row: string;
       updates: Record<string, string>;
       sheet?: string;
     };

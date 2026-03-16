@@ -32,13 +32,14 @@ export async function PATCH(req: Request) {
   try {
     const body = await req.json();
     const { rows, updates } = body as {
-      rows: number[];
+      rows: string[];
       updates: Record<string, string>;
     };
     if (!rows?.length || !updates) {
       return NextResponse.json({ error: "rows et updates requis" }, { status: 400 });
     }
-    await Promise.all(rows.map((row) => updatePrestation(row, updates)));
+    // Client info is stored in the clients table; one update is enough
+    await updatePrestation(rows[0], updates);
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";
