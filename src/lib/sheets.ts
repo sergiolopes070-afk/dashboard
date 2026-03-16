@@ -77,6 +77,7 @@ export async function getPrestataires(): Promise<Prestataire[]> {
 
   if (error) throw new Error(error.message);
   return (data || []).map((r) => ({
+    id   : r.id as string,
     nom  : (r.nom    || "").trim(),
     email: (r.email  || "").trim(),
     tel  : (r.tel_wa || "").trim(),
@@ -242,6 +243,28 @@ export async function appendPrestation(fields: {
 export async function deletePrestation(id: string): Promise<void> {
   if (!supabase) return;
   const { error } = await supabase.from("prestations").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function updatePrestataire(
+  id: string,
+  fields: { nom: string; email: string; tel: string }
+): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase
+    .from("prestataires")
+    .update({ nom: fields.nom.trim(), email: fields.email.trim(), tel_wa: fields.tel.trim() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deletePrestataire(id: string): Promise<void> {
+  if (!supabase) return;
+  // On désactive plutôt que de supprimer (préserve l'historique des prestations liées)
+  const { error } = await supabase
+    .from("prestataires")
+    .update({ actif: false })
+    .eq("id", id);
   if (error) throw new Error(error.message);
 }
 

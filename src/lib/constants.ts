@@ -45,6 +45,7 @@ export interface Prestation {
 }
 
 export interface Prestataire {
+  id: string;
   nom: string;
   email: string;
   tel: string;
