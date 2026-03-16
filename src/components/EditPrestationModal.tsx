@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X, Save, Loader2 } from "lucide-react";
+import { X, Save, Loader2, MessageCircle } from "lucide-react";
 import { Prestation, Prestataire, StatutClient, StatutPresta } from "@/lib/constants";
 
 interface EditPrestationModalProps {
@@ -184,6 +184,32 @@ export default function EditPrestationModal({
                 placeholder="email@exemple.com"
               />
             </div>
+            {/* WhatsApp button when prestataire is assigned */}
+            {form.prestataire && (() => {
+              const p = prestataires.find((x) => x.nom === form.prestataire);
+              if (!p?.tel) return null;
+              const tel = p.tel.replace(/\s/g, "").replace(/^0/, "33");
+              const msg = encodeURIComponent(
+                `Bonjour ${p.nom} 👋,\n\nVous avez été assigné(e) à une prestation KinouClean :\n\n` +
+                `👤 Client : ${prestation.prenom} ${prestation.nom}\n` +
+                `🧹 Prestation : ${prestation.typePresta}${prestation.quantite ? ` (x${prestation.quantite})` : ""}\n` +
+                `📍 Adresse : ${prestation.adresse || "—"}\n` +
+                `📅 Date : ${form.date || prestation.date || "—"}${form.heure || prestation.heure ? ` à ${form.heure || prestation.heure}` : ""}\n` +
+                `💶 Prix : ${form.prix || prestation.prix || "—"} €\n\n` +
+                `Merci de confirmer votre disponibilité 🙏`
+              );
+              return (
+                <a
+                  href={`https://wa.me/${tel}?text=${msg}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 w-full justify-center px-4 py-2.5 rounded-xl bg-green-500 text-white text-sm font-medium hover:bg-green-600 transition-colors"
+                >
+                  <MessageCircle size={16} />
+                  Envoyer un message WhatsApp à {p.nom}
+                </a>
+              );
+            })()}
           </fieldset>
 
           {/* Détails */}
