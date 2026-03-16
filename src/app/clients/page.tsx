@@ -138,7 +138,7 @@ export default function ClientsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/prestations");
+      const res = await fetch(`/api/prestations?t=${Date.now()}`, { cache: "no-store" });
       if (res.ok) setData(await res.json());
     } finally {
       setLoading(false);
