@@ -1,6 +1,7 @@
 import React from "react";
 import {
-  Document, Page, Text, View, StyleSheet, Image, Font,
+  Document, Page, Text, View, StyleSheet,
+  Svg, Circle, Line, Path, Rect, Text as SvgText,
 } from "@react-pdf/renderer";
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -274,7 +275,49 @@ export interface DevisData {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const LOGO = "https://lh3.googleusercontent.com/d/1JeOWpfLrxjZqlglaN7ayL460GTET432f";
+const BRAND_BLUE = "#5B9BD5";
+
+/** Logo h2maison en SVG inline (évite toute dépendance externe) */
+function H2maisonLogo() {
+  const c = BRAND_BLUE;
+  const sw = 2.2; // stroke-width
+  return (
+    <Svg width={130} height={38} viewBox="0 0 340 80">
+      {/* ── Icône artisan ── */}
+      {/* Tête */}
+      <Circle cx="34" cy="13" r="9" stroke={c} strokeWidth={sw} fill="none" />
+      {/* Corps */}
+      <Line x1="34" y1="22" x2="31" y2="46" stroke={c} strokeWidth={sw} />
+      {/* Bras gauche → outil */}
+      <Line x1="32" y1="33" x2="57" y2="41" stroke={c} strokeWidth={sw} />
+      {/* Tournevis / visseuse */}
+      <Rect x="54" y="37" width="17" height="7" rx="3.5"
+        stroke={c} strokeWidth={1.8} fill="none"
+        transform="rotate(-18 62.5 40.5)" />
+      {/* Bras droit */}
+      <Line x1="32" y1="33" x2="18" y2="42" stroke={c} strokeWidth={sw} />
+      {/* Jambe droite (agenouillée) */}
+      <Line x1="31" y1="46" x2="21" y2="63" stroke={c} strokeWidth={sw} />
+      <Line x1="21" y1="63" x2="14" y2="70" stroke={c} strokeWidth={sw} />
+      {/* Pied droit */}
+      <Line x1="14" y1="70" x2="28" y2="72" stroke={c} strokeWidth={sw} />
+      {/* Jambe gauche */}
+      <Line x1="31" y1="46" x2="43" y2="58" stroke={c} strokeWidth={sw} />
+      <Line x1="43" y1="58" x2="54" y2="56" stroke={c} strokeWidth={sw} />
+      {/* Étoile 1 (haut gauche) */}
+      <Path d="M10 22 L12 16 L14 22 L20 24 L14 26 L12 32 L10 26 L4 24 Z"
+        fill={c} />
+      {/* Étoile 2 (haut droite) */}
+      <Path d="M60 16 L61.5 12 L63 16 L67 17.5 L63 19 L61.5 23 L60 19 L56 17.5 Z"
+        fill={c} />
+      {/* ── Texte h2maison ── */}
+      <SvgText x="80" y="56"
+        style={{ fontSize: 46, fontFamily: "Helvetica-Bold", fill: c } as object}>
+        h2maison
+      </SvgText>
+    </Svg>
+  );
+}
 
 function fmt(n: string | number) {
   const v = parseFloat(String(n));
@@ -301,7 +344,7 @@ export function DevisPDF({ d }: { d: DevisData }) {
 
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <View style={styles.header}>
-          <Image src={LOGO} style={styles.logo} />
+          <H2maisonLogo />
           <View style={styles.headerRight}>
             <Text style={styles.devisTitle}>DEVIS</Text>
             <Text style={styles.devisRef}>N° {d.refNumber}</Text>
@@ -317,9 +360,9 @@ export function DevisPDF({ d }: { d: DevisData }) {
           {/* Émetteur */}
           <View style={styles.partyBox}>
             <Text style={styles.partyLabel}>Prestataire</Text>
-            <Text style={styles.partyName}>KinouClean</Text>
-            <Text style={styles.partyLine}>Service de nettoyage professionnel</Text>
-            <Text style={styles.partyLine}>contact@kinouclean.fr</Text>
+            <Text style={styles.partyName}>h2maison</Text>
+            <Text style={styles.partyLine}>Services à domicile professionnels</Text>
+            <Text style={styles.partyLine}>contact.h2maison@gmail.com</Text>
             <Text style={styles.partyLine}>Île-de-France</Text>
           </View>
           {/* Client */}
@@ -391,7 +434,7 @@ export function DevisPDF({ d }: { d: DevisData }) {
 
         {/* ── Footer ─────────────────────────────────────────────────────── */}
         <Text style={styles.footer}>
-          KinouClean — Service de nettoyage professionnel — contact@kinouclean.fr — Île-de-France
+          h2maison — Services à domicile professionnels — contact.h2maison@gmail.com — Île-de-France
         </Text>
 
       </Page>

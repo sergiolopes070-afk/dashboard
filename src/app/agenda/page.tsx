@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState, useMemo, useRef } from "react";
-import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
-import { Prestation, Prestataire } from "@/lib/constants";
+import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { Prestation, Prestataire, StatutClient } from "@/lib/constants";
 
-// ─── Palette ────────────────────────────────────────────────────────────────
+// ─── Palette ─────────────────────────────────────────────────────────────────
 const PALETTE = [
   { bg: "#4285F4", light: "#DBEAFE", text: "#1E40AF" },
   { bg: "#EA4335", light: "#FEE2E2", text: "#991B1B" },
@@ -17,24 +17,30 @@ const PALETTE = [
   { bg: "#6366F1", light: "#E0E7FF", text: "#3730A3" },
 ];
 
-// ─── Config grille horaire ───────────────────────────────────────────────────
-const HOUR_START  = 7;   // 07:00
-const HOUR_END    = 22;  // 22:00
-const HOURS       = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i);
-const HOUR_PX     = 64;  // hauteur d'une heure en px
-const EVENT_DUR   = 60;  // durée par défaut d'un event en minutes
+// ─── Config grille ────────────────────────────────────────────────────────────
+const HOUR_START = 7;
+const HOUR_END   = 22;
+const HOURS      = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i);
+const HOUR_PX    = 64;
+const EVENT_DUR  = 60;
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+const JOURS_LONG  = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
+const JOURS_SHORT = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
+const MOIS        = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+const STATUTS: StatutClient[] = ["EMAIL ENVOYÉ","CONFIRMÉ","TERMINÉ","ANNULÉ",""];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function getMondayOfWeek(d: Date): Date {
-  const day  = d.getDay();
+  const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;
-  const mon  = new Date(d);
-  mon.setDate(d.getDate() + diff);
-  mon.setHours(0, 0, 0, 0);
+  const mon = new Date(d); mon.setDate(d.getDate() + diff); mon.setHours(0,0,0,0);
   return mon;
 }
 function addDays(d: Date, n: number): Date {
   const r = new Date(d); r.setDate(r.getDate() + n); return r;
+}
+function toFrDate(d: Date): string {
+  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
 }
 function frToDate(fr: string): Date | null {
   if (!fr) return null;
@@ -42,14 +48,12 @@ function frToDate(fr: string): Date | null {
   return p.length === 3 ? new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0])) : null;
 }
 function sameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
+  return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
 }
-function timeToMinutes(heure: string): number {
-  if (!heure) return -1;
-  const [h, m] = heure.split(":").map(Number);
-  return h * 60 + (m || 0);
+function timeToMinutes(h: string): number {
+  if (!h) return -1;
+  const [hh,mm] = h.split(":").map(Number);
+  return hh * 60 + (mm || 0);
 }
 function topPx(heure: string): number {
   const mins = timeToMinutes(heure);
@@ -59,48 +63,383 @@ function topPx(heure: string): number {
 function heightPx(heure: string): number {
   const mins = timeToMinutes(heure);
   if (mins < 0) return HOUR_PX;
-  // Clamp to grid
-  const maxTop = (HOUR_END - HOUR_START) * HOUR_PX;
-  const top    = ((mins - HOUR_START * 60) / 60) * HOUR_PX;
-  return Math.min(EVENT_DUR / 60 * HOUR_PX, maxTop - top);
+  const top = ((mins - HOUR_START * 60) / 60) * HOUR_PX;
+  return Math.min(EVENT_DUR / 60 * HOUR_PX, (HOUR_END - HOUR_START) * HOUR_PX - top);
+}
+function firstMondayOfMonthGrid(d: Date): Date {
+  const first = new Date(d.getFullYear(), d.getMonth(), 1);
+  return getMondayOfWeek(first);
 }
 
-const JOURS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-const MOIS  = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface CreateForm {
+  prenom: string; nom: string; tel: string; email: string;
+  typePresta: string; adresse: string; prix: string;
+  prestataire: string; statut: StatutClient; message: string;
+  date: string; heure: string;
+}
 
-// ─── Page ────────────────────────────────────────────────────────────────────
+const EMPTY_FORM: CreateForm = {
+  prenom:"", nom:"", tel:"", email:"",
+  typePresta:"", adresse:"", prix:"",
+  prestataire:"", statut:"", message:"",
+  date:"", heure:"",
+};
+
+// ─── Composant DayDetailModal ─────────────────────────────────────────────────
+const DAY_SLOTS = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => {
+  const h = HOUR_START + i;
+  return `${String(h).padStart(2, "0")}:00`;
+});
+
+function DayDetailModal({
+  day, events, prestataires, colorMap, idByNom,
+  onClose, onCreateSlot, onSelectEvent,
+}: {
+  day: Date;
+  events: Prestation[];
+  prestataires: Prestataire[];
+  colorMap: Record<string, typeof PALETTE[0]>;
+  idByNom: Record<string, string>;
+  onClose: () => void;
+  onCreateSlot: (slot: { date: string; heure: string }) => void;
+  onSelectEvent: (ev: Prestation) => void;
+}) {
+  const MOIS_LONG = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+  const JOURS_FULL = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+  const label = `${JOURS_FULL[day.getDay()]} ${day.getDate()} ${MOIS_LONG[day.getMonth()]} ${day.getFullYear()}`;
+  const dateStr = toFrDate(day);
+
+  // Group events by hour slot
+  const eventsBySlot: Record<string, Prestation[]> = {};
+  events.forEach(ev => {
+    const slotKey = ev.heure ? ev.heure.slice(0, 2) + ":00" : "sans-heure";
+    if (!eventsBySlot[slotKey]) eventsBySlot[slotKey] = [];
+    eventsBySlot[slotKey].push(ev);
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden flex flex-col max-h-[85vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+          <div>
+            <h2 className="font-semibold text-gray-900 text-base">{label}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{events.length} prestation{events.length !== 1 ? "s" : ""}</p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
+            <X size={18} className="text-gray-400" />
+          </button>
+        </div>
+
+        {/* Body scrollable */}
+        <div className="overflow-y-auto flex-1">
+          {DAY_SLOTS.map(slot => {
+            const slotEvents = eventsBySlot[slot] || [];
+            return (
+              <div key={slot} className="flex border-b border-gray-50 group/slot">
+                {/* Heure */}
+                <div className="w-14 shrink-0 py-2 px-2 text-xs text-gray-400 font-medium text-right border-r border-gray-100">
+                  {slot}
+                </div>
+                {/* Contenu du slot */}
+                <div className="flex-1 py-1 px-2 min-h-[38px] relative">
+                  {slotEvents.length > 0 ? (
+                    <div className="space-y-0.5">
+                      {slotEvents.map(ev => {
+                        const pid   = idByNom[ev.prestataire];
+                        const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg:"#9CA3AF", light:"#F3F4F6", text:"#374151" };
+                        return (
+                          <button
+                            key={ev.row}
+                            onClick={() => { onClose(); onSelectEvent(ev); }}
+                            className="w-full text-left px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-2 hover:brightness-95 transition-all"
+                            style={{ backgroundColor: color.light, color: color.text }}
+                          >
+                            <span className="font-bold" style={{ color: color.bg }}>{ev.heure}</span>
+                            <span className="font-semibold text-gray-800 truncate">{ev.prenom} {ev.nom}</span>
+                            {ev.typePresta && <span className="text-gray-500 truncate hidden sm:block">{ev.typePresta}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    /* Slot vide → bouton créer */
+                    <button
+                      onClick={() => onCreateSlot({ date: dateStr, heure: slot })}
+                      className="absolute inset-0 w-full flex items-center gap-1 px-2 opacity-0 group-hover/slot:opacity-100 transition-opacity text-xs text-blue-500 hover:bg-blue-50/60"
+                    >
+                      <Plus size={12} />
+                      <span>Créer à {slot}</span>
+                    </button>
+                  )}
+                </div>
+                {/* Bouton + sur les slots avec events aussi */}
+                {slotEvents.length > 0 && (
+                  <button
+                    onClick={() => onCreateSlot({ date: dateStr, heure: slot })}
+                    title={`Créer à ${slot}`}
+                    className="w-7 shrink-0 flex items-center justify-center text-blue-400 hover:bg-blue-50 opacity-0 group-hover/slot:opacity-100 transition-opacity"
+                  >
+                    <Plus size={12} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-gray-100 shrink-0">
+          <button
+            onClick={() => onCreateSlot({ date: dateStr, heure: "09:00" })}
+            className="w-full py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+          >
+            <Plus size={14} />
+            Nouvelle prestation ce jour
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Composant QuickCreate ────────────────────────────────────────────────────
+function QuickCreateModal({
+  initial, prestataires, colorMap,
+  onClose, onSaved,
+}: {
+  initial: { date: string; heure: string };
+  prestataires: Prestataire[];
+  colorMap: Record<string, typeof PALETTE[0]>;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState<CreateForm>({ ...EMPTY_FORM, ...initial });
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState("");
+
+  const set = (k: keyof CreateForm, v: string) =>
+    setForm(f => ({ ...f, [k]: v }));
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.prenom || !form.nom) { setError("Prénom et nom requis."); return; }
+    setSaving(true); setError("");
+    try {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) throw new Error("Erreur serveur");
+      onSaved();
+    } catch {
+      setError("Impossible de sauvegarder. Réessayez.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center">
+              <Plus size={14} className="text-blue-600" />
+            </div>
+            <h2 className="font-semibold text-gray-900">Nouvelle prestation</h2>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full transition-colors">
+            <X size={18} className="text-gray-400" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4 max-h-[80vh] overflow-y-auto">
+          {/* Date / Heure */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Date</label>
+              <input
+                type="text" placeholder="JJ/MM/AAAA"
+                value={form.date} onChange={e => set("date", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Heure</label>
+              <input
+                type="text" placeholder="HH:MM"
+                value={form.heure} onChange={e => set("heure", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Séparateur client */}
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Client</div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Prénom *</label>
+              <input
+                value={form.prenom} onChange={e => set("prenom", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Nom *</label>
+              <input
+                value={form.nom} onChange={e => set("nom", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Téléphone</label>
+              <input
+                value={form.tel} onChange={e => set("tel", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Email</label>
+              <input
+                type="email" value={form.email} onChange={e => set("email", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Séparateur prestation */}
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Prestation</div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Type de prestation</label>
+              <input
+                value={form.typePresta} onChange={e => set("typePresta", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Prix (€)</label>
+              <input
+                type="number" value={form.prix} onChange={e => set("prix", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Adresse</label>
+            <input
+              value={form.adresse} onChange={e => set("adresse", e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Prestataire</label>
+              <select
+                value={form.prestataire} onChange={e => set("prestataire", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">— Aucun —</option>
+                {prestataires.map(p => (
+                  <option key={p.id} value={p.nom}>{p.nom}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Statut</label>
+              <select
+                value={form.statut} onChange={e => set("statut", e.target.value as StatutClient)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                {STATUTS.map(s => <option key={s} value={s}>{s || "— Aucun —"}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Note</label>
+            <textarea
+              rows={2} value={form.message} onChange={e => set("message", e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+          </div>
+
+          {error && <p className="text-xs text-red-500">{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+              Annuler
+            </button>
+            <button type="submit" disabled={saving}
+              className="flex-1 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+              {saving ? "Enregistrement…" : "Créer la prestation"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Page principale ──────────────────────────────────────────────────────────
 export default function AgendaPage() {
   const [prestations,  setPrestations]  = useState<Prestation[]>([]);
   const [prestataires, setPrestataires] = useState<Prestataire[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [weekStart,    setWeekStart]    = useState<Date>(() => getMondayOfWeek(new Date()));
+  const [monthDate,    setMonthDate]    = useState<Date>(() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; });
+  const [viewMode,     setViewMode]     = useState<"week"|"month">("week");
   const [checked,      setChecked]      = useState<Record<string, boolean>>({});
   const [showSansPresta, setShowSansPresta] = useState(true);
-  const [selectedEvent, setSelectedEvent]  = useState<Prestation | null>(null);
+  const [selectedEvent,   setSelectedEvent]   = useState<Prestation | null>(null);
+  const [createSlot,      setCreateSlot]      = useState<{ date: string; heure: string } | null>(null);
+  const [selectedMonthDay, setSelectedMonthDay] = useState<Date | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Fetch
-  useEffect(() => {
+  const today = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
+
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+  const loadData = () => {
     Promise.all([
       fetch("/api/prestations").then(r => r.json()),
       fetch("/api/prestataires").then(r => r.json()),
     ]).then(([prestas, prestas2]) => {
       setPrestations(Array.isArray(prestas) ? prestas : []);
       setPrestataires(Array.isArray(prestas2) ? prestas2 : []);
-      const init: Record<string, boolean> = {};
-      (Array.isArray(prestas2) ? prestas2 : []).forEach((p: Prestataire) => { init[p.id] = true; });
-      setChecked(init);
+      setChecked(prev => {
+        const next = { ...prev };
+        (Array.isArray(prestas2) ? prestas2 : []).forEach((p: Prestataire) => {
+          if (next[p.id] === undefined) next[p.id] = true;
+        });
+        return next;
+      });
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+  };
+  useEffect(() => { loadData(); }, []);
 
-  // Scroll vers 08:00 au montage
+  // Auto-scroll vers 08h00
   useEffect(() => {
-    if (!loading && scrollRef.current) {
+    if (!loading && viewMode === "week" && scrollRef.current) {
       scrollRef.current.scrollTop = (8 - HOUR_START) * HOUR_PX - 8;
     }
-  }, [loading]);
+  }, [loading, viewMode]);
 
+  // ── Couleurs ───────────────────────────────────────────────────────────────
   const colorMap = useMemo(() => {
     const map: Record<string, typeof PALETTE[0]> = {};
     prestataires.forEach((p, i) => { map[p.id] = PALETTE[i % PALETTE.length]; });
@@ -113,11 +452,7 @@ export default function AgendaPage() {
     return map;
   }, [prestataires]);
 
-  const weekDays = useMemo(() =>
-    Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
-    [weekStart]
-  );
-
+  // ── Filtres ────────────────────────────────────────────────────────────────
   const visiblePrestations = useMemo(() =>
     prestations.filter(p => {
       if (!p.date) return false;
@@ -129,11 +464,14 @@ export default function AgendaPage() {
   );
 
   function eventsForDay(day: Date): Prestation[] {
-    return visiblePrestations.filter(p => {
-      const d = frToDate(p.date);
-      return d && sameDay(d, day);
-    }).sort((a, b) => (a.heure || "").localeCompare(b.heure || ""));
+    return visiblePrestations
+      .filter(p => { const d = frToDate(p.date); return d && sameDay(d, day); })
+      .sort((a, b) => (a.heure||"").localeCompare(b.heure||""));
   }
+
+  // ── Semaine ────────────────────────────────────────────────────────────────
+  const weekDays = useMemo(() =>
+    Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
   const weekLabel = useMemo(() => {
     const end = addDays(weekStart, 6);
@@ -142,147 +480,178 @@ export default function AgendaPage() {
     return `${weekStart.getDate()} ${MOIS[weekStart.getMonth()].slice(0,3)} – ${end.getDate()} ${MOIS[end.getMonth()].slice(0,3)} ${weekStart.getFullYear()}`;
   }, [weekStart]);
 
-  const today = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
+  // ── Mois ───────────────────────────────────────────────────────────────────
+  const monthLabel = `${MOIS[monthDate.getMonth()]} ${monthDate.getFullYear()}`;
 
-  const toggleAll = (val: boolean) => {
-    const next: Record<string, boolean> = {};
-    prestataires.forEach(p => { next[p.id] = val; });
-    setChecked(next);
-    setShowSansPresta(val);
-  };
+  const monthGrid = useMemo(() => {
+    const start = firstMondayOfMonthGrid(monthDate);
+    return Array.from({ length: 42 }, (_, i) => addDays(start, i));
+  }, [monthDate]);
+
+  // ── Navigation ─────────────────────────────────────────────────────────────
+  function navPrev() {
+    if (viewMode === "week") setWeekStart(w => addDays(w, -7));
+    else setMonthDate(m => new Date(m.getFullYear(), m.getMonth() - 1, 1));
+  }
+  function navNext() {
+    if (viewMode === "week") setWeekStart(w => addDays(w, 7));
+    else setMonthDate(m => new Date(m.getFullYear(), m.getMonth() + 1, 1));
+  }
+  function navToday() {
+    if (viewMode === "week") setWeekStart(getMondayOfWeek(new Date()));
+    else { const d = new Date(); setMonthDate(new Date(d.getFullYear(), d.getMonth(), 1)); }
+  }
+
+  // Clic sur numéro de jour (header semaine) → vue mois
+  function handleDayHeaderClick(day: Date) {
+    setMonthDate(new Date(day.getFullYear(), day.getMonth(), 1));
+    setViewMode("month");
+  }
+
+  // Clic sur une journée dans la vue mois → ouvrir le popup du jour
+  function handleMonthDayClick(day: Date) {
+    setSelectedMonthDay(day);
+  }
+
+  // Depuis le popup jour, aller à la semaine de ce jour
+  function handleGoToWeekFromDay(day: Date) {
+    setSelectedMonthDay(null);
+    setWeekStart(getMondayOfWeek(day));
+    setViewMode("week");
+  }
+
+  // Clic sur un créneau horaire vide (vue semaine)
+  function handleSlotClick(e: React.MouseEvent<HTMLDivElement>, day: Date) {
+    const y = e.nativeEvent.offsetY;
+    const totalMins = Math.floor((y / HOUR_PX) * 60 / 15) * 15 + HOUR_START * 60;
+    const clamped = Math.max(HOUR_START * 60, Math.min(HOUR_END * 60 - 15, totalMins));
+    const h = Math.floor(clamped / 60);
+    const m = clamped % 60;
+    const heure = `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+    setCreateSlot({ date: toFrDate(day), heure });
+  }
+
+  // ── Sidebar ────────────────────────────────────────────────────────────────
   const allChecked = prestataires.every(p => checked[p.id]) && showSansPresta;
+  const toggleAll  = (v: boolean) => {
+    const next: Record<string, boolean> = {};
+    prestataires.forEach(p => { next[p.id] = v; });
+    setChecked(next); setShowSansPresta(v);
+  };
 
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 flex">
 
-      {/* ── Sidebar filtres ─────────────────────────────────────────────── */}
+      {/* ── Sidebar ───────────────────────────────────────────────────────── */}
       <aside className="w-56 shrink-0 bg-white border-r border-gray-200 p-4 flex flex-col gap-3">
-        <div className="flex items-center gap-2 mb-1">
-          <Calendar size={15} className="text-blue-600" />
-          <span className="font-semibold text-sm text-gray-700">Prestataires</span>
-        </div>
-
-        {/* Tout */}
+        <div className="font-semibold text-sm text-gray-700 mb-1">Prestataires</div>
         <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-400 uppercase tracking-wide">
-          <input
-            type="checkbox"
-            checked={allChecked}
-            onChange={e => toggleAll(e.target.checked)}
-            className="w-3.5 h-3.5 rounded"
-          />
+          <input type="checkbox" checked={allChecked} onChange={e => toggleAll(e.target.checked)} className="w-3.5 h-3.5 rounded" />
           Tous
         </label>
-
         <div className="flex flex-col gap-2">
           {prestataires.map(p => {
             const color = colorMap[p.id] ?? PALETTE[0];
             return (
-              <label
-                key={p.id}
-                className="flex items-center gap-2.5 cursor-pointer group"
-                onClick={() => setChecked(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
-              >
-                <span
-                  className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0 transition-colors"
-                  style={{ borderColor: color.bg, backgroundColor: checked[p.id] ? color.bg : "transparent" }}
-                >
+              <label key={p.id} className="flex items-center gap-2.5 cursor-pointer group"
+                onClick={() => setChecked(prev => ({ ...prev, [p.id]: !prev[p.id] }))}>
+                <span className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0"
+                  style={{ borderColor: color.bg, backgroundColor: checked[p.id] ? color.bg : "transparent" }}>
                   {checked[p.id] && (
                     <svg viewBox="0 0 10 8" className="w-2.5 h-2">
                       <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   )}
                 </span>
-                <span className="text-sm text-gray-700 group-hover:text-gray-900 truncate">{p.nom}</span>
+                <span className="text-sm text-gray-700 truncate">{p.nom}</span>
               </label>
             );
           })}
-
-          {/* Sans prestataire */}
-          <label
-            className="flex items-center gap-2.5 cursor-pointer group"
-            onClick={() => setShowSansPresta(v => !v)}
-          >
-            <span
-              className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0"
-              style={{ borderColor: "#9CA3AF", backgroundColor: showSansPresta ? "#9CA3AF" : "transparent" }}
-            >
+          <label className="flex items-center gap-2.5 cursor-pointer group"
+            onClick={() => setShowSansPresta(v => !v)}>
+            <span className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0"
+              style={{ borderColor:"#9CA3AF", backgroundColor: showSansPresta ? "#9CA3AF" : "transparent" }}>
               {showSansPresta && (
                 <svg viewBox="0 0 10 8" className="w-2.5 h-2">
                   <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               )}
             </span>
-            <span className="text-sm text-gray-400 group-hover:text-gray-600 truncate">Sans prestataire</span>
+            <span className="text-sm text-gray-400 truncate">Sans prestataire</span>
           </label>
         </div>
       </aside>
 
-      {/* ── Calendrier ──────────────────────────────────────────────────── */}
+      {/* ── Calendrier ────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Barre navigation */}
         <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center gap-2 shrink-0">
-          <button
-            onClick={() => setWeekStart(w => addDays(w, -7))}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-            title="Semaine précédente"
-          >
+          <button onClick={navPrev} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
             <ChevronLeft size={18} className="text-gray-600" />
           </button>
-          <button
-            onClick={() => setWeekStart(getMondayOfWeek(new Date()))}
-            className="px-3 py-1 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-200"
-          >
+          <button onClick={navToday}
+            className="px-3 py-1 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition-colors">
             Aujourd'hui
           </button>
-          <button
-            onClick={() => setWeekStart(w => addDays(w, 7))}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-            title="Semaine suivante"
-          >
+          <button onClick={navNext} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
             <ChevronRight size={18} className="text-gray-600" />
           </button>
-          <h2 className="text-sm font-semibold text-gray-800 ml-2">{weekLabel}</h2>
+          <h2 className="text-sm font-semibold text-gray-800 ml-2 flex-1">
+            {viewMode === "week" ? weekLabel : monthLabel}
+          </h2>
+          {/* Toggle semaine / mois */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+            <button
+              onClick={() => setViewMode("week")}
+              className={`px-3 py-1.5 transition-colors ${viewMode==="week" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+              Semaine
+            </button>
+            <button
+              onClick={() => { setViewMode("month"); setMonthDate(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1)); }}
+              className={`px-3 py-1.5 transition-colors ${viewMode==="month" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+              Mois
+            </button>
+          </div>
         </div>
 
         {loading ? (
           <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">Chargement…</div>
-        ) : (
-          <div className="flex-1 flex flex-col overflow-hidden">
+        ) : viewMode === "week" ? (
 
-            {/* En-têtes jours — sticky */}
+          /* ══ VUE SEMAINE ══════════════════════════════════════════════════ */
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* En-têtes jours */}
             <div className="grid bg-white border-b border-gray-200 shrink-0"
               style={{ gridTemplateColumns: "48px repeat(7, 1fr)" }}>
-              <div /> {/* coin vide */}
+              <div />
               {weekDays.map((day, i) => {
                 const isToday = sameDay(day, today);
                 return (
                   <div key={i} className="py-2 text-center border-l border-gray-100">
-                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">{JOURS[i]}</p>
-                    <div className={`mx-auto mt-0.5 w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold
-                      ${isToday ? "bg-blue-600 text-white" : "text-gray-700"}`}>
+                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">{JOURS_SHORT[i]}</p>
+                    <button
+                      onClick={() => handleDayHeaderClick(day)}
+                      title="Voir le mois"
+                      className={`mx-auto mt-0.5 w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold transition-colors
+                        ${isToday ? "bg-blue-600 text-white" : "text-gray-700 hover:bg-gray-100"}`}>
                       {day.getDate()}
-                    </div>
-                    {day.getDate() === 1 && (
-                      <p className="text-xs text-gray-400">{MOIS[day.getMonth()].slice(0,3)}</p>
-                    )}
+                    </button>
                   </div>
                 );
               })}
             </div>
 
-            {/* Grille scrollable avec heures */}
+            {/* Grille avec heures */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden">
               <div className="flex" style={{ minHeight: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
 
                 {/* Colonne heures */}
-                <div className="w-12 shrink-0 relative" style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
+                <div className="w-12 shrink-0 relative bg-white" style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
                   {HOURS.map((h, i) => (
-                    <div
-                      key={h}
-                      className="absolute right-2 text-xs text-gray-400 font-medium"
-                      style={{ top: `${i * HOUR_PX - 7}px` }}
-                    >
+                    <div key={h} className="absolute right-2 text-xs text-gray-400 font-medium"
+                      style={{ top: `${i * HOUR_PX - 7}px` }}>
                       {String(h).padStart(2,"0")}:00
                     </div>
                   ))}
@@ -295,73 +664,57 @@ export default function AgendaPage() {
                   return (
                     <div
                       key={di}
-                      className={`flex-1 border-l border-gray-100 relative ${isToday ? "bg-blue-50/20" : "bg-white"}`}
+                      className={`flex-1 border-l border-gray-100 relative cursor-pointer group ${isToday ? "bg-blue-50/20" : "bg-white"}`}
                       style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}
+                      onClick={e => handleSlotClick(e, day)}
+                      title="Cliquer pour créer une prestation"
                     >
                       {/* Lignes horaires */}
                       {HOURS.map((h, i) => (
-                        <div
-                          key={h}
-                          className="absolute left-0 right-0 border-t border-gray-100"
-                          style={{ top: `${i * HOUR_PX}px` }}
-                        />
+                        <div key={h} className="absolute left-0 right-0 border-t border-gray-100"
+                          style={{ top: `${i * HOUR_PX}px` }} />
                       ))}
-                      {/* Ligne demi-heure */}
                       {HOURS.map((h, i) => (
-                        <div
-                          key={`${h}-half`}
-                          className="absolute left-0 right-0 border-t border-gray-50"
-                          style={{ top: `${i * HOUR_PX + HOUR_PX / 2}px` }}
-                        />
+                        <div key={`${h}-half`} className="absolute left-0 right-0 border-t border-gray-50"
+                          style={{ top: `${i * HOUR_PX + HOUR_PX / 2}px` }} />
                       ))}
+
+                      {/* Hover hint */}
+                      <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/[0.02] transition-colors pointer-events-none" />
 
                       {/* Events */}
                       {events.map((ev, ei) => {
                         const pid   = idByNom[ev.prestataire];
-                        const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg: "#9CA3AF", light: "#F3F4F6", text: "#374151" };
-                        const top   = ev.heure ? topPx(ev.heure) : 0;
-                        const h     = ev.heure ? heightPx(ev.heure) : HOUR_PX;
-                        // Éviter le chevauchement simple (décalage horizontal)
+                        const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg:"#9CA3AF", light:"#F3F4F6", text:"#374151" };
+                        const top_  = ev.heure ? topPx(ev.heure)   : 0;
+                        const h_    = ev.heure ? heightPx(ev.heure) : HOUR_PX;
                         const overlap = events.slice(0, ei).filter(e => {
                           if (!e.heure || !ev.heure) return false;
-                          const tA = timeToMinutes(e.heure);
-                          const tB = timeToMinutes(ev.heure);
-                          return Math.abs(tA - tB) < EVENT_DUR;
+                          return Math.abs(timeToMinutes(e.heure) - timeToMinutes(ev.heure)) < EVENT_DUR;
                         }).length;
-                        const W = overlap > 0 ? "calc(50% - 4px)" : "calc(100% - 6px)";
-                        const L = overlap > 0 ? "calc(50% + 2px)" : "3px";
-
                         return (
                           <button
                             key={ev.row}
-                            onClick={() => setSelectedEvent(ev)}
+                            onClick={e => { e.stopPropagation(); setSelectedEvent(ev); }}
                             className="absolute rounded-md text-left text-xs overflow-hidden shadow-sm hover:brightness-95 transition-all"
                             style={{
-                              top       : `${top + 1}px`,
-                              height    : `${Math.max(h - 2, 22)}px`,
-                              left      : L,
-                              width     : W,
+                              top   : `${top_ + 1}px`,
+                              height: `${Math.max(h_ - 2, 22)}px`,
+                              left  : overlap > 0 ? "calc(50% + 2px)" : "3px",
+                              width : overlap > 0 ? "calc(50% - 4px)" : "calc(100% - 6px)",
                               backgroundColor: color.light,
-                              borderLeft: `3px solid ${color.bg}`,
-                              zIndex    : 10 + ei,
+                              borderLeft     : `3px solid ${color.bg}`,
+                              zIndex: 10 + ei,
                             }}
                           >
-                            <div className="px-1.5 py-1 h-full flex flex-col justify-start overflow-hidden">
+                            <div className="px-1.5 py-1 h-full flex flex-col overflow-hidden">
                               {ev.heure && (
-                                <span className="font-bold leading-tight truncate" style={{ color: color.bg }}>
-                                  {ev.heure}
-                                </span>
+                                <span className="font-bold leading-tight truncate" style={{ color: color.bg }}>{ev.heure}</span>
                               )}
-                              <span className="font-semibold leading-tight truncate text-gray-800">
-                                {ev.prenom} {ev.nom}
-                              </span>
-                              {h > 36 && (
-                                <span className="text-gray-500 leading-tight truncate">{ev.typePresta}</span>
-                              )}
-                              {h > 52 && ev.prestataire && (
-                                <span className="leading-tight truncate font-medium" style={{ color: color.text }}>
-                                  {ev.prestataire}
-                                </span>
+                              <span className="font-semibold leading-tight truncate text-gray-800">{ev.prenom} {ev.nom}</span>
+                              {h_ > 36 && <span className="text-gray-500 leading-tight truncate">{ev.typePresta}</span>}
+                              {h_ > 52 && ev.prestataire && (
+                                <span className="leading-tight truncate font-medium" style={{ color: color.text }}>{ev.prestataire}</span>
                               )}
                             </div>
                           </button>
@@ -373,23 +726,86 @@ export default function AgendaPage() {
               </div>
             </div>
           </div>
+
+        ) : (
+
+          /* ══ VUE MOIS ════════════════════════════════════════════════════ */
+          <div className="flex-1 flex flex-col overflow-auto bg-white">
+            {/* En-tête jours de la semaine */}
+            <div className="grid border-b border-gray-200 shrink-0"
+              style={{ gridTemplateColumns: "repeat(7, 1fr)" }}>
+              {JOURS_LONG.map((j, i) => (
+                <div key={i} className={`py-2 text-center text-xs font-semibold uppercase tracking-wide
+                  ${i >= 5 ? "text-gray-400" : "text-gray-500"}`}>
+                  {j}
+                </div>
+              ))}
+            </div>
+
+            {/* Grille 6×7 */}
+            <div className="grid flex-1" style={{ gridTemplateColumns: "repeat(7, 1fr)", gridTemplateRows: "repeat(6, 1fr)" }}>
+              {monthGrid.map((day, idx) => {
+                const inCurrentMonth = day.getMonth() === monthDate.getMonth();
+                const isToday_       = sameDay(day, today);
+                const events         = eventsForDay(day);
+                const isWeekend      = idx % 7 >= 5;
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => handleMonthDayClick(day)}
+                    className={`border-b border-r border-gray-100 p-1.5 cursor-pointer hover:bg-blue-50/50 transition-colors min-h-[100px] group/day
+                      ${!inCurrentMonth ? "bg-gray-50/50" : ""}
+                      ${isWeekend && inCurrentMonth ? "bg-orange-50/20" : ""}`}
+                    title="Voir le détail du jour"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-semibold
+                        ${isToday_ ? "bg-blue-600 text-white" : inCurrentMonth ? (isWeekend ? "text-gray-400" : "text-gray-700") : "text-gray-300"}`}>
+                        {day.getDate()}
+                      </span>
+                      {day.getDate() === 1 && !isToday_ && (
+                        <span className="text-xs text-gray-400 font-medium">{MOIS[day.getMonth()].slice(0,3)}</span>
+                      )}
+                    </div>
+                    {/* Events du jour (max 3 + overflow) */}
+                    <div className="space-y-0.5">
+                      {events.slice(0, 3).map(ev => {
+                        const pid   = idByNom[ev.prestataire];
+                        const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg:"#9CA3AF", light:"#F3F4F6", text:"#374151" };
+                        return (
+                          <button
+                            key={ev.row}
+                            onClick={e => { e.stopPropagation(); setSelectedEvent(ev); }}
+                            className="w-full text-left px-1.5 py-0.5 rounded text-xs truncate font-medium"
+                            style={{ backgroundColor: color.light, color: color.text }}
+                          >
+                            {ev.heure && <span className="font-bold mr-1">{ev.heure}</span>}
+                            {ev.prenom} {ev.nom}
+                          </button>
+                        );
+                      })}
+                      {events.length > 3 && (
+                        <p className="text-xs text-blue-500 font-medium pl-1">+{events.length - 3} autres</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
       </div>
 
-      {/* ── Modal détail ─────────────────────────────────────────────────── */}
+      {/* ── Modal détail event ───────────────────────────────────────────── */}
       {selectedEvent && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={() => setSelectedEvent(null)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-5"
-            onClick={e => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setSelectedEvent(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-5"
+            onClick={e => e.stopPropagation()}>
             {(() => {
               const ev    = selectedEvent;
               const pid   = idByNom[ev.prestataire];
-              const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg: "#9CA3AF", light: "#F3F4F6", text: "#374151" };
+              const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg:"#9CA3AF", light:"#F3F4F6", text:"#374151" };
               return (
                 <>
                   <div className="flex items-center justify-between mb-4">
@@ -403,15 +819,15 @@ export default function AgendaPage() {
                   <h3 className="font-bold text-gray-900 text-base mb-1">{ev.prenom} {ev.nom}</h3>
                   <p className="text-sm text-gray-500 mb-3">{ev.typePresta}</p>
                   <div className="space-y-1.5 text-sm text-gray-700">
-                    {[
+                    {([
                       ["Date",    `${ev.date}${ev.heure ? ` à ${ev.heure}` : ""}`],
-                      ["Adresse", ev.adresse || "—"],
-                      ["Statut",  ev.statut  || "—"],
-                      ["Prix",    ev.prix    ? `${ev.prix} €` : "—"],
-                      ["Tél",     ev.tel     || null],
+                      ["Adresse", ev.adresse || null],
+                      ["Statut",  ev.statut  || null],
+                      ["Prix",    ev.prix     ? `${ev.prix} €` : null],
+                      ["Tél",     ev.tel      || null],
                       ["Note",    ev.commentaire || null],
-                    ].filter(([,v]) => v).map(([label, val]) => (
-                      <div key={label as string} className="flex gap-2">
+                    ] as [string, string|null][]).filter(([,v]) => v).map(([label, val]) => (
+                      <div key={label} className="flex gap-2">
                         <span className="text-gray-400 w-20 shrink-0">{label}</span>
                         <span>{val}</span>
                       </div>
@@ -422,6 +838,31 @@ export default function AgendaPage() {
             })()}
           </div>
         </div>
+      )}
+
+      {/* ── Modal détail jour (vue mois) ─────────────────────────────── */}
+      {selectedMonthDay && !createSlot && (
+        <DayDetailModal
+          day={selectedMonthDay}
+          events={eventsForDay(selectedMonthDay)}
+          prestataires={prestataires}
+          colorMap={colorMap}
+          idByNom={idByNom}
+          onClose={() => setSelectedMonthDay(null)}
+          onCreateSlot={slot => { setSelectedMonthDay(null); setCreateSlot(slot); }}
+          onSelectEvent={ev => { setSelectedMonthDay(null); setSelectedEvent(ev); }}
+        />
+      )}
+
+      {/* ── Modal création rapide ────────────────────────────────────────── */}
+      {createSlot && (
+        <QuickCreateModal
+          initial={createSlot}
+          prestataires={prestataires}
+          colorMap={colorMap}
+          onClose={() => setCreateSlot(null)}
+          onSaved={() => { setCreateSlot(null); loadData(); }}
+        />
       )}
     </div>
   );
