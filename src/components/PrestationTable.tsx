@@ -65,7 +65,13 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                 )}
               </td>
               <td className="py-3 px-4 text-gray-600">
-                {p.prestataire || <span className="text-gray-300">—</span>}
+                {p.prestataire
+                  ? <span className="font-medium text-gray-800">{p.prestataire}</span>
+                  : <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                      À affecter
+                    </span>
+                }
               </td>
               {showActions && (
                 <td className="py-3 px-4">

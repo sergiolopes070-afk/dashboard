@@ -6,7 +6,7 @@ import PrestationTable from "@/components/PrestationTable";
 import EditPrestationModal from "@/components/EditPrestationModal";
 import { Prestation, Prestataire } from "@/lib/constants";
 
-const STATUTS = ["Tous", "EMAIL ENVOYÉ", "CONFIRMÉ", "EN ATTENTE PRESTA", "PRESTATAIRE REFUSÉ – À RÉAFFECTER", "TERMINÉ", "ANNULÉ"];
+const STATUTS = ["Tous", "À affecter", "EMAIL ENVOYÉ", "CONFIRMÉ", "EN ATTENTE PRESTA", "PRESTATAIRE REFUSÉ – À RÉAFFECTER", "TERMINÉ", "ANNULÉ"];
 
 export default function PrestationsPage() {
   const [data, setData]                   = useState<Prestation[]>([]);
@@ -44,7 +44,8 @@ export default function PrestationsPage() {
 
   const filtered = useMemo(() => {
     let list = data;
-    if (statut !== "Tous") list = list.filter((p) => p.statut === statut || p.statutPresta === statut);
+    if (statut === "À affecter") list = list.filter((p) => !p.prestataire);
+    else if (statut !== "Tous") list = list.filter((p) => p.statut === statut || p.statutPresta === statut);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((p) =>

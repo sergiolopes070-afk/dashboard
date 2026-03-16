@@ -1,6 +1,9 @@
 "use client";
 import { useState } from "react";
-import { X, Save, Loader2, UserPlus, User, Briefcase, MapPin, Settings2 } from "lucide-react";
+import {
+  X, Save, Loader2, UserPlus, User, Briefcase, MapPin, Settings2,
+  CheckCircle, MessageCircle, Clock, UserCheck,
+} from "lucide-react";
 import { Prestataire } from "@/lib/constants";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
@@ -25,12 +28,6 @@ const TYPES_PRESTA = [
   "Bureaux",
   "Lavage Canapé",
   "Autre",
-];
-
-const STATUTS_PRESTA = [
-  { value: "",             label: "NOUVEAU (défaut)" },
-  { value: "EMAIL ENVOYÉ", label: "EMAIL ENVOYÉ" },
-  { value: "CONFIRMÉ",     label: "CONFIRMÉ" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -74,7 +71,6 @@ interface Props {
 }
 
 const EMPTY = {
-  // Client
   prenom       : "",
   nom          : "",
   tel          : "",
@@ -82,21 +78,20 @@ const EMPTY = {
   adresse      : "",
   source       : "",
   statutClient : "NOUVEAU",
-  // Prestation
   typePresta   : "",
   quantite     : "1",
   date         : "",
   heure        : "",
   prix         : "",
   prestataire  : "",
-  statut       : "",
   message      : "",
 };
 
 export default function NewClientModal({ prestataires, onClose, onSaved }: Props) {
-  const [form, setForm] = useState(EMPTY);
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState<string | null>(null);
+  const [form, setForm]                   = useState(EMPTY);
+  const [saving, setSaving]               = useState(false);
+  const [error, setError]                 = useState<string | null>(null);
+  const [savedPrestataire, setSavedPrestataire] = useState<Prestataire | null>(null);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -111,6 +106,8 @@ export default function NewClientModal({ prestataires, onClose, onSaved }: Props
     return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d;
   };
 
+  const assignedPrestataire = prestataires.find((p) => p.nom === form.prestataire) ?? null;
+
   const handleSave = async () => {
     if (!form.nom.trim())   { setError("Le nom est requis."); return; }
     if (!form.prenom.trim()){ setError("Le prénom est requis."); return; }
@@ -118,14 +115,29 @@ export default function NewClientModal({ prestataires, onClose, onSaved }: Props
     setSaving(true);
     setError(null);
     try {
+      const hasPrestataire = !!form.prestataire;
+      const payload = {
+        ...form,
+        // Cas 1 : prestataire choisi → mission proposée, en attente de sa confirmation
+        // Cas 2 : sans prestataire → prestation créée, en attente d'affectation
+        statut      : hasPrestataire ? "EMAIL ENVOYÉ" : "",
+        statutPresta: hasPrestataire ? "EN ATTENTE PRESTA" : "",
+      };
       const res = await fetch("/api/clients", {
         method : "POST",
         headers: { "Content-Type": "application/json" },
-        body   : JSON.stringify(form),
+        body   : JSON.stringify(payload),
       });
       if (!res.ok) throw new Error((await res.json()).error || "Erreur serveur");
+
       onSaved();
-      onClose();
+
+      // Si un prestataire avec un téléphone est assigné → écran de notification WA
+      if (hasPrestataire && assignedPrestataire?.tel) {
+        setSavedPrestataire(assignedPrestataire);
+      } else {
+        onClose();
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur inconnue");
     } finally {
@@ -133,6 +145,60 @@ export default function NewClientModal({ prestataires, onClose, onSaved }: Props
     }
   };
 
+  // ── Écran de succès + notification WhatsApp ───────────────────────────────
+  if (savedPrestataire) {
+    const tel = savedPrestataire.tel.replace(/\s/g, "").replace(/^0/, "33");
+    const msg = encodeURIComponent(
+      `Bonjour ${savedPrestataire.nom} 👋,\n\nUne nouvelle mission vous a été proposée chez KinouClean :\n\n` +
+      `👤 Client : ${form.prenom} ${form.nom}\n` +
+      `🧹 Prestation : ${form.typePresta}${form.quantite ? ` (x${form.quantite})` : ""}\n` +
+      `📍 Adresse : ${form.adresse || "—"}\n` +
+      `📅 Date : ${form.date || "—"}${form.heure ? ` à ${form.heure}` : ""}\n` +
+      `💶 Prix : ${form.prix || "—"} €\n\n` +
+      `Merci de confirmer votre disponibilité en répondant à ce message 🙏`
+    );
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+          <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
+            <CheckCircle size={32} className="text-green-500" />
+          </div>
+          <h2 className="text-lg font-bold text-gray-900 mb-1">Client créé avec succès !</h2>
+          <p className="text-sm text-gray-500 mb-6">
+            La prestation a été assignée à{" "}
+            <span className="font-semibold text-gray-800">{savedPrestataire.nom}</span>{" "}
+            avec le statut <span className="text-orange-600 font-medium">En attente de confirmation</span>.
+          </p>
+          <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 mb-6 text-left">
+            <p className="text-xs font-semibold text-orange-700 uppercase tracking-wider mb-2">
+              Notifier le prestataire
+            </p>
+            <p className="text-sm text-gray-600 mb-3">
+              Envoyez un message WhatsApp à <strong>{savedPrestataire.nom}</strong> pour
+              lui proposer cette mission et attendre sa confirmation.
+            </p>
+            <a
+              href={`https://wa.me/${tel}?text=${msg}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors"
+            >
+              <MessageCircle size={16} />
+              Envoyer la mission via WhatsApp
+            </a>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-full px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Fermer sans notifier
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Formulaire principal ──────────────────────────────────────────────────
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
@@ -248,25 +314,51 @@ export default function NewClientModal({ prestataires, onClose, onSaved }: Props
             </Field>
           </Section>
 
-          {/* Logistique */}
-          <Section icon={Settings2} title="Logistique">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Prestataire affecté">
-                <select value={form.prestataire} onChange={(e) => set("prestataire", e.target.value)} className={inputCls}>
-                  <option value="">— Non affecté —</option>
-                  {prestataires.map((p) => (
-                    <option key={p.nom} value={p.nom}>{p.nom}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Statut de la prestation">
-                <select value={form.statut} onChange={(e) => set("statut", e.target.value)} className={inputCls}>
-                  {STATUTS_PRESTA.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
-              </Field>
-            </div>
+          {/* Affectation prestataire */}
+          <Section icon={Settings2} title="Affectation du prestataire">
+            <Field label="Prestataire affecté">
+              <select
+                value={form.prestataire}
+                onChange={(e) => set("prestataire", e.target.value)}
+                className={inputCls}
+              >
+                <option value="">— Laisser en attente d'affectation —</option>
+                {prestataires.map((p) => (
+                  <option key={p.nom} value={p.nom}>{p.nom}</option>
+                ))}
+              </select>
+            </Field>
+
+            {/* Bandeau indicatif selon le cas */}
+            {form.prestataire ? (
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-blue-50 border border-blue-100">
+                <UserCheck size={18} className="text-blue-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-blue-800">
+                    Mission proposée à {form.prestataire}
+                  </p>
+                  <p className="text-xs text-blue-600 mt-0.5">
+                    Statut : <strong>En attente de confirmation du prestataire</strong>.
+                    {assignedPrestataire?.tel
+                      ? " Vous pourrez l'avertir via WhatsApp après la création."
+                      : " Aucun numéro WhatsApp enregistré pour ce prestataire."}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-100">
+                <Clock size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">
+                    En attente d'affectation
+                  </p>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    La prestation sera créée sans prestataire. Elle apparaîtra dans la liste
+                    des missions à affecter.
+                  </p>
+                </div>
+              </div>
+            )}
           </Section>
 
         </div>

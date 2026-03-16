@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Search, Phone, Mail, MapPin, UserPlus, Pencil } from "lucide-react";
+import { Search, Phone, Mail, MapPin, UserPlus, Pencil, Wrench, Clock } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import ClientModal from "@/components/ClientModal";
 import { Prestation } from "@/lib/constants";
@@ -138,11 +138,32 @@ export default function ClientsPage() {
                     </p>
                   )}
                 </div>
-                {c.derniere && (
-                  <p className="text-xs text-gray-400 mt-3 pt-3 border-t border-gray-50">
-                    Dernière intervention : {c.derniere}
-                  </p>
-                )}
+                {/* Prestataire de la dernière prestation */}
+                {(() => {
+                  const last = c.prestations[c.prestations.length - 1];
+                  const unassigned = c.prestations.filter((p) => !p.prestataire).length;
+                  return (
+                    <div className="mt-3 pt-3 border-t border-gray-50 space-y-1">
+                      {last?.prestataire ? (
+                        <p className="flex items-center gap-1.5 text-xs text-gray-500">
+                          <Wrench size={12} className="text-gray-400" />
+                          {last.prestataire}
+                        </p>
+                      ) : null}
+                      {unassigned > 0 && (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                          <Clock size={11} />
+                          {unassigned} mission{unassigned > 1 ? "s" : ""} à affecter
+                        </span>
+                      )}
+                      {c.derniere && (
+                        <p className="text-xs text-gray-400">
+                          Dernière intervention : {c.derniere}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>
