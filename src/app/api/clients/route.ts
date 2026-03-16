@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { appendPrestation, updatePrestation } from "@/lib/sheets";
-import { SHEET_NAME } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +38,7 @@ export async function PATCH(req: Request) {
     if (!rows?.length || !updates) {
       return NextResponse.json({ error: "rows et updates requis" }, { status: 400 });
     }
-    await Promise.all(rows.map((row) => updatePrestation(row, updates, SHEET_NAME)));
+    await Promise.all(rows.map((row) => updatePrestation(row, updates)));
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";

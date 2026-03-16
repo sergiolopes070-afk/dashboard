@@ -2,36 +2,6 @@
 // KINOUCLEAN DASHBOARD – Constantes et types
 // ============================================================
 
-export const SHEET_NAME    = "Clients – Prestationss";
-export const SHEET_PRESTA  = "Prestataires";
-export const SHEET_ARCHIVE = "Historique Prestations";
-
-export const COL = {
-  TIMESTAMP    : 0,   // A
-  NOM          : 1,   // B
-  PRENOM       : 2,   // C
-  TEL          : 3,   // D
-  EMAIL        : 4,   // E
-  TYPE_PRESTA  : 5,   // F
-  QUANTITE     : 6,   // G
-  ADRESSE      : 7,   // H
-  DATE         : 8,   // I
-  HEURE        : 9,   // J
-  MESSAGE      : 10,  // K
-  PRIX         : 11,  // L
-  ENVOYER      : 12,  // M
-  STATUT       : 13,  // N
-  RAPPEL       : 14,  // O
-  AVIS         : 15,  // P
-  PRESTATAIRE  : 16,  // Q
-  EMAIL_PRESTA : 17,  // R
-  COMMENTAIRE  : 18,  // S
-  STATUT_PRESTA: 19,  // T
-  LIEN_WA      : 20,  // U
-  GEN_DEVIS    : 21,  // V
-  DEVIS_PDF    : 22,  // W
-};
-
 export type StatutClient =
   | "EMAIL ENVOYÉ"
   | "CONFIRMÉ"
