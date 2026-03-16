@@ -1,9 +1,13 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Search, Phone, Mail, MapPin, UserPlus, Pencil, Wrench, Clock } from "lucide-react";
+import {
+  Search, Phone, Mail, MapPin, UserPlus, Pencil, Wrench,
+  Clock, ChevronDown, ChevronUp, CheckCircle2, FileText,
+  MessageCircle, Send, AlertTriangle, Calendar,
+} from "lucide-react";
 import Topbar from "@/components/Topbar";
 import ClientModal from "@/components/ClientModal";
-import { Prestation } from "@/lib/constants";
+import { Prestation, STATUT_COLORS } from "@/lib/constants";
 
 interface Client {
   nom: string;
@@ -16,11 +20,120 @@ interface Client {
   derniere: string;
 }
 
+function StatusBadge({ label }: { label: string }) {
+  if (!label) return null;
+  const cls = STATUT_COLORS[label] || "bg-gray-100 text-gray-600";
+  return (
+    <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
+function PrestationRow({ p }: { p: Prestation }) {
+  return (
+    <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+      {/* Ligne 1 : type + date + prix */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          {p.typePresta && (
+            <span className="text-xs font-semibold text-gray-700 bg-white border border-gray-200 px-2 py-0.5 rounded-lg">
+              {p.typePresta}
+              {p.quantite ? ` · ${p.quantite}` : ""}
+            </span>
+          )}
+          {p.date && (
+            <span className="flex items-center gap-1 text-xs text-gray-500">
+              <Calendar size={11} />
+              {p.date}{p.heure ? ` à ${p.heure}` : ""}
+            </span>
+          )}
+        </div>
+        {p.prix && (
+          <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-lg">
+            {parseFloat(p.prix).toFixed(0)} €
+          </span>
+        )}
+      </div>
+
+      {/* Ligne 2 : statuts */}
+      {(p.statut || p.statutPresta) && (
+        <div className="flex flex-wrap gap-1">
+          {p.statut && <StatusBadge label={p.statut} />}
+          {p.statutPresta && <StatusBadge label={p.statutPresta} />}
+        </div>
+      )}
+
+      {/* Ligne 3 : prestataire */}
+      {p.prestataire && (
+        <div className="flex items-center gap-1.5 text-xs text-gray-600">
+          <Wrench size={11} className="text-gray-400" />
+          <span className="font-medium">{p.prestataire}</span>
+        </div>
+      )}
+      {!p.prestataire && (
+        <div className="flex items-center gap-1.5 text-xs text-amber-600">
+          <AlertTriangle size={11} />
+          <span>Aucun prestataire affecté</span>
+        </div>
+      )}
+
+      {/* Ligne 4 : actions menées */}
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        {p.envoyer === "OUI" && (
+          <span className="flex items-center gap-1 text-xs text-blue-600">
+            <CheckCircle2 size={12} />Email client envoyé
+          </span>
+        )}
+        {p.rappel === "OUI" && (
+          <span className="flex items-center gap-1 text-xs text-purple-600">
+            <Send size={12} />Rappel J-1 envoyé
+          </span>
+        )}
+        {p.lienWA && (
+          <a
+            href={p.lienWA}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-green-600 hover:underline"
+          >
+            <MessageCircle size={12} />WhatsApp prestataire
+          </a>
+        )}
+        {p.devisPDF && (
+          <a
+            href={p.devisPDF}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-indigo-600 hover:underline"
+          >
+            <FileText size={12} />Devis PDF
+          </a>
+        )}
+        {p.genDevis === "FAIT" && !p.devisPDF && (
+          <span className="flex items-center gap-1 text-xs text-indigo-500">
+            <FileText size={12} />Devis généré
+          </span>
+        )}
+      </div>
+
+      {/* Adresse prestation si différente */}
+      {p.adresse && (
+        <p className="flex items-center gap-1.5 text-xs text-gray-400">
+          <MapPin size={11} />
+          {p.adresse}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function ClientsPage() {
   const [data, setData]         = useState<Prestation[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState("");
   const [modal, setModal]       = useState<{ mode: "add" | "edit"; client?: Client } | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,6 +175,15 @@ export default function ClientsPage() {
     );
   }, [clients, search]);
 
+  const toggleExpanded = (key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   return (
     <div className="flex flex-col min-h-screen">
       <Topbar
@@ -100,60 +222,76 @@ export default function ClientsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map((c, i) => (
-              <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="font-semibold text-gray-900">{c.prenom} {c.nom}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{c.prestations.length} prestation{c.prestations.length > 1 ? "s" : ""}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-1 rounded-lg">
-                      {c.totalCA.toFixed(0)} €
-                    </span>
-                    <button
-                      onClick={() => setModal({ mode: "edit", client: c })}
-                      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                      title="Modifier ce client"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  {c.tel && (
-                    <a href={`tel:${c.tel}`} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">
-                      <Phone size={13} className="text-gray-400" />{c.tel}
-                    </a>
-                  )}
-                  {c.email && (
-                    <a href={`mailto:${c.email}`} className="flex items-center gap-2 text-sm text-blue-600 hover:underline truncate">
-                      <Mail size={13} />{c.email}
-                    </a>
-                  )}
-                  {c.adresse && (
-                    <p className="flex items-center gap-2 text-sm text-gray-500">
-                      <MapPin size={13} className="text-gray-400 flex-shrink-0" />
-                      <span className="truncate">{c.adresse}</span>
-                    </p>
-                  )}
-                </div>
-                {/* Prestataire de la dernière prestation */}
-                {(() => {
-                  const last = c.prestations[c.prestations.length - 1];
-                  const unassigned = c.prestations.filter((p) => !p.prestataire).length;
-                  return (
-                    <div className="mt-3 pt-3 border-t border-gray-50 space-y-1">
-                      {last?.prestataire ? (
+            {filtered.map((c) => {
+              const key = c.email || `${c.nom}-${c.prenom}-${c.tel}`;
+              const isExpanded = expanded.has(key);
+              const unassigned = c.prestations.filter((p) => !p.prestataire).length;
+              const hasDevis = c.prestations.some((p) => p.devisPDF || p.genDevis === "FAIT");
+              const lastPrestataire = [...c.prestations].reverse().find((p) => p.prestataire)?.prestataire;
+
+              return (
+                <div key={key} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  {/* En-tête carte */}
+                  <div className="p-5">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <p className="font-semibold text-gray-900">{c.prenom} {c.nom}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {c.prestations.length} prestation{c.prestations.length > 1 ? "s" : ""}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-1 rounded-lg">
+                          {c.totalCA.toFixed(0)} €
+                        </span>
+                        <button
+                          onClick={() => setModal({ mode: "edit", client: c })}
+                          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                          title="Modifier ce client"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Coordonnées */}
+                    <div className="space-y-1.5">
+                      {c.tel && (
+                        <a href={`tel:${c.tel}`} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">
+                          <Phone size={13} className="text-gray-400" />{c.tel}
+                        </a>
+                      )}
+                      {c.email && (
+                        <a href={`mailto:${c.email}`} className="flex items-center gap-2 text-sm text-blue-600 hover:underline truncate">
+                          <Mail size={13} />{c.email}
+                        </a>
+                      )}
+                      {c.adresse && (
+                        <p className="flex items-center gap-2 text-sm text-gray-500">
+                          <MapPin size={13} className="text-gray-400 flex-shrink-0" />
+                          <span className="truncate">{c.adresse}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Résumé rapide */}
+                    <div className="mt-3 pt-3 border-t border-gray-50 space-y-1.5">
+                      {lastPrestataire && (
                         <p className="flex items-center gap-1.5 text-xs text-gray-500">
                           <Wrench size={12} className="text-gray-400" />
-                          {last.prestataire}
+                          {lastPrestataire}
                         </p>
-                      ) : null}
+                      )}
                       {unassigned > 0 && (
                         <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
                           <Clock size={11} />
                           {unassigned} mission{unassigned > 1 ? "s" : ""} à affecter
+                        </span>
+                      )}
+                      {hasDevis && (
+                        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
+                          <FileText size={11} />
+                          Devis disponible
                         </span>
                       )}
                       {c.derniere && (
@@ -162,10 +300,35 @@ export default function ClientsPage() {
                         </p>
                       )}
                     </div>
-                  );
-                })()}
-              </div>
-            ))}
+                  </div>
+
+                  {/* Bouton déplier */}
+                  <button
+                    onClick={() => toggleExpanded(key)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-gray-50 hover:bg-gray-100 text-xs text-gray-500 font-medium transition-colors border-t border-gray-100"
+                  >
+                    {isExpanded ? (
+                      <><ChevronUp size={13} />Masquer les prestations</>
+                    ) : (
+                      <><ChevronDown size={13} />Voir toutes les prestations ({c.prestations.length})</>
+                    )}
+                  </button>
+
+                  {/* Détail des prestations */}
+                  {isExpanded && (
+                    <div className="p-4 space-y-3 border-t border-gray-100 bg-white">
+                      {c.prestations.length === 0 ? (
+                        <p className="text-xs text-gray-400 text-center py-2">Aucune prestation</p>
+                      ) : (
+                        c.prestations.map((p) => (
+                          <PrestationRow key={p.row} p={p} />
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
