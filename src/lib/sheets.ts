@@ -108,7 +108,11 @@ export async function updatePrestation(
 
   for (const [key, value] of Object.entries(updates)) {
     switch (key) {
-      case "statut":       prestaPatch.statut        = value;                           break;
+      case "statut":
+        prestaPatch.statut = value;
+        // Auto-archive dès que la prestation est marquée TERMINÉ
+        if (value === "TERMINÉ") prestaPatch.archive = true;
+        break;
       case "statutPresta": prestaPatch.statut_presta = value;                           break;
       case "prix":         prestaPatch.prix           = value ? parseFloat(value) : null; break;
       case "date":         prestaPatch.date_intervention  = frToIso(value);             break;
