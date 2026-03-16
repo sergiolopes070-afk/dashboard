@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   X, Save, Loader2, UserPlus, User, Briefcase, MapPin, Settings2,
   CheckCircle, MessageCircle, Clock, UserCheck,
@@ -29,6 +29,23 @@ const TYPES_PRESTA = [
   "Lavage Canapé",
   "Autre",
 ];
+
+// ─── Hook auto-ville ─────────────────────────────────────────────────────────
+
+function useVilleFromCP(cp: string) {
+  const [villes,  setVilles]  = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (cp.length !== 5) { setVilles([]); return; }
+    setLoading(true);
+    fetch(`https://geo.api.gouv.fr/communes?codePostal=${cp}&fields=nom&format=json`)
+      .then(r => r.json())
+      .then((data: { nom: string }[]) => setVilles(data.map(d => d.nom)))
+      .catch(() => setVilles([]))
+      .finally(() => setLoading(false));
+  }, [cp]);
+  return { villes, loading };
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -76,6 +93,8 @@ const EMPTY = {
   tel          : "",
   email        : "",
   adresse      : "",
+  codePostal   : "",
+  ville        : "",
   source       : "",
   statutClient : "NOUVEAU",
   typePresta   : "",
@@ -94,6 +113,12 @@ export default function NewClientModal({ prestataires, onClose, onSaved }: Props
   const [savedPrestataire, setSavedPrestataire] = useState<Prestataire | null>(null);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  const { villes: villesCP, loading: cpLoading } = useVilleFromCP(form.codePostal);
+  // Auto-sélectionner si une seule ville pour ce CP
+  useEffect(() => {
+    if (villesCP.length === 1) set("ville", villesCP[0]);
+  }, [villesCP]);
 
   const toInputDate = (d: string) => {
     if (!d) return "";
@@ -116,10 +141,13 @@ export default function NewClientModal({ prestataires, onClose, onSaved }: Props
     setError(null);
     try {
       const hasPrestataire = !!form.prestataire;
+      const fullAdresse = [
+        form.adresse,
+        [form.codePostal, form.ville].filter(Boolean).join(" "),
+      ].filter(Boolean).join(", ");
       const payload = {
         ...form,
-        // Cas 1 : prestataire choisi → mission proposée, en attente de sa confirmation
-        // Cas 2 : sans prestataire → prestation créée, en attente d'affectation
+        adresse     : fullAdresse,
         statut      : hasPrestataire ? "EMAIL ENVOYÉ" : "",
         statutPresta: hasPrestataire ? "EN ATTENTE PRESTA" : "",
       };
@@ -273,10 +301,27 @@ export default function NewClientModal({ prestataires, onClose, onSaved }: Props
 
           {/* Adresse */}
           <Section icon={MapPin} title="Localisation">
-            <Field label="Adresse d'intervention">
+            <Field label="Rue / Numéro">
               <input type="text" value={form.adresse} onChange={(e) => set("adresse", e.target.value)}
-                className={inputCls} placeholder="12 rue de la Paix, 75001 Paris" />
+                className={inputCls} placeholder="12 rue de la Paix" />
             </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Code postal">
+                <input type="text" value={form.codePostal} onChange={(e) => set("codePostal", e.target.value)}
+                  maxLength={5} placeholder="75001" className={inputCls} />
+              </Field>
+              <Field label={cpLoading ? "Ville (recherche…)" : "Ville"}>
+                {villesCP.length > 1 ? (
+                  <select value={form.ville} onChange={(e) => set("ville", e.target.value)} className={inputCls}>
+                    <option value="">— Choisir —</option>
+                    {villesCP.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                ) : (
+                  <input type="text" value={form.ville} onChange={(e) => set("ville", e.target.value)}
+                    placeholder="Paris" className={inputCls} />
+                )}
+              </Field>
+            </div>
           </Section>
 
           {/* Prestation */}

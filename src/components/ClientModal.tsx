@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Save, Loader2, UserPlus, UserPen } from "lucide-react";
 import { Prestation } from "@/lib/constants";
 
@@ -27,8 +27,30 @@ const TYPES_PRESTA = [
   "Débarras",
   "Après travaux",
   "Bureaux",
+  "Lavage Canapé",
   "Autre",
 ];
+
+function parseAdresse(full: string) {
+  const m = full.match(/^(.*?),?\s*(\d{5})\s+(.+)$/);
+  if (m) return { rue: m[1].replace(/,\s*$/, "").trim(), cp: m[2], ville: m[3].trim() };
+  return { rue: full, cp: "", ville: "" };
+}
+
+function useVilleFromCP(cp: string) {
+  const [villes,  setVilles]  = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (cp.length !== 5) { setVilles([]); return; }
+    setLoading(true);
+    fetch(`https://geo.api.gouv.fr/communes?codePostal=${cp}&fields=nom&format=json`)
+      .then(r => r.json())
+      .then((data: { nom: string }[]) => setVilles(data.map(d => d.nom)))
+      .catch(() => setVilles([]))
+      .finally(() => setLoading(false));
+  }, [cp]);
+  return { villes, loading };
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -43,21 +65,29 @@ const inputCls =
   "w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300";
 
 export default function ClientModal({ mode, client, onClose, onSaved }: ClientModalProps) {
+  const parsed = parseAdresse(client?.adresse || "");
   const [form, setForm] = useState({
-    nom       : client?.nom        || "",
-    prenom    : client?.prenom     || "",
-    tel       : client?.tel        || "",
-    email     : client?.email      || "",
-    adresse   : client?.adresse    || "",
-    typePresta: "",
-    quantite  : "",
-    date      : "",
-    heure     : "",
-    prix      : "",
-    message   : "",
+    nom        : client?.nom     || "",
+    prenom     : client?.prenom  || "",
+    tel        : client?.tel     || "",
+    email      : client?.email   || "",
+    adresse    : parsed.rue,
+    codePostal : parsed.cp,
+    ville      : parsed.ville,
+    typePresta : "",
+    quantite   : "",
+    date       : "",
+    heure      : "",
+    prix       : "",
+    message    : "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState<string | null>(null);
+
+  const { villes: villesCP, loading: cpLoading } = useVilleFromCP(form.codePostal);
+  useEffect(() => {
+    if (villesCP.length === 1 && !form.ville) set("ville", villesCP[0]);
+  }, [villesCP]);
 
   const set = (key: string, val: string) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -78,11 +108,15 @@ export default function ClientModal({ mode, client, onClose, onSaved }: ClientMo
     setSaving(true);
     setError(null);
     try {
+      const fullAdresse = [
+        form.adresse,
+        [form.codePostal, form.ville].filter(Boolean).join(" "),
+      ].filter(Boolean).join(", ");
       if (mode === "add") {
         const res = await fetch("/api/clients", {
           method : "POST",
           headers: { "Content-Type": "application/json" },
-          body   : JSON.stringify(form),
+          body   : JSON.stringify({ ...form, adresse: fullAdresse }),
         });
         if (!res.ok) throw new Error((await res.json()).error || "Erreur serveur");
       } else {
@@ -92,7 +126,7 @@ export default function ClientModal({ mode, client, onClose, onSaved }: ClientMo
           prenom : form.prenom,
           tel    : form.tel,
           email  : form.email,
-          adresse: form.adresse,
+          adresse: fullAdresse,
         };
         const res = await fetch("/api/clients", {
           method : "PATCH",
@@ -195,15 +229,43 @@ export default function ClientModal({ mode, client, onClose, onSaved }: ClientMo
                 placeholder="marie@exemple.com"
               />
             </Field>
-            <Field label="Adresse">
+            <Field label="Rue / Numéro">
               <input
                 type="text"
                 value={form.adresse}
                 onChange={(e) => set("adresse", e.target.value)}
                 className={inputCls}
-                placeholder="12 rue de la Paix, Paris"
+                placeholder="12 rue de la Paix"
               />
             </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Code postal">
+                <input
+                  type="text"
+                  value={form.codePostal}
+                  onChange={(e) => set("codePostal", e.target.value)}
+                  maxLength={5}
+                  placeholder="75001"
+                  className={inputCls}
+                />
+              </Field>
+              <Field label={cpLoading ? "Ville (recherche…)" : "Ville"}>
+                {villesCP.length > 1 ? (
+                  <select value={form.ville} onChange={(e) => set("ville", e.target.value)} className={inputCls}>
+                    <option value="">— Choisir —</option>
+                    {villesCP.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={form.ville}
+                    onChange={(e) => set("ville", e.target.value)}
+                    placeholder="Paris"
+                    className={inputCls}
+                  />
+                )}
+              </Field>
+            </div>
           </fieldset>
 
           {/* Prestation (add only) */}

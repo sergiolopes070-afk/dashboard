@@ -71,18 +71,24 @@ function firstMondayOfMonthGrid(d: Date): Date {
   return getMondayOfWeek(first);
 }
 
+// ─── Options prestation ───────────────────────────────────────────────────────
+const TYPES_PRESTA = [
+  "Ménage", "Repassage", "Vitres", "Débarras",
+  "Après travaux", "Bureaux", "Lavage Canapé", "Autre",
+];
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CreateForm {
   prenom: string; nom: string; tel: string; email: string;
-  typePresta: string; adresse: string; prix: string;
-  prestataire: string; statut: StatutClient; message: string;
+  typePresta: string; adresse: string; codePostal: string; ville: string;
+  prix: string; prestataire: string; statut: StatutClient; message: string;
   date: string; heure: string;
 }
 
 const EMPTY_FORM: CreateForm = {
   prenom:"", nom:"", tel:"", email:"",
-  typePresta:"", adresse:"", prix:"",
-  prestataire:"", statut:"", message:"",
+  typePresta:"", adresse:"", codePostal:"", ville:"",
+  prix:"", prestataire:"", statut:"", message:"",
   date:"", heure:"",
 };
 
@@ -207,6 +213,22 @@ function DayDetailModal({
   );
 }
 
+// ─── Hook auto-ville ──────────────────────────────────────────────────────────
+function useVilleFromCP(cp: string) {
+  const [villes,  setVilles]  = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (cp.length !== 5) { setVilles([]); return; }
+    setLoading(true);
+    fetch(`https://geo.api.gouv.fr/communes?codePostal=${cp}&fields=nom&format=json`)
+      .then(r => r.json())
+      .then((data: { nom: string }[]) => setVilles(data.map(d => d.nom)))
+      .catch(() => setVilles([]))
+      .finally(() => setLoading(false));
+  }, [cp]);
+  return { villes, loading };
+}
+
 // ─── Composant QuickCreate ────────────────────────────────────────────────────
 function QuickCreateModal({
   initial, prestataires, colorMap,
@@ -221,19 +243,29 @@ function QuickCreateModal({
   const [form, setForm] = useState<CreateForm>({ ...EMPTY_FORM, ...initial });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState("");
+  const { villes, loading: cpLoading } = useVilleFromCP(form.codePostal);
 
   const set = (k: keyof CreateForm, v: string) =>
     setForm(f => ({ ...f, [k]: v }));
+
+  // Auto-sélectionner la ville si une seule option
+  useEffect(() => {
+    if (villes.length === 1) set("ville", villes[0]);
+  }, [villes]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.prenom || !form.nom) { setError("Prénom et nom requis."); return; }
     setSaving(true); setError("");
     try {
+      const fullAdresse = [
+        form.adresse,
+        [form.codePostal, form.ville].filter(Boolean).join(" "),
+      ].filter(Boolean).join(", ");
       const res = await fetch("/api/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, adresse: fullAdresse }),
       });
       if (!res.ok) throw new Error("Erreur serveur");
       onSaved();
@@ -243,6 +275,8 @@ function QuickCreateModal({
       setSaving(false);
     }
   }
+
+  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
@@ -268,91 +302,89 @@ function QuickCreateModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">Date</label>
-              <input
-                type="text" placeholder="JJ/MM/AAAA"
-                value={form.date} onChange={e => set("date", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <input type="text" placeholder="JJ/MM/AAAA"
+                value={form.date} onChange={e => set("date", e.target.value)} className={inputCls} />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">Heure</label>
-              <input
-                type="text" placeholder="HH:MM"
-                value={form.heure} onChange={e => set("heure", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <input type="text" placeholder="HH:MM"
+                value={form.heure} onChange={e => set("heure", e.target.value)} className={inputCls} />
             </div>
           </div>
 
-          {/* Séparateur client */}
+          {/* ── Client ── */}
           <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Client</div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">Prénom *</label>
-              <input
-                value={form.prenom} onChange={e => set("prenom", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <input value={form.prenom} onChange={e => set("prenom", e.target.value)} className={inputCls} />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">Nom *</label>
-              <input
-                value={form.nom} onChange={e => set("nom", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <input value={form.nom} onChange={e => set("nom", e.target.value)} className={inputCls} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">Téléphone</label>
-              <input
-                value={form.tel} onChange={e => set("tel", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <input value={form.tel} onChange={e => set("tel", e.target.value)} className={inputCls} />
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">Email</label>
-              <input
-                type="email" value={form.email} onChange={e => set("email", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <input type="email" value={form.email} onChange={e => set("email", e.target.value)} className={inputCls} />
             </div>
           </div>
 
-          {/* Séparateur prestation */}
+          {/* ── Adresse ── */}
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Adresse</div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Rue / Numéro</label>
+            <input value={form.adresse} onChange={e => set("adresse", e.target.value)}
+              placeholder="12 rue de la Paix" className={inputCls} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">Code postal</label>
+              <input value={form.codePostal} onChange={e => set("codePostal", e.target.value)}
+                placeholder="75001" maxLength={5} className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-1 block">
+                Ville {cpLoading && <span className="text-blue-400">…</span>}
+              </label>
+              {villes.length > 1 ? (
+                <select value={form.ville} onChange={e => set("ville", e.target.value)} className={inputCls}>
+                  <option value="">— Choisir —</option>
+                  {villes.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              ) : (
+                <input value={form.ville} onChange={e => set("ville", e.target.value)}
+                  placeholder="Paris" className={inputCls} />
+              )}
+            </div>
+          </div>
+
+          {/* ── Prestation ── */}
           <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Prestation</div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">Type de prestation</label>
-              <input
-                value={form.typePresta} onChange={e => set("typePresta", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <select value={form.typePresta} onChange={e => set("typePresta", e.target.value)} className={inputCls}>
+                <option value="">— Sélectionner —</option>
+                {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">Prix (€)</label>
-              <input
-                type="number" value={form.prix} onChange={e => set("prix", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <input type="number" value={form.prix} onChange={e => set("prix", e.target.value)} className={inputCls} />
             </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-gray-500 mb-1 block">Adresse</label>
-            <input
-              value={form.adresse} onChange={e => set("adresse", e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">Prestataire</label>
-              <select
-                value={form.prestataire} onChange={e => set("prestataire", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
+              <select value={form.prestataire} onChange={e => set("prestataire", e.target.value)} className={inputCls}>
                 <option value="">— Aucun —</option>
                 {prestataires.map(p => (
                   <option key={p.id} value={p.nom}>{p.nom}</option>
@@ -361,20 +393,15 @@ function QuickCreateModal({
             </div>
             <div>
               <label className="text-xs font-medium text-gray-500 mb-1 block">Statut</label>
-              <select
-                value={form.statut} onChange={e => set("statut", e.target.value as StatutClient)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
+              <select value={form.statut} onChange={e => set("statut", e.target.value as StatutClient)} className={inputCls}>
                 {STATUTS.map(s => <option key={s} value={s}>{s || "— Aucun —"}</option>)}
               </select>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-gray-500 mb-1 block">Note</label>
-            <textarea
-              rows={2} value={form.message} onChange={e => set("message", e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            />
+            <textarea rows={2} value={form.message} onChange={e => set("message", e.target.value)}
+              className={`${inputCls} resize-none`} />
           </div>
 
           {error && <p className="text-xs text-red-500">{error}</p>}
