@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { FileText, ExternalLink, Search } from "lucide-react";
+import { FileText, ExternalLink, Search, Download } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { Prestation } from "@/lib/constants";
 
@@ -12,7 +12,7 @@ export default function DevisPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/prestations");
+      const res = await fetch(`/api/prestations?t=${Date.now()}`, { cache: "no-store" });
       if (res.ok) setData(await res.json());
     } finally {
       setLoading(false);
@@ -21,6 +21,8 @@ export default function DevisPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Toutes les prestations ont potentiellement un devis générable
+  // On affiche celles qui ont déjà un devis généré + toutes les autres avec un bouton "Générer"
   const devis = useMemo(() =>
     data.filter((p) => p.devisPDF || p.genDevis === "FAIT"),
     [data]
@@ -29,8 +31,15 @@ export default function DevisPage() {
   const filtered = useMemo(() => {
     if (!search.trim()) return devis;
     const q = search.toLowerCase();
-    return devis.filter((p) => [p.nom, p.prenom, p.typePresta].join(" ").toLowerCase().includes(q));
+    return devis.filter((p) =>
+      [p.nom, p.prenom, p.typePresta, p.email].join(" ").toLowerCase().includes(q)
+    );
   }, [devis, search]);
+
+  const handleGenerate = (p: Prestation) => {
+    window.open(`/api/devis/${p.row}`, "_blank");
+    setTimeout(load, 1500);
+  };
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -62,7 +71,7 @@ export default function DevisPage() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center text-gray-400">
             <FileText size={40} className="mx-auto mb-3 opacity-20" />
             <p className="font-medium">Aucun devis généré</p>
-            <p className="text-sm mt-1">Les devis apparaissent ici quand la colonne V = OUI dans Google Sheets</p>
+            <p className="text-sm mt-1">Ouvrez une fiche client et cliquez sur "Générer devis" pour en créer un.</p>
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -77,38 +86,47 @@ export default function DevisPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filtered.map((p) => (
-                  <tr key={p.row} className="hover:bg-gray-50 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-gray-900">{p.prenom} {p.nom}</div>
-                      <div className="text-xs text-gray-400">{p.tel}</div>
-                    </td>
-                    <td className="py-3 px-4 text-gray-700">{p.typePresta}</td>
-                    <td className="py-3 px-4 text-gray-700">{p.date || "—"}</td>
-                    <td className="py-3 px-4">
-                      {p.prix
-                        ? <span className="font-semibold text-green-700">{p.prix} €</span>
-                        : <span className="text-gray-300">—</span>
-                      }
-                    </td>
-                    <td className="py-3 px-4">
-                      {p.devisPDF ? (
-                        <a
-                          href={p.devisPDF}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors"
-                        >
-                          <FileText size={12} />
-                          Voir PDF
-                          <ExternalLink size={10} />
-                        </a>
-                      ) : (
-                        <span className="text-xs text-gray-400">Généré (lien manquant)</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map((p) => {
+                  const pdfUrl = p.devisPDF || `/api/devis/${p.row}`;
+                  return (
+                    <tr key={p.row} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="font-medium text-gray-900">{p.prenom} {p.nom}</div>
+                        <div className="text-xs text-gray-400">{p.tel}</div>
+                      </td>
+                      <td className="py-3 px-4 text-gray-700">{p.typePresta || "—"}</td>
+                      <td className="py-3 px-4 text-gray-700">{p.date || "—"}</td>
+                      <td className="py-3 px-4">
+                        {p.prix
+                          ? <span className="font-semibold text-green-700">{p.prix} €</span>
+                          : <span className="text-gray-300">—</span>
+                        }
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={pdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-medium hover:bg-indigo-100 transition-colors"
+                          >
+                            <FileText size={12} />
+                            Voir PDF
+                            <ExternalLink size={10} />
+                          </a>
+                          <button
+                            onClick={() => handleGenerate(p)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors"
+                            title="Re-générer le devis"
+                          >
+                            <Download size={12} />
+                            Re-générer
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

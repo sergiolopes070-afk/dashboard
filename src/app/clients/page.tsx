@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Search, Phone, Mail, MapPin, UserPlus, Pencil, Wrench,
   Clock, ChevronDown, ChevronUp, CheckCircle2, FileText,
-  MessageCircle, Send, AlertTriangle, Calendar, Trash2,
+  MessageCircle, Send, AlertTriangle, Calendar, Trash2, Download,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import ClientModal from "@/components/ClientModal";
@@ -52,11 +52,27 @@ function ConfirmBtns({ onConfirm, onCancel }: { onConfirm: () => void; onCancel:
 function PrestationRow({
   p,
   onDelete,
+  onDevisGenerated,
 }: {
   p: Prestation;
   onDelete: (id: string) => void;
+  onDevisGenerated: () => void;
 }) {
   const [confirmDel, setConfirmDel] = useState(false);
+  const [generatingDevis, setGeneratingDevis] = useState(false);
+
+  const handleGenerateDevis = async () => {
+    setGeneratingDevis(true);
+    try {
+      const url = `/api/devis/${p.row}`;
+      // Ouvrir dans un nouvel onglet (le PDF sera servi et devis_genere = true côté serveur)
+      window.open(url, "_blank");
+      // Rafraîchir pour mettre à jour le badge "Devis disponible"
+      setTimeout(onDevisGenerated, 1500);
+    } finally {
+      setGeneratingDevis(false);
+    }
+  };
 
   return (
     <div className="bg-gray-50 rounded-xl p-3 space-y-2">
@@ -142,21 +158,35 @@ function PrestationRow({
             <MessageCircle size={12} />WhatsApp prestataire
           </a>
         )}
-        {p.devisPDF && (
+        {/* Devis : voir PDF existant OU générer */}
+        {p.devisPDF ? (
           <a
             href={p.devisPDF}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 text-xs text-indigo-600 hover:underline"
           >
-            <FileText size={12} />Devis PDF
+            <FileText size={12} />Voir devis PDF
           </a>
-        )}
-        {p.genDevis === "FAIT" && !p.devisPDF && (
-          <span className="flex items-center gap-1 text-xs text-indigo-500">
-            <FileText size={12} />Devis généré
-          </span>
-        )}
+        ) : p.genDevis === "FAIT" ? (
+          <a
+            href={`/api/devis/${p.row}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-indigo-600 hover:underline"
+          >
+            <FileText size={12} />Voir devis PDF
+          </a>
+        ) : null}
+        {/* Bouton générer (toujours disponible) */}
+        <button
+          onClick={handleGenerateDevis}
+          disabled={generatingDevis}
+          className="flex items-center gap-1 text-xs text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-1 rounded-lg transition-colors disabled:opacity-50"
+        >
+          <Download size={11} />
+          {generatingDevis ? "..." : p.genDevis === "FAIT" || p.devisPDF ? "Re-générer" : "Générer devis"}
+        </button>
       </div>
 
       {/* Adresse prestation si différente */}
@@ -410,6 +440,7 @@ export default function ClientsPage() {
                             key={p.row}
                             p={p}
                             onDelete={handleDeletePrestation}
+                            onDevisGenerated={load}
                           />
                         ))
                       )}

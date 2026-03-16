@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.3.2",
     "@supabase/supabase-js": "^2.99.1",
     "date-fns": "^4.1.0",
     "googleapis": "^171.4.0",
