@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    await appendPrestation({
+    const prestationId = await appendPrestation({
       nom          : body.nom          || "",
       prenom       : body.prenom       || "",
       tel          : body.tel          || "",
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       }).catch((e) => console.error("Erreur envoi email:", e));
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, id: prestationId });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";
     return NextResponse.json({ error: message }, { status: 500 });

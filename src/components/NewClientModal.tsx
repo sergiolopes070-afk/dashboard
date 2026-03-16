@@ -111,6 +111,7 @@ export default function NewClientModal({ prestataires, onClose, onSaved }: Props
   const [saving, setSaving]               = useState(false);
   const [error, setError]                 = useState<string | null>(null);
   const [savedPrestataire, setSavedPrestataire] = useState<Prestataire | null>(null);
+  const [savedPrestationId, setSavedPrestationId] = useState<string>("");
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -157,11 +158,14 @@ export default function NewClientModal({ prestataires, onClose, onSaved }: Props
         body   : JSON.stringify(payload),
       });
       if (!res.ok) throw new Error((await res.json()).error || "Erreur serveur");
+      const data = await res.json();
+      const prestationId: string = data.id || "";
 
       onSaved();
 
       // Si un prestataire avec un téléphone est assigné → écran de notification WA
       if (hasPrestataire && assignedPrestataire?.tel) {
+        setSavedPrestationId(prestationId);
         setSavedPrestataire(assignedPrestataire);
       } else {
         onClose();
@@ -176,14 +180,20 @@ export default function NewClientModal({ prestataires, onClose, onSaved }: Props
   // ── Écran de succès + notification WhatsApp ───────────────────────────────
   if (savedPrestataire) {
     const tel = savedPrestataire.tel.replace(/\s/g, "").replace(/^0/, "33");
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (typeof window !== "undefined" ? window.location.origin : "");
+    const fullAdresseWA = [form.adresse, [form.codePostal, form.ville].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+    const acceptUrl = savedPrestationId ? `${baseUrl}/api/mission/reponse?id=${savedPrestationId}&action=accepter` : "";
+    const refusUrl  = savedPrestationId ? `${baseUrl}/api/mission/reponse?id=${savedPrestationId}&action=refuser`  : "";
     const msg = encodeURIComponent(
       `Bonjour ${savedPrestataire.nom} 👋,\n\nUne nouvelle mission vous a été proposée chez KinouClean :\n\n` +
       `👤 Client : ${form.prenom} ${form.nom}\n` +
       `🧹 Prestation : ${form.typePresta}${form.quantite ? ` (x${form.quantite})` : ""}\n` +
-      `📍 Adresse : ${form.adresse || "—"}\n` +
+      `📍 Adresse : ${fullAdresseWA || "—"}\n` +
       `📅 Date : ${form.date || "—"}${form.heure ? ` à ${form.heure}` : ""}\n` +
       `💶 Prix : ${form.prix || "—"} €\n\n` +
-      `Merci de confirmer votre disponibilité en répondant à ce message 🙏`
+      (acceptUrl
+        ? `Merci de répondre directement via ces liens :\n\n✅ ACCEPTER la mission :\n${acceptUrl}\n\n❌ REFUSER la mission :\n${refusUrl}\n\nVotre réponse mettra à jour la fiche client automatiquement 🙏`
+        : `Merci de confirmer votre disponibilité en répondant à ce message 🙏`)
     );
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -230,7 +240,6 @@ export default function NewClientModal({ prestataires, onClose, onSaved }: Props
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
 

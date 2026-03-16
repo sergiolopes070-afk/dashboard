@@ -180,7 +180,7 @@ export async function appendPrestation(fields: {
   date: string; heure: string; message: string; prix: string;
   source?: string; statutClient?: string; prestataire?: string;
   statut?: string; statutPresta?: string;
-}): Promise<void> {
+}): Promise<string> {
   // Find or create client
   let clientId: string;
   const clientData = {
@@ -223,7 +223,7 @@ export async function appendPrestation(fields: {
     prestataireId = data?.id ?? null;
   }
 
-  const { error } = await supabase.from("prestations").insert({
+  const { data: newPresta, error } = await supabase.from("prestations").insert({
     client_id         : clientId,
     prestataire_id    : prestataireId,
     type_prestation   : fields.typePresta,
@@ -236,8 +236,9 @@ export async function appendPrestation(fields: {
     statut            : fields.statut || "",
     statut_presta     : fields.statutPresta || null,
     archive           : false,
-  });
+  }).select("id").single();
   if (error) throw new Error(error.message);
+  return newPresta.id as string;
 }
 
 export async function deletePrestation(id: string): Promise<void> {
