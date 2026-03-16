@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Users, Briefcase, TrendingUp, Wrench,
-  AlertTriangle, Clock, FileText, CalendarCheck, UserPlus
+  AlertTriangle, Clock, FileText, CalendarCheck, UserPlus, UserCheck,
 } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import PrestationTable from "@/components/PrestationTable";
@@ -140,6 +140,18 @@ export default function HomePage() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 truncate">{p.prenom} {p.nom}</p>
                     <p className="text-sm text-gray-500 truncate">{p.typePresta} — {p.adresse}</p>
+                    {/* Prestataire assigné */}
+                    {p.prestataire ? (
+                      <p className="flex items-center gap-1 text-xs text-green-700 mt-0.5">
+                        <UserCheck size={11} />
+                        {p.prestataire}
+                      </p>
+                    ) : (
+                      <p className="flex items-center gap-1 text-xs text-amber-600 mt-0.5">
+                        <Clock size={11} />
+                        En attente de prestataire
+                      </p>
+                    )}
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-sm font-semibold text-blue-700">{p.date}</p>

@@ -172,7 +172,8 @@ export async function appendPrestation(fields: {
   nom: string; prenom: string; tel: string; email: string;
   typePresta: string; quantite: string; adresse: string;
   date: string; heure: string; message: string; prix: string;
-  source?: string; statutClient?: string; prestataire?: string; statut?: string;
+  source?: string; statutClient?: string; prestataire?: string;
+  statut?: string; statutPresta?: string;
 }): Promise<void> {
   // Find or create client
   let clientId: string;
@@ -226,7 +227,8 @@ export async function appendPrestation(fields: {
     heure_intervention: fields.heure || null,
     message           : fields.message,
     prix              : fields.prix ? parseFloat(fields.prix) : null,
-    statut            : fields.statut || "NOUVEAU",
+    statut            : fields.statut || "",
+    statut_presta     : fields.statutPresta || null,
     archive           : false,
   });
   if (error) throw new Error(error.message);

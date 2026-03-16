@@ -8,17 +8,21 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     await appendPrestation({
-      nom       : body.nom        || "",
-      prenom    : body.prenom     || "",
-      tel       : body.tel        || "",
-      email     : body.email      || "",
-      typePresta: body.typePresta || "",
-      quantite  : body.quantite   || "",
-      adresse   : body.adresse    || "",
-      date      : body.date       || "",
-      heure     : body.heure      || "",
-      message   : body.message    || "",
-      prix      : body.prix       || "",
+      nom          : body.nom          || "",
+      prenom       : body.prenom       || "",
+      tel          : body.tel          || "",
+      email        : body.email        || "",
+      typePresta   : body.typePresta   || "",
+      quantite     : body.quantite     || "",
+      adresse      : body.adresse      || "",
+      date         : body.date         || "",
+      heure        : body.heure        || "",
+      message      : body.message      || "",
+      prix         : body.prix         || "",
+      prestataire  : body.prestataire  || "",
+      statut       : body.statut       || "",
+      statutPresta : body.statutPresta || "",
+      source       : body.source       || "",
     });
 
     // Envoyer l'email de confirmation si l'adresse email est renseignée
