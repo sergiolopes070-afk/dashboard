@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, Briefcase, Archive,
-  FileText, Settings, ChevronRight, Wrench
+  FileText, Settings, ChevronRight, Wrench, CalendarDays
 } from "lucide-react";
 
 const nav = [
@@ -11,6 +11,7 @@ const nav = [
   { href: "/prestations",   label: "Prestations",       icon: Briefcase },
   { href: "/prestataires",  label: "Prestataires",      icon: Wrench },
   { href: "/clients",       label: "Clients",           icon: Users },
+  { href: "/agenda",        label: "Agenda",            icon: CalendarDays },
   { href: "/devis",         label: "Devis",             icon: FileText },
   { href: "/archive",       label: "Historique",        icon: Archive },
   { href: "/configuration", label: "Configuration",     icon: Settings },
