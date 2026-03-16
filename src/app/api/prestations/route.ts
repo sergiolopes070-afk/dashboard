@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPrestations, updatePrestation } from "@/lib/sheets";
+import { getPrestations, updatePrestation, deletePrestation } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +25,18 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "row et updates requis" }, { status: 400 });
     }
     await updatePrestation(row, updates);
+    return NextResponse.json({ success: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erreur inconnue";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const { id } = await req.json() as { id: string };
+    if (!id) return NextResponse.json({ error: "id requis" }, { status: 400 });
+    await deletePrestation(id);
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";

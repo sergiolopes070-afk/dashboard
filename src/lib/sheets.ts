@@ -26,6 +26,7 @@ function rowToPrestation(row: Record<string, any>): Prestation {
 
   return {
     row          : row.id as string,
+    clientId     : (row.client_id as string) || "",
     timestamp    : (row.created_at as string) || "",
     nom          : client.nom      || "",
     prenom       : client.prenom   || "",
@@ -232,6 +233,21 @@ export async function appendPrestation(fields: {
     archive           : false,
   });
   if (error) throw new Error(error.message);
+}
+
+export async function deletePrestation(id: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("prestations").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteClient(clientId: string): Promise<void> {
+  if (!supabase) return;
+  // Delete all prestations for this client first, then the client row
+  const { error: pe } = await supabase.from("prestations").delete().eq("client_id", clientId);
+  if (pe) throw new Error(pe.message);
+  const { error: ce } = await supabase.from("clients").delete().eq("id", clientId);
+  if (ce) throw new Error(ce.message);
 }
 
 export async function createPrestataire(fields: {

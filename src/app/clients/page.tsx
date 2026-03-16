@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Search, Phone, Mail, MapPin, UserPlus, Pencil, Wrench,
   Clock, ChevronDown, ChevronUp, CheckCircle2, FileText,
-  MessageCircle, Send, AlertTriangle, Calendar,
+  MessageCircle, Send, AlertTriangle, Calendar, Trash2,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import ClientModal from "@/components/ClientModal";
@@ -30,10 +30,37 @@ function StatusBadge({ label }: { label: string }) {
   );
 }
 
-function PrestationRow({ p }: { p: Prestation }) {
+function ConfirmBtns({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1 ml-1">
+      <button
+        onClick={onConfirm}
+        className="px-2 py-0.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-colors"
+      >
+        Supprimer
+      </button>
+      <button
+        onClick={onCancel}
+        className="px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600 text-xs hover:bg-gray-200 transition-colors"
+      >
+        Annuler
+      </button>
+    </span>
+  );
+}
+
+function PrestationRow({
+  p,
+  onDelete,
+}: {
+  p: Prestation;
+  onDelete: (id: string) => void;
+}) {
+  const [confirmDel, setConfirmDel] = useState(false);
+
   return (
     <div className="bg-gray-50 rounded-xl p-3 space-y-2">
-      {/* Ligne 1 : type + date + prix */}
+      {/* Ligne 1 : type + date + prix + poubelle */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           {p.typePresta && (
@@ -49,11 +76,27 @@ function PrestationRow({ p }: { p: Prestation }) {
             </span>
           )}
         </div>
-        {p.prix && (
-          <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-lg">
-            {parseFloat(p.prix).toFixed(0)} €
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {p.prix && (
+            <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-lg">
+              {parseFloat(p.prix).toFixed(0)} €
+            </span>
+          )}
+          {!confirmDel ? (
+            <button
+              onClick={() => setConfirmDel(true)}
+              className="p-1 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
+              title="Supprimer cette prestation"
+            >
+              <Trash2 size={13} />
+            </button>
+          ) : (
+            <ConfirmBtns
+              onConfirm={() => onDelete(p.row)}
+              onCancel={() => setConfirmDel(false)}
+            />
+          )}
+        </div>
       </div>
 
       {/* Ligne 2 : statuts */}
@@ -65,13 +108,12 @@ function PrestationRow({ p }: { p: Prestation }) {
       )}
 
       {/* Ligne 3 : prestataire */}
-      {p.prestataire && (
+      {p.prestataire ? (
         <div className="flex items-center gap-1.5 text-xs text-gray-600">
           <Wrench size={11} className="text-gray-400" />
           <span className="font-medium">{p.prestataire}</span>
         </div>
-      )}
-      {!p.prestataire && (
+      ) : (
         <div className="flex items-center gap-1.5 text-xs text-amber-600">
           <AlertTriangle size={11} />
           <span>Aucun prestataire affecté</span>
@@ -134,6 +176,7 @@ export default function ClientsPage() {
   const [search, setSearch]     = useState("");
   const [modal, setModal]       = useState<{ mode: "add" | "edit"; client?: Client } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [confirmClientDel, setConfirmClientDel] = useState<string | null>(null); // client key
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -184,6 +227,27 @@ export default function ClientsPage() {
     });
   };
 
+  const handleDeletePrestation = async (id: string) => {
+    await fetch("/api/prestations", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    load();
+  };
+
+  const handleDeleteClient = async (c: Client) => {
+    const clientId = c.prestations[0]?.clientId;
+    if (!clientId) return;
+    await fetch("/api/clients", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId }),
+    });
+    setConfirmClientDel(null);
+    load();
+  };
+
   return (
     <div className="flex flex-col min-h-screen">
       <Topbar
@@ -225,6 +289,7 @@ export default function ClientsPage() {
             {filtered.map((c) => {
               const key = c.email || `${c.nom}-${c.prenom}-${c.tel}`;
               const isExpanded = expanded.has(key);
+              const isConfirmingDel = confirmClientDel === key;
               const unassigned = c.prestations.filter((p) => !p.prestataire).length;
               const hasDevis = c.prestations.some((p) => p.devisPDF || p.genDevis === "FAIT");
               const lastPrestataire = [...c.prestations].reverse().find((p) => p.prestataire)?.prestataire;
@@ -240,7 +305,7 @@ export default function ClientsPage() {
                           {c.prestations.length} prestation{c.prestations.length > 1 ? "s" : ""}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-1 rounded-lg">
                           {c.totalCA.toFixed(0)} €
                         </span>
@@ -251,8 +316,28 @@ export default function ClientsPage() {
                         >
                           <Pencil size={14} />
                         </button>
+                        <button
+                          onClick={() => setConfirmClientDel(isConfirmingDel ? null : key)}
+                          className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
+                          title="Supprimer ce client"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
+
+                    {/* Confirmation suppression client */}
+                    {isConfirmingDel && (
+                      <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between gap-2">
+                        <p className="text-xs text-red-700 font-medium">
+                          Supprimer ce client et toutes ses prestations ?
+                        </p>
+                        <ConfirmBtns
+                          onConfirm={() => handleDeleteClient(c)}
+                          onCancel={() => setConfirmClientDel(null)}
+                        />
+                      </div>
+                    )}
 
                     {/* Coordonnées */}
                     <div className="space-y-1.5">
@@ -321,7 +406,11 @@ export default function ClientsPage() {
                         <p className="text-xs text-gray-400 text-center py-2">Aucune prestation</p>
                       ) : (
                         c.prestations.map((p) => (
-                          <PrestationRow key={p.row} p={p} />
+                          <PrestationRow
+                            key={p.row}
+                            p={p}
+                            onDelete={handleDeletePrestation}
+                          />
                         ))
                       )}
                     </div>

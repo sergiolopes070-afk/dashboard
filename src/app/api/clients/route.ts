@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { appendPrestation, updatePrestation } from "@/lib/sheets";
+import { appendPrestation, updatePrestation, deleteClient } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +44,19 @@ export async function POST(req: Request) {
       }).catch((e) => console.error("Erreur envoi email:", e));
     }
 
+    return NextResponse.json({ success: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erreur inconnue";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// DELETE : supprimer un client et toutes ses prestations
+export async function DELETE(req: Request) {
+  try {
+    const { clientId } = await req.json() as { clientId: string };
+    if (!clientId) return NextResponse.json({ error: "clientId requis" }, { status: 400 });
+    await deleteClient(clientId);
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";
