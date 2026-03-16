@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Users, Briefcase, TrendingUp, Wrench,
-  AlertTriangle, Clock, FileText, CalendarCheck, UserPlus, UserCheck,
+  AlertTriangle, Clock, FileText, CalendarCheck, UserPlus, UserCheck, CalendarDays, ChevronRight,
 } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import PrestationTable from "@/components/PrestationTable";
@@ -11,6 +11,30 @@ import StatusBadge from "@/components/StatusBadge";
 import NewClientModal from "@/components/NewClientModal";
 import dynamic from "next/dynamic";
 import { Prestation, Prestataire } from "@/lib/constants";
+
+// ── Mini agenda helpers ──────────────────────────────────────────────────────
+const PALETTE_MINI = ["#4285F4","#EA4335","#34A853","#FBBC04","#8B5CF6","#F97316","#06B6D4","#EC4899","#10B981","#6366F1"];
+const JOURS_MINI = ["L","M","M","J","V","S","D"];
+
+function getMondayOfWeek(d: Date): Date {
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const mon = new Date(d);
+  mon.setDate(d.getDate() + diff);
+  mon.setHours(0, 0, 0, 0);
+  return mon;
+}
+function addDaysMini(d: Date, n: number): Date {
+  const r = new Date(d); r.setDate(r.getDate() + n); return r;
+}
+function frToDateMini(fr: string): Date | null {
+  if (!fr) return null;
+  const p = fr.split("/");
+  return p.length === 3 ? new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0])) : null;
+}
+function sameDayMini(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
 
 const RevenueChart = dynamic(() => import("@/components/RevenueChart"), { ssr: false });
 const TypeChart    = dynamic(() => import("@/components/TypeChart"),    { ssr: false });
@@ -36,6 +60,26 @@ export default function HomePage() {
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
   const [showNewClient, setShowNewClient] = useState(false);
+
+  // Mini agenda : semaine courante
+  const weekStart = useMemo(() => getMondayOfWeek(new Date()), []);
+  const weekDays  = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysMini(weekStart, i)), [weekStart]);
+  const today     = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
+
+  const colorByPresta = useMemo(() => {
+    const map: Record<string, string> = {};
+    (stats?.prestataires ?? []).forEach((p, i) => { map[p.nom] = PALETTE_MINI[i % PALETTE_MINI.length]; });
+    return map;
+  }, [stats?.prestataires]);
+
+  const weekPrestations = useMemo(() => {
+    if (!stats) return [];
+    return stats.prestations.filter(p => {
+      if (!p.date) return false;
+      const d = frToDateMini(p.date);
+      return d && weekDays.some(wd => sameDayMini(d, wd));
+    });
+  }, [stats, weekDays]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -161,6 +205,69 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ── Mini agenda semaine ── */}
+        {stats && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <CalendarDays size={17} className="text-blue-600" />
+                <h2 className="font-semibold text-gray-800">Agenda de la semaine</h2>
+              </div>
+              <a href="/agenda" className="flex items-center gap-1 text-sm text-blue-600 hover:underline font-medium">
+                Ouvrir l'agenda <ChevronRight size={14} />
+              </a>
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {weekDays.map((day, i) => {
+                const isToday = sameDayMini(day, today);
+                const events  = weekPrestations.filter(p => {
+                  const d = frToDateMini(p.date);
+                  return d && sameDayMini(d, day);
+                }).sort((a,b) => (a.heure||"").localeCompare(b.heure||""));
+                return (
+                  <div key={i} className={`rounded-xl border p-2 min-h-[110px] flex flex-col gap-1 ${isToday ? "border-blue-300 bg-blue-50" : "border-gray-100 bg-gray-50"}`}>
+                    <div className="text-center mb-1">
+                      <p className="text-xs text-gray-400 font-medium uppercase">{JOURS_MINI[i]}</p>
+                      <div className={`mx-auto w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold ${isToday ? "bg-blue-600 text-white" : "text-gray-700"}`}>
+                        {day.getDate()}
+                      </div>
+                    </div>
+                    {events.map(ev => {
+                      const color = colorByPresta[ev.prestataire] ?? "#9CA3AF";
+                      return (
+                        <a
+                          key={ev.row}
+                          href="/agenda"
+                          title={`${ev.heure ? ev.heure + " – " : ""}${ev.prenom} ${ev.nom} · ${ev.typePresta}${ev.prestataire ? " · " + ev.prestataire : ""}`}
+                          className="block rounded px-1.5 py-0.5 text-white text-xs truncate leading-tight hover:opacity-80 transition-opacity"
+                          style={{ backgroundColor: color }}
+                        >
+                          {ev.heure && <span className="opacity-80 mr-1">{ev.heure}</span>}
+                          {ev.prenom} {ev.nom}
+                        </a>
+                      );
+                    })}
+                    {events.length === 0 && (
+                      <p className="text-xs text-gray-300 text-center mt-auto mb-auto">—</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Légende prestataires */}
+            {stats.prestataires.length > 0 && (
+              <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-gray-100">
+                {stats.prestataires.map((p, i) => (
+                  <div key={p.id} className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PALETTE_MINI[i % PALETTE_MINI.length] }} />
+                    <span className="text-xs text-gray-600">{p.nom}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
