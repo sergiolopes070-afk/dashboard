@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Search, Phone, Mail, MapPin } from "lucide-react";
+import { Search, Phone, Mail, MapPin, UserPlus, Pencil } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import ClientModal from "@/components/ClientModal";
 import { Prestation } from "@/lib/constants";
 
 interface Client {
@@ -16,9 +17,10 @@ interface Client {
 }
 
 export default function ClientsPage() {
-  const [data, setData]       = useState<Prestation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch]   = useState("");
+  const [data, setData]         = useState<Prestation[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [search, setSearch]     = useState("");
+  const [modal, setModal]       = useState<{ mode: "add" | "edit"; client?: Client } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -69,16 +71,26 @@ export default function ClientsPage() {
         loading={loading}
       />
       <div className="flex-1 p-6 space-y-4">
+        {/* Barre recherche + bouton Ajouter */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Rechercher un client..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-            />
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Rechercher un client..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+            </div>
+            <button
+              onClick={() => setModal({ mode: "add" })}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              <UserPlus size={15} />
+              Ajouter
+            </button>
           </div>
         </div>
 
@@ -95,9 +107,18 @@ export default function ClientsPage() {
                     <p className="font-semibold text-gray-900">{c.prenom} {c.nom}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{c.prestations.length} prestation{c.prestations.length > 1 ? "s" : ""}</p>
                   </div>
-                  <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-1 rounded-lg">
-                    {c.totalCA.toFixed(0)} €
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-1 rounded-lg">
+                      {c.totalCA.toFixed(0)} €
+                    </span>
+                    <button
+                      onClick={() => setModal({ mode: "edit", client: c })}
+                      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                      title="Modifier ce client"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   {c.tel && (
@@ -127,6 +148,15 @@ export default function ClientsPage() {
           </div>
         )}
       </div>
+
+      {modal && (
+        <ClientModal
+          mode={modal.mode}
+          client={modal.client}
+          onClose={() => setModal(null)}
+          onSaved={load}
+        />
+      )}
     </div>
   );
 }

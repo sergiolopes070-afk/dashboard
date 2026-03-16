@@ -29,6 +29,11 @@ const EDITABLE_FIELDS: Record<string, number> = {
   genDevis    : COL.GEN_DEVIS,
   date        : COL.DATE,
   heure       : COL.HEURE,
+  nom         : COL.NOM,
+  prenom      : COL.PRENOM,
+  tel         : COL.TEL,
+  email       : COL.EMAIL,
+  adresse     : COL.ADRESSE,
 };
 
 export async function updatePrestation(
@@ -132,6 +137,36 @@ export async function getArchive(): Promise<Prestation[]> {
   return rows
     .filter((r) => r[COL.NOM] || r[COL.EMAIL])
     .map((r, i) => rowToPrestation(r.map(String), i));
+}
+
+export async function appendPrestation(fields: {
+  nom: string; prenom: string; tel: string; email: string;
+  typePresta: string; quantite: string; adresse: string;
+  date: string; heure: string; message: string; prix: string;
+}): Promise<void> {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+
+  const row = new Array(23).fill("");
+  row[COL.TIMESTAMP]   = new Date().toLocaleString("fr-FR");
+  row[COL.NOM]         = fields.nom;
+  row[COL.PRENOM]      = fields.prenom;
+  row[COL.TEL]         = fields.tel;
+  row[COL.EMAIL]       = fields.email;
+  row[COL.TYPE_PRESTA] = fields.typePresta;
+  row[COL.QUANTITE]    = fields.quantite;
+  row[COL.ADRESSE]     = fields.adresse;
+  row[COL.DATE]        = fields.date;
+  row[COL.HEURE]       = fields.heure;
+  row[COL.MESSAGE]     = fields.message;
+  row[COL.PRIX]        = fields.prix;
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: getSpreadsheetId(),
+    range        : `${SHEET_NAME}!A:W`,
+    valueInputOption: "USER_ENTERED",
+    requestBody  : { values: [row] },
+  });
 }
 
 export async function getDashboardStats() {
