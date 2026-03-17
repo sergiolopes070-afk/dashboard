@@ -1,5 +1,6 @@
 "use client";
 import { LucideIcon } from "lucide-react";
+import Link from "next/link";
 
 interface StatCardProps {
   title: string;
@@ -8,6 +9,7 @@ interface StatCardProps {
   icon: LucideIcon;
   color: "blue" | "green" | "orange" | "red" | "purple" | "gray";
   alert?: boolean;
+  href?: string;
 }
 
 const colorMap = {
@@ -19,10 +21,10 @@ const colorMap = {
   gray  : { bg: "bg-gray-50",   icon: "bg-gray-100 text-gray-600",   text: "text-gray-700" },
 };
 
-export default function StatCard({ title, value, subtitle, icon: Icon, color, alert }: StatCardProps) {
+export default function StatCard({ title, value, subtitle, icon: Icon, color, alert, href }: StatCardProps) {
   const c = colorMap[color];
-  return (
-    <div className={`rounded-2xl p-5 ${c.bg} border border-white shadow-sm flex items-center gap-4 ${alert ? "ring-2 ring-red-400" : ""}`}>
+  const inner = (
+    <>
       <div className={`rounded-xl p-3 ${c.icon} flex-shrink-0`}>
         <Icon size={22} />
       </div>
@@ -34,6 +36,18 @@ export default function StatCard({ title, value, subtitle, icon: Icon, color, al
       {alert && (
         <span className="ml-auto flex-shrink-0 w-3 h-3 rounded-full bg-red-500 animate-pulse" />
       )}
-    </div>
+    </>
   );
+
+  const className = `rounded-2xl p-5 ${c.bg} border border-white shadow-sm flex items-center gap-4 ${alert ? "ring-2 ring-red-400" : ""} ${href ? "cursor-pointer hover:brightness-95 transition-all" : ""}`;
+
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {inner}
+      </Link>
+    );
+  }
+
+  return <div className={className}>{inner}</div>;
 }

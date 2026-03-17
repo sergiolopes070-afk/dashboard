@@ -143,17 +143,17 @@ export default function HomePage() {
         )}
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard title="Chiffre d'affaires" value={stats ? `${stats.totalCA.toFixed(0)} €` : "—"} subtitle="Total toutes prestations" icon={TrendingUp} color="green" />
-          <StatCard title="Prestations actives" value={stats?.totalPrestations ?? "—"} subtitle="En cours" icon={Briefcase} color="blue" />
-          <StatCard title="Clients" value={stats?.totalClients ?? "—"} subtitle="Clients uniques" icon={Users} color="purple" />
-          <StatCard title="Prestataires" value={stats?.totalPrestataires ?? "—"} subtitle="Équipe active" icon={Wrench} color="orange" />
+          <StatCard title="Chiffre d'affaires" value={stats ? `${stats.totalCA.toFixed(0)} €` : "—"} subtitle="Total toutes prestations" icon={TrendingUp} color="green" href="/prestations" />
+          <StatCard title="Prestations actives" value={stats?.totalPrestations ?? "—"} subtitle="En cours" icon={Briefcase} color="blue" href="/prestations" />
+          <StatCard title="Clients" value={stats?.totalClients ?? "—"} subtitle="Clients uniques" icon={Users} color="purple" href="/clients" />
+          <StatCard title="Prestataires" value={stats?.totalPrestataires ?? "—"} subtitle="Équipe active" icon={Wrench} color="orange" href="/prestataires" />
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard title="Interventions à venir" value={stats?.upcoming ?? "—"} subtitle="Confirmées" icon={CalendarCheck} color="blue" />
-          <StatCard title="En attente prestataire" value={stats?.waitingPresta ?? "—"} subtitle="Proposition envoyée" icon={Clock} color="orange" />
-          <StatCard title="À réaffecter" value={stats?.toReassign ?? "—"} subtitle="Prestataire refusé" icon={AlertTriangle} color="red" alert={(stats?.toReassign || 0) > 0} />
-          <StatCard title="Devis générés" value={stats?.devisGeneres ?? "—"} subtitle="PDF créés" icon={FileText} color="gray" />
+          <StatCard title="Interventions à venir" value={stats?.upcoming ?? "—"} subtitle="Confirmées" icon={CalendarCheck} color="blue" href="/agenda" />
+          <StatCard title="En attente prestataire" value={stats?.waitingPresta ?? "—"} subtitle="Proposition envoyée" icon={Clock} color="orange" href="/prestations" />
+          <StatCard title="À réaffecter" value={stats?.toReassign ?? "—"} subtitle="Prestataire refusé" icon={AlertTriangle} color="red" alert={(stats?.toReassign || 0) > 0} href="/prestations" />
+          <StatCard title="Devis générés" value={stats?.devisGeneres ?? "—"} subtitle="PDF créés" icon={FileText} color="gray" href="/devis" />
         </div>
 
         {stats && (
