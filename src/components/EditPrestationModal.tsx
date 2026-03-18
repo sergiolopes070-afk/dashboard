@@ -33,6 +33,7 @@ export default function EditPrestationModal({
     prestataire : prestation.prestataire,
     emailPresta : prestation.emailPresta,
     prix        : prestation.prix,
+    commission  : prestation.commission || "",
     date        : prestation.date,
     heure       : prestation.heure,
     envoyer     : prestation.envoyer,
@@ -72,6 +73,7 @@ export default function EditPrestationModal({
         prestataire : form.prestataire,
         emailPresta : form.emailPresta,
         prix        : form.prix,
+        commission  : form.commission,
         date        : form.date,
         heure       : form.heure,
         envoyer     : form.envoyer,
@@ -246,6 +248,39 @@ export default function EditPrestationModal({
                 />
               </div>
             </div>
+            {/* Commission + seuil de rentabilité */}
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Commission prestataire (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={form.commission}
+                onChange={(e) => setForm((f) => ({ ...f, commission: e.target.value }))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                placeholder="0"
+              />
+            </div>
+            {(() => {
+              const prix = parseFloat(form.prix) || 0;
+              const taux = parseFloat(form.commission) || 0;
+              if (!prix && !taux) return null;
+              const commMontant = prix * taux / 100;
+              const net         = prix - commMontant;
+              const rentable    = net > 0;
+              return (
+                <div className={`rounded-xl p-3 text-sm flex items-center justify-between ${rentable ? "bg-emerald-50" : "bg-orange-50"}`}>
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-gray-500">Commission : <span className="font-semibold text-gray-700">{commMontant.toFixed(2)} €</span></p>
+                    <p className="text-xs text-gray-500">Bénéfice net : <span className={`font-bold ${rentable ? "text-emerald-700" : "text-orange-700"}`}>{net >= 0 ? "+" : ""}{net.toFixed(2)} €</span></p>
+                  </div>
+                  <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${rentable ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"}`}>
+                    {rentable ? "Rentable" : "Non rentable"}
+                  </span>
+                </div>
+              );
+            })()}
           </fieldset>
 
           {/* Actions */}

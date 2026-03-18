@@ -50,6 +50,7 @@ function rowToPrestation(row: Record<string, any>): Prestation {
     lienWA       : row.lien_wa     || "",
     genDevis     : row.devis_genere ? "FAIT" : "",
     devisPDF     : row.devis_url   || "",
+    commission   : row.commission != null ? String(row.commission) : "",
   };
 }
 
@@ -123,6 +124,7 @@ export async function updatePrestation(
       case "commentaire":  prestaPatch.commentaire   = value;                           break;
       case "lienWA":       prestaPatch.lien_wa        = value;                          break;
       case "devisPDF":     prestaPatch.devis_url      = value;                          break;
+      case "commission":   prestaPatch.commission     = value ? parseFloat(value) : 0;  break;
       case "prestataire": {
         if (value) {
           const { data } = await supabase
@@ -179,7 +181,7 @@ export async function appendPrestation(fields: {
   typePresta: string; quantite: string; adresse: string;
   date: string; heure: string; message: string; prix: string;
   source?: string; statutClient?: string; prestataire?: string;
-  statut?: string; statutPresta?: string;
+  statut?: string; statutPresta?: string; commission?: string;
 }): Promise<string> {
   // Find or create client
   let clientId: string;
@@ -235,6 +237,7 @@ export async function appendPrestation(fields: {
     prix              : fields.prix ? parseFloat(fields.prix) : null,
     statut            : fields.statut || "",
     statut_presta     : fields.statutPresta || null,
+    commission        : fields.commission ? parseFloat(fields.commission) : 0,
     archive           : false,
   }).select("id").single();
   if (error) throw new Error(error.message);

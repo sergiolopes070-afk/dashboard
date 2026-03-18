@@ -102,6 +102,7 @@ const EMPTY = {
   date         : "",
   heure        : "",
   prix         : "",
+  commission   : "",
   prestataire  : "",
   message      : "",
 };
@@ -359,6 +360,10 @@ export default function NewClientModal({ prestataires, onClose, onSaved }: Props
               <Field label="Prix (€)">
                 <input type="number" step="0.01" value={form.prix}
                   onChange={(e) => set("prix", e.target.value)} className={inputCls} placeholder="0.00" />
+              </Field>
+              <Field label="Commission prestataire (%)">
+                <input type="number" min="0" max="100" step="0.1" value={form.commission}
+                  onChange={(e) => set("commission", e.target.value)} className={inputCls} placeholder="0" />
               </Field>
             </div>
             <Field label="Message / Notes client">

@@ -42,6 +42,7 @@ export interface Prestation {
   lienWA: string;
   genDevis: string;
   devisPDF: string;
+  commission: string; // pourcentage (ex: "20" = 20%)
 }
 
 export interface Prestataire {
