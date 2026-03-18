@@ -56,13 +56,16 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                   : <span className="text-gray-300">—</span>
                 }
                 {p.prix && p.commission && parseFloat(p.commission) > 0 && (() => {
-                  const prix   = parseFloat(p.prix)       || 0;
-                  const taux   = parseFloat(p.commission) || 0;
-                  const comm   = prix * taux / 100;
-                  const net    = prix - comm;
+                  const prix  = parseFloat(p.prix)       || 0;
+                  const val   = parseFloat(p.commission) || 0;
+                  const type  = p.commissionType || "%";
+                  const comm  = type === "%" ? prix * val / 100 : val;
+                  const net   = prix - comm;
                   return (
                     <div className="mt-0.5 space-y-0.5">
-                      <div className="text-xs text-gray-400">Comm. {taux}% = {comm.toFixed(0)} €</div>
+                      <div className="text-xs text-gray-400">
+                        Comm. {type === "%" ? `${val}%` : `${val} €`} = {comm.toFixed(0)} €
+                      </div>
                       <div className={`text-xs font-semibold ${net >= 0 ? "text-emerald-600" : "text-orange-600"}`}>
                         Net {net >= 0 ? "+" : ""}{net.toFixed(0)} €
                       </div>

@@ -42,7 +42,8 @@ export interface Prestation {
   lienWA: string;
   genDevis: string;
   devisPDF: string;
-  commission: string; // pourcentage (ex: "20" = 20%)
+  commission: string;     // valeur (ex: "20" = 20% ou 20€)
+  commissionType: "%" | "€"; // type de commission
 }
 
 export interface Prestataire {

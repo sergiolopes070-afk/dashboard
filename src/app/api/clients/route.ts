@@ -23,7 +23,8 @@ export async function POST(req: Request) {
       statut       : body.statut       || "",
       statutPresta : body.statutPresta || "",
       source       : body.source       || "",
-      commission   : body.commission   || "",
+      commission     : body.commission     || "",
+      commissionType : body.commissionType || "%",
     });
 
     // Envoyer l'email de confirmation si l'adresse email est renseignée

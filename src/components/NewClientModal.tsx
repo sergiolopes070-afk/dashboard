@@ -173,23 +173,24 @@ interface Props {
 }
 
 const EMPTY = {
-  prenom       : "",
-  nom          : "",
-  tel          : "",
-  email        : "",
-  adresse      : "",
-  codePostal   : "",
-  ville        : "",
-  source       : "",
-  statutClient : "NOUVEAU",
-  typePresta   : "",
-  quantite     : "1",
-  date         : "",
-  heure        : "",
-  prix         : "",
-  commission   : "",
-  prestataire  : "",
-  message      : "",
+  prenom         : "",
+  nom            : "",
+  tel            : "",
+  email          : "",
+  adresse        : "",
+  codePostal     : "",
+  ville          : "",
+  source         : "",
+  statutClient   : "NOUVEAU",
+  typePresta     : "",
+  quantite       : "1",
+  date           : "",
+  heure          : "",
+  prix           : "",
+  commission     : "",
+  commissionType : "%" as "%" | "€",
+  prestataire    : "",
+  message        : "",
 };
 
 export default function NewClientModal({ prestataires, onClose, onSaved }: Props) {
@@ -452,9 +453,25 @@ export default function NewClientModal({ prestataires, onClose, onSaved }: Props
                 <input type="number" step="0.01" value={form.prix}
                   onChange={(e) => set("prix", e.target.value)} className={inputCls} placeholder="0.00" />
               </Field>
-              <Field label="Commission prestataire (%)">
-                <input type="number" min="0" max="100" step="0.1" value={form.commission}
-                  onChange={(e) => set("commission", e.target.value)} className={inputCls} placeholder="0" />
+              <Field label="Commission prestataire">
+                <div className="flex gap-2">
+                  <div className="flex gap-0.5 bg-gray-100 rounded-xl p-1 flex-shrink-0">
+                    {(["%", "€"] as const).map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, commissionType: t }))}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all
+                          ${form.commissionType === t ? "bg-white shadow text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                  <input type="number" min="0" step="0.01" value={form.commission}
+                    onChange={(e) => set("commission", e.target.value)}
+                    className={inputCls} placeholder={form.commissionType === "%" ? "ex: 20" : "ex: 50"} />
+                </div>
               </Field>
             </div>
             <Field label="Message / Notes client">

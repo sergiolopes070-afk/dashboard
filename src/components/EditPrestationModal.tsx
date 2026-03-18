@@ -32,9 +32,10 @@ export default function EditPrestationModal({
     statutPresta: prestation.statutPresta as string,
     prestataire : prestation.prestataire,
     emailPresta : prestation.emailPresta,
-    prix        : prestation.prix,
-    commission  : prestation.commission || "",
-    date        : prestation.date,
+    prix           : prestation.prix,
+    commission     : prestation.commission || "",
+    commissionType : (prestation.commissionType || "%") as "%" | "€",
+    date           : prestation.date,
     heure       : prestation.heure,
     envoyer     : prestation.envoyer,
     genDevis    : prestation.genDevis,
@@ -72,9 +73,10 @@ export default function EditPrestationModal({
         statutPresta: form.statutPresta,
         prestataire : form.prestataire,
         emailPresta : form.emailPresta,
-        prix        : form.prix,
-        commission  : form.commission,
-        date        : form.date,
+        prix           : form.prix,
+        commission     : form.commission,
+        commissionType : form.commissionType,
+        date           : form.date,
         heure       : form.heure,
         envoyer     : form.envoyer,
         genDevis    : form.genDevis,
@@ -250,29 +252,46 @@ export default function EditPrestationModal({
             </div>
             {/* Commission + seuil de rentabilité */}
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Commission prestataire (%)</label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="0.1"
-                value={form.commission}
-                onChange={(e) => setForm((f) => ({ ...f, commission: e.target.value }))}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                placeholder="0"
-              />
+              <label className="block text-xs text-gray-500 mb-1">Commission prestataire</label>
+              <div className="flex gap-2">
+                <div className="flex gap-0.5 bg-gray-100 rounded-xl p-1 flex-shrink-0">
+                  {(["%", "€"] as const).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, commissionType: t }))}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all
+                        ${form.commissionType === t ? "bg-white shadow text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.commission}
+                  onChange={(e) => setForm((f) => ({ ...f, commission: e.target.value }))}
+                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  placeholder={form.commissionType === "%" ? "ex: 20" : "ex: 50"}
+                />
+              </div>
             </div>
             {(() => {
-              const prix = parseFloat(form.prix) || 0;
-              const taux = parseFloat(form.commission) || 0;
-              if (!prix && !taux) return null;
-              const commMontant = prix * taux / 100;
+              const prix  = parseFloat(form.prix)       || 0;
+              const val   = parseFloat(form.commission) || 0;
+              if (!prix && !val) return null;
+              const commMontant = form.commissionType === "%" ? prix * val / 100 : val;
               const net         = prix - commMontant;
-              const rentable    = net > 0;
+              const rentable    = net >= 0;
               return (
-                <div className={`rounded-xl p-3 text-sm flex items-center justify-between ${rentable ? "bg-emerald-50" : "bg-orange-50"}`}>
+                <div className={`rounded-xl p-3 flex items-center justify-between ${rentable ? "bg-emerald-50" : "bg-orange-50"}`}>
                   <div className="space-y-0.5">
-                    <p className="text-xs text-gray-500">Commission : <span className="font-semibold text-gray-700">{commMontant.toFixed(2)} €</span></p>
+                    <p className="text-xs text-gray-500">
+                      Commission : <span className="font-semibold text-gray-700">{commMontant.toFixed(2)} €</span>
+                      {form.commissionType === "%" && <span className="text-gray-400"> ({val}% de {prix} €)</span>}
+                    </p>
                     <p className="text-xs text-gray-500">Bénéfice net : <span className={`font-bold ${rentable ? "text-emerald-700" : "text-orange-700"}`}>{net >= 0 ? "+" : ""}{net.toFixed(2)} €</span></p>
                   </div>
                   <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${rentable ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"}`}>
