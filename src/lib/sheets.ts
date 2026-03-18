@@ -150,20 +150,29 @@ export async function updatePrestation(
   }
 
   if (Object.keys(prestaPatch).length > 0) {
-    const { error } = await supabase
-      .from("prestations")
-      .update(prestaPatch)
-      .eq("id", id);
-    // Si colonne commission absente → réessai sans ces champs
-    if (error?.message?.includes("commission")) {
-      const { commission, commission_type, ...patchWithout } = prestaPatch;
-      void commission; void commission_type;
-      if (Object.keys(patchWithout).length > 0) {
-        const { error: e2 } = await supabase.from("prestations").update(patchWithout).eq("id", id);
-        if (e2) throw new Error(e2.message);
+    let patch = { ...prestaPatch };
+    let lastError: string | undefined;
+
+    // Retry removing unknown columns one by one (handles missing columns in Supabase schema)
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const { error } = await supabase.from("prestations").update(patch).eq("id", id);
+      if (!error) { lastError = undefined; break; }
+
+      // Extract column name from "Could not find the 'xxx' column..." error
+      const match = error.message.match(/find the '(\w+)' column/);
+      if (match) {
+        const col = match[1];
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { [col]: _removed, ...rest } = patch as Record<string, unknown>;
+        patch = rest as typeof prestaPatch;
+        lastError = error.message;
+        if (Object.keys(patch).length === 0) break;
+      } else {
+        throw new Error(error.message);
       }
-    } else if (error) {
-      throw new Error(error.message);
+    }
+    if (lastError && Object.keys(patch).length === 0) {
+      // All fields stripped — nothing to save, silently skip
     }
   }
 
