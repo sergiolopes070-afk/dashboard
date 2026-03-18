@@ -44,6 +44,7 @@ export interface Prestation {
   devisPDF: string;
   commission: string;     // valeur (ex: "20" = 20% ou 20€)
   commissionType: "%" | "€"; // type de commission
+  archiveReason?: string; // raison de l'archivage (annulation, etc.)
 }
 
 export interface Prestataire {

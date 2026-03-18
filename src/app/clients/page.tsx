@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Search, Phone, Mail, MapPin, UserPlus, Pencil, Wrench,
   Clock, ChevronDown, ChevronUp, CheckCircle2, FileText,
-  MessageCircle, Send, AlertTriangle, Calendar, Trash2, Download,
+  MessageCircle, Send, AlertTriangle, Calendar, Trash2, Download, Archive, X,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import ClientModal from "@/components/ClientModal";
@@ -53,10 +53,12 @@ function PrestationRow({
   p,
   onDelete,
   onDevisGenerated,
+  onArchive,
 }: {
   p: Prestation;
   onDelete: (id: string) => void;
   onDevisGenerated: () => void;
+  onArchive: (id: string, label: string) => void;
 }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const [generatingDevis, setGeneratingDevis] = useState(false);
@@ -98,6 +100,13 @@ function PrestationRow({
               {parseFloat(p.prix).toFixed(0)} €
             </span>
           )}
+          <button
+            onClick={() => onArchive(p.row, `${p.typePresta} – ${p.date || "?"}`)}
+            className="p-1 rounded-lg hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-colors"
+            title="Archiver cette prestation"
+          >
+            <Archive size={13} />
+          </button>
           {!confirmDel ? (
             <button
               onClick={() => setConfirmDel(true)}
@@ -207,6 +216,9 @@ export default function ClientsPage() {
   const [modal, setModal]       = useState<{ mode: "add" | "edit"; client?: Client } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [confirmClientDel, setConfirmClientDel] = useState<string | null>(null); // client key
+  const [archiveModal, setArchiveModal] = useState<{ id: string; label: string } | null>(null);
+  const [archiveReason, setArchiveReason] = useState("");
+  const [archiving, setArchiving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -276,6 +288,23 @@ export default function ClientsPage() {
     });
     setConfirmClientDel(null);
     load();
+  };
+
+  const handleArchiveConfirm = async () => {
+    if (!archiveModal) return;
+    setArchiving(true);
+    try {
+      await fetch("/api/archive", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: archiveModal.id, reason: archiveReason }),
+      });
+      setArchiveModal(null);
+      setArchiveReason("");
+      load();
+    } finally {
+      setArchiving(false);
+    }
   };
 
   return (
@@ -441,6 +470,7 @@ export default function ClientsPage() {
                             p={p}
                             onDelete={handleDeletePrestation}
                             onDevisGenerated={load}
+                            onArchive={(id, label) => { setArchiveModal({ id, label }); setArchiveReason(""); }}
                           />
                         ))
                       )}
@@ -460,6 +490,66 @@ export default function ClientsPage() {
           onClose={() => setModal(null)}
           onSaved={load}
         />
+      )}
+
+      {/* Modal archivage */}
+      {archiveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Archive size={18} className="text-amber-500" />
+                <h2 className="font-semibold text-gray-900">Archiver la prestation</h2>
+              </div>
+              <button onClick={() => setArchiveModal(null)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500">
+              <span className="font-medium text-gray-700">{archiveModal.label}</span> sera déplacée dans l&apos;historique.
+            </p>
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-gray-600">Raison de l&apos;archivage</label>
+              <div className="grid grid-cols-2 gap-2">
+                {["Annulation client", "Prestation terminée", "Client injoignable", "Doublon"].map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setArchiveReason(r)}
+                    className={`text-xs px-3 py-2 rounded-xl border transition-colors text-left ${
+                      archiveReason === r
+                        ? "border-amber-400 bg-amber-50 text-amber-700 font-medium"
+                        : "border-gray-200 hover:border-gray-300 text-gray-600"
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                placeholder="Autre raison…"
+                value={["Annulation client", "Prestation terminée", "Client injoignable", "Doublon"].includes(archiveReason) ? "" : archiveReason}
+                onChange={(e) => setArchiveReason(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setArchiveModal(null)}
+                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleArchiveConfirm}
+                disabled={!archiveReason.trim() || archiving}
+                className="flex-1 py-2 rounded-xl bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors disabled:opacity-50"
+              >
+                {archiving ? "Archivage…" : "Archiver"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

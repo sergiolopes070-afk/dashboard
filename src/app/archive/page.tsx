@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Archive, Phone, Mail, MapPin, User, Wrench, Calendar,
-  Clock, Euro, FileText, MessageSquare, Search, ChevronDown, ChevronUp,
+  Clock, Euro, FileText, MessageSquare, Search, ChevronDown, ChevronUp, Tag,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { Prestation } from "@/lib/constants";
@@ -64,10 +64,17 @@ function FicheArchive({ p }: { p: Prestation }) {
               {prix.toFixed(0)} €
             </span>
           )}
-          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-medium">
-            <Archive size={10} />
-            Terminée
-          </span>
+          {p.archiveReason ? (
+            <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium">
+              <Tag size={10} />
+              {p.archiveReason}
+            </span>
+          ) : (
+            <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-medium">
+              <Archive size={10} />
+              Terminée
+            </span>
+          )}
           <button
             onClick={() => setOpen((v) => !v)}
             className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400"
@@ -159,6 +166,14 @@ function FicheArchive({ p }: { p: Prestation }) {
                 </p>
                 {p.message && <p className="text-xs text-gray-600 italic">"{p.message}"</p>}
                 {p.commentaire && <p className="text-xs text-gray-500 mt-1">{p.commentaire}</p>}
+              </div>
+            )}
+            {p.archiveReason && (
+              <div className="mt-2">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1 mb-1">
+                  <Tag size={11} /> Raison archivage
+                </p>
+                <p className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded-lg">{p.archiveReason}</p>
               </div>
             )}
             {(p.devisPDF || p.genDevis === "FAIT") && (

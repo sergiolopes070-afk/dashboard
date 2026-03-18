@@ -52,6 +52,7 @@ function rowToPrestation(row: Record<string, any>): Prestation {
     devisPDF     : row.devis_url   || "",
     commission     : row.commission != null ? String(row.commission) : "",
     commissionType : (row.commission_type === "euro" ? "€" : "%") as "%" | "€",
+    archiveReason  : row.archive_reason || "",
   };
 }
 
@@ -277,6 +278,27 @@ export async function appendPrestation(fields: {
 
   if (result.error) throw new Error(result.error.message);
   return result.data.id as string;
+}
+
+export async function archivePrestation(id: string, reason: string): Promise<void> {
+  if (!supabase) return;
+  // Try with archive_reason column first, fall back without if column missing
+  const { error } = await supabase
+    .from("prestations")
+    .update({ archive: true, archive_reason: reason })
+    .eq("id", id);
+  if (error) {
+    if (error.message.includes("archive_reason")) {
+      // Column doesn't exist yet, archive without reason
+      const { error: e2 } = await supabase
+        .from("prestations")
+        .update({ archive: true })
+        .eq("id", id);
+      if (e2) throw new Error(e2.message);
+    } else {
+      throw new Error(error.message);
+    }
+  }
 }
 
 export async function deletePrestation(id: string): Promise<void> {
