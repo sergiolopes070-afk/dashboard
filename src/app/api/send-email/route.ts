@@ -1,10 +1,21 @@
 import { NextResponse } from "next/server";
+import nodemailer from "nodemailer";
 import { Resend } from "resend";
 
 export const dynamic = "force-dynamic";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM   = process.env.RESEND_FROM || "KinouClean <noreply@kinouclean.fr>";
+const FROM_NAME = "KinouClean";
+
+/** Crée un transporteur Gmail SMTP si les variables sont présentes */
+function getGmailTransporter() {
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) return null;
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: { user, pass },
+  });
+}
 
 function buildEmailHtml(data: {
   prenom    : string;
@@ -142,22 +153,38 @@ export async function POST(req: Request) {
     if (!email) {
       return NextResponse.json({ error: "Email requis" }, { status: 400 });
     }
+
+    const html    = buildEmailHtml({ prenom: prenom || "Client", typePresta, quantite, adresse, date, heure, prix });
+    const subject = "✅ Confirmation de votre demande – KinouClean";
+
+    // ── Priorité 1 : Gmail SMTP ──────────────────────────────────────────────
+    const gmail = getGmailTransporter();
+    if (gmail) {
+      await gmail.sendMail({
+        from   : `"${FROM_NAME}" <${process.env.GMAIL_USER}>`,
+        to     : email,
+        subject,
+        html,
+      });
+      return NextResponse.json({ success: true, via: "gmail" });
+    }
+
+    // ── Priorité 2 : Resend (fallback) ───────────────────────────────────────
     if (!process.env.RESEND_API_KEY) {
-      console.warn("RESEND_API_KEY non configuré – email non envoyé");
+      console.warn("Aucun service email configuré (GMAIL_USER ou RESEND_API_KEY manquant)");
       return NextResponse.json({ skipped: true });
     }
 
-    const html = buildEmailHtml({ prenom: prenom || "Client", typePresta, quantite, adresse, date, heure, prix });
-
+    const resend = new Resend(process.env.RESEND_API_KEY);
     const result = await resend.emails.send({
-      from   : FROM,
+      from   : process.env.RESEND_FROM || `KinouClean <noreply@kinouclean.fr>`,
       to     : email,
-      subject: "✅ Confirmation de votre demande – KinouClean",
+      subject,
       html,
     });
 
     if (result.error) throw new Error(result.error.message);
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, via: "resend" });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";
     return NextResponse.json({ error: message }, { status: 500 });
