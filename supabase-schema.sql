@@ -99,7 +99,6 @@ CREATE TABLE depenses (
   montant      NUMERIC NOT NULL DEFAULT 0,
   type         TEXT NOT NULL DEFAULT 'ponctuel' CHECK (type IN ('ponctuel', 'mensuel')),
   date         DATE NOT NULL,
-  mois         TEXT GENERATED ALWAYS AS (TO_CHAR(date, 'YYYY-MM')) STORED,
   notes        TEXT,
   document_url TEXT,
   document_nom TEXT,
