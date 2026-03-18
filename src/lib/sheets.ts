@@ -154,7 +154,17 @@ export async function updatePrestation(
       .from("prestations")
       .update(prestaPatch)
       .eq("id", id);
-    if (error) throw new Error(error.message);
+    // Si colonne commission absente → réessai sans ces champs
+    if (error?.message?.includes("commission")) {
+      const { commission, commission_type, ...patchWithout } = prestaPatch;
+      void commission; void commission_type;
+      if (Object.keys(patchWithout).length > 0) {
+        const { error: e2 } = await supabase.from("prestations").update(patchWithout).eq("id", id);
+        if (e2) throw new Error(e2.message);
+      }
+    } else if (error) {
+      throw new Error(error.message);
+    }
   }
 
   if (Object.keys(clientPatch).length > 0) {
@@ -227,7 +237,7 @@ export async function appendPrestation(fields: {
     prestataireId = data?.id ?? null;
   }
 
-  const { data: newPresta, error } = await supabase.from("prestations").insert({
+  const basePayload = {
     client_id         : clientId,
     prestataire_id    : prestataireId,
     type_prestation   : fields.typePresta,
@@ -239,12 +249,23 @@ export async function appendPrestation(fields: {
     prix              : fields.prix ? parseFloat(fields.prix) : null,
     statut            : fields.statut || "",
     statut_presta     : fields.statutPresta || null,
-    commission        : fields.commission ? parseFloat(fields.commission) : 0,
-    commission_type   : fields.commissionType === "€" ? "euro" : "percent",
     archive           : false,
+  };
+
+  // Tente l'insertion avec les colonnes commission (peuvent ne pas exister encore)
+  let result = await supabase.from("prestations").insert({
+    ...basePayload,
+    commission      : fields.commission ? parseFloat(fields.commission) : 0,
+    commission_type : fields.commissionType === "€" ? "euro" : "percent",
   }).select("id").single();
-  if (error) throw new Error(error.message);
-  return newPresta.id as string;
+
+  // Si la colonne commission n'existe pas encore → réessai sans
+  if (result.error?.message?.includes("commission")) {
+    result = await supabase.from("prestations").insert(basePayload).select("id").single();
+  }
+
+  if (result.error) throw new Error(result.error.message);
+  return result.data.id as string;
 }
 
 export async function deletePrestation(id: string): Promise<void> {
