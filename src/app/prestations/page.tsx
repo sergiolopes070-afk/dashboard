@@ -34,7 +34,7 @@ export default function PrestationsPage() {
     }
   }, []);
 
-  const handleSaved = useCallback((row: number, updates: Record<string, string>) => {
+  const handleSaved = useCallback((row: string, updates: Record<string, string>) => {
     setData((prev) =>
       prev.map((p) => (p.row === row ? { ...p, ...updates } : p))
     );

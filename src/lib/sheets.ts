@@ -195,6 +195,8 @@ export async function appendPrestation(fields: {
   source?: string; statutClient?: string; prestataire?: string;
   statut?: string; statutPresta?: string; commission?: string; commissionType?: string;
 }): Promise<string> {
+  if (!supabase) throw new Error("Supabase non configuré");
+  const db = supabase;
   // Find or create client
   let clientId: string;
   const clientData = {
@@ -208,7 +210,7 @@ export async function appendPrestation(fields: {
   };
 
   if (fields.email) {
-    const { data: existing } = await supabase
+    const { data: existing } = await db
       .from("clients")
       .select("id")
       .eq("email", fields.email)
@@ -217,13 +219,13 @@ export async function appendPrestation(fields: {
     if (existing) {
       clientId = existing.id;
     } else {
-      const { data: created, error } = await supabase
+      const { data: created, error } = await db
         .from("clients").insert(clientData).select("id").single();
       if (error) throw new Error(error.message);
       clientId = created.id;
     }
   } else {
-    const { data: created, error } = await supabase
+    const { data: created, error } = await db
       .from("clients").insert(clientData).select("id").single();
     if (error) throw new Error(error.message);
     clientId = created.id;
@@ -232,7 +234,7 @@ export async function appendPrestation(fields: {
   // Resolve prestataire UUID if provided
   let prestataireId: string | null = null;
   if (fields.prestataire) {
-    const { data } = await supabase
+    const { data } = await db
       .from("prestataires").select("id").eq("nom", fields.prestataire).maybeSingle();
     prestataireId = data?.id ?? null;
   }
@@ -253,7 +255,7 @@ export async function appendPrestation(fields: {
   };
 
   // Tente l'insertion avec les colonnes commission (peuvent ne pas exister encore)
-  let result = await supabase.from("prestations").insert({
+  let result = await db.from("prestations").insert({
     ...basePayload,
     commission      : fields.commission ? parseFloat(fields.commission) : 0,
     commission_type : fields.commissionType === "€" ? "euro" : "percent",
@@ -261,7 +263,7 @@ export async function appendPrestation(fields: {
 
   // Si la colonne commission n'existe pas encore → réessai sans
   if (result.error?.message?.includes("commission")) {
-    result = await supabase.from("prestations").insert(basePayload).select("id").single();
+    result = await db.from("prestations").insert(basePayload).select("id").single();
   }
 
   if (result.error) throw new Error(result.error.message);

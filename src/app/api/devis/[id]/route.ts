@@ -60,7 +60,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       message      : presta.message || "",
     };
 
-    const buffer = await renderToBuffer(React.createElement(DevisPDF, { d: devisData }));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const buffer = await renderToBuffer(React.createElement(DevisPDF, { d: devisData }) as any);
 
     // Mark devis as generated in DB
     await supabase
@@ -68,7 +69,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       .update({ devis_genere: true })
       .eq("id", params.id);
 
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Type"       : "application/pdf",
