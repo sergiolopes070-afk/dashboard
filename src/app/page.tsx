@@ -61,6 +61,7 @@ export default function HomePage() {
   const [error, setError]         = useState<string | null>(null);
   const [showNewClient, setShowNewClient] = useState(false);
   const [depenses, setDepenses]   = useState<Depense[]>([]);
+  const [rentaPeriod, setRentaPeriod] = useState<"semaine" | "mois">("mois");
 
   // Mini agenda : semaine courante
   const weekStart = useMemo(() => getMondayOfWeek(new Date()), []);
@@ -161,10 +162,14 @@ export default function HomePage() {
           <StatCard title="Devis générés" value={stats?.devisGeneres ?? "—"} subtitle="PDF créés" icon={FileText} color="gray" href="/devis" />
         </div>
 
-        {/* Rentabilité du mois */}
+        {/* Rentabilité */}
         {stats && (() => {
           const now = new Date();
+
+          // ── Période mois ──
           const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+          const daysInMonth  = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
           const caMois = [...stats.prestations, ...stats.archive]
             .filter(p => {
               if (!p.date) return false;
@@ -173,29 +178,87 @@ export default function HomePage() {
               return `${parts[2]}-${parts[1]}` === currentMonth;
             })
             .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
-          const depMois = depenses
-            .filter(d => d.date?.startsWith(currentMonth))
+
+          const depPonctuMois = depenses
+            .filter(d => d.type === "ponctuel" && d.date?.startsWith(currentMonth))
             .reduce((s, d) => s + d.montant, 0);
-          const benefice = caMois - depMois;
+          const depMensuelTotal = depenses
+            .filter(d => d.type === "mensuel")
+            .reduce((s, d) => s + d.montant, 0);
+          const depMois = depPonctuMois + depMensuelTotal;
+
+          // ── Période semaine ──
+          const dayOfWeek = now.getDay();
+          const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+          const weekStart = new Date(now); weekStart.setDate(now.getDate() + diffToMon); weekStart.setHours(0,0,0,0);
+          const weekEnd   = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6); weekEnd.setHours(23,59,59,999);
+
+          const caWeek = [...stats.prestations, ...stats.archive]
+            .filter(p => {
+              if (!p.date) return false;
+              const parts = p.date.split("/");
+              if (parts.length !== 3) return false;
+              const d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+              return d >= weekStart && d <= weekEnd;
+            })
+            .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+
+          const depPonctuWeek = depenses
+            .filter(d => {
+              if (d.type !== "ponctuel") return false;
+              const d2 = new Date(d.date + "T00:00:00");
+              return d2 >= weekStart && d2 <= weekEnd;
+            })
+            .reduce((s, d) => s + d.montant, 0);
+          // prorata mensuel → hebdo (charges fixes / jours du mois × 7)
+          const depMensuelWeek = (depMensuelTotal / daysInMonth) * 7;
+          const depWeek = depPonctuWeek + depMensuelWeek;
+
+          const isSemaine = rentaPeriod === "semaine";
+          const ca       = isSemaine ? caWeek  : caMois;
+          const dep      = isSemaine ? depWeek : depMois;
+          const benefice = ca - dep;
+
+          const weekLabel = `${weekStart.getDate()}/${weekStart.getMonth()+1} – ${weekEnd.getDate()}/${weekEnd.getMonth()+1}`;
+          const monthName = now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+
           return (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-gray-800">Rentabilité du mois</h2>
-                <a href="/depenses" className="text-sm text-blue-600 hover:underline font-medium">Gérer les dépenses</a>
+                <h2 className="font-semibold text-gray-800">Rentabilité</h2>
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                    {(["semaine", "mois"] as const).map(p => (
+                      <button
+                        key={p}
+                        onClick={() => setRentaPeriod(p)}
+                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-all
+                          ${rentaPeriod === p ? "bg-white shadow text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
+                      >
+                        {p === "semaine" ? "Cette semaine" : "Ce mois"}
+                      </button>
+                    ))}
+                  </div>
+                  <a href="/depenses" className="text-sm text-blue-600 hover:underline font-medium">Gérer</a>
+                </div>
               </div>
+              <p className="text-xs text-gray-400 mb-3">
+                {isSemaine ? `Semaine du ${weekLabel}` : monthName.charAt(0).toUpperCase() + monthName.slice(1)}
+                {isSemaine && depMensuelTotal > 0 && " · charges fixes au prorata"}
+              </p>
               <div className="grid grid-cols-3 gap-4">
                 <div className="rounded-xl bg-green-50 p-4 flex items-center gap-3">
                   <TrendingUp size={20} className="text-green-600 flex-shrink-0" />
                   <div>
-                    <p className="text-xs text-gray-500">CA du mois</p>
-                    <p className="text-xl font-bold text-green-700">{caMois.toFixed(0)} €</p>
+                    <p className="text-xs text-gray-500">CA</p>
+                    <p className="text-xl font-bold text-green-700">{ca.toFixed(0)} €</p>
                   </div>
                 </div>
                 <div className="rounded-xl bg-red-50 p-4 flex items-center gap-3">
                   <TrendingDown size={20} className="text-red-600 flex-shrink-0" />
                   <div>
-                    <p className="text-xs text-gray-500">Dépenses du mois</p>
-                    <p className="text-xl font-bold text-red-700">{depMois.toFixed(0)} €</p>
+                    <p className="text-xs text-gray-500">Dépenses</p>
+                    <p className="text-xl font-bold text-red-700">{dep.toFixed(0)} €</p>
                   </div>
                 </div>
                 <div className={`rounded-xl p-4 flex items-center gap-3 ${benefice >= 0 ? "bg-emerald-50" : "bg-orange-50"}`}>
