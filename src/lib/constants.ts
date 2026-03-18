@@ -64,3 +64,27 @@ export const STATUT_COLORS: Record<string, string> = {
 };
 
 export const LOGO_URL = "https://lh3.googleusercontent.com/d/1JeOWpfLrxjZqlglaN7ayL460GTET432f";
+
+export interface Depense {
+  id: string;
+  nom: string;
+  categorie: string;
+  montant: number;
+  type: "ponctuel" | "mensuel";
+  date: string; // YYYY-MM-DD
+  notes?: string;
+  document_url?: string;
+  document_nom?: string;
+  created_at: string;
+}
+
+export const CATEGORIES_DEPENSES = [
+  "Matériel",
+  "Transport",
+  "Marketing / Pub",
+  "Logiciels / Abonnements",
+  "Sous-traitance",
+  "Salaires / Charges",
+  "Local / Loyer",
+  "Autre",
+] as const;

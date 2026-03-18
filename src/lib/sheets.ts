@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { Prestation, Prestataire } from "./constants";
+import { Prestation, Prestataire, Depense } from "./constants";
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
 
@@ -290,6 +290,41 @@ export async function createPrestataire(fields: {
     tel_wa: fields.tel.trim(),
     actif: true,
   });
+  if (error) throw new Error(error.message);
+}
+
+// ─── DÉPENSES ────────────────────────────────────────────────────────────────
+
+export async function getDepenses(): Promise<Depense[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("depenses")
+    .select("*")
+    .order("date", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data || []) as Depense[];
+}
+
+export async function createDepense(
+  fields: Omit<Depense, "id" | "created_at">
+): Promise<void> {
+  if (!supabase) throw new Error("Supabase non configuré");
+  const { error } = await supabase.from("depenses").insert(fields);
+  if (error) throw new Error(error.message);
+}
+
+export async function updateDepense(
+  id: string,
+  fields: Partial<Omit<Depense, "id" | "created_at">>
+): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("depenses").update(fields).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteDepense(id: string): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("depenses").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
 

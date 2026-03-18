@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Users, Briefcase, TrendingUp, Wrench,
-  AlertTriangle, Clock, FileText, CalendarCheck, UserPlus, UserCheck, CalendarDays, ChevronRight,
+  AlertTriangle, Clock, FileText, CalendarCheck, UserPlus, UserCheck, CalendarDays, ChevronRight, TrendingDown,
 } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import PrestationTable from "@/components/PrestationTable";
@@ -10,7 +10,7 @@ import Topbar from "@/components/Topbar";
 import StatusBadge from "@/components/StatusBadge";
 import NewClientModal from "@/components/NewClientModal";
 import dynamic from "next/dynamic";
-import { Prestation, Prestataire } from "@/lib/constants";
+import { Prestation, Prestataire, Depense } from "@/lib/constants";
 
 // ── Mini agenda helpers ──────────────────────────────────────────────────────
 const PALETTE_MINI = ["#4285F4","#EA4335","#34A853","#FBBC04","#8B5CF6","#F97316","#06B6D4","#EC4899","#10B981","#6366F1"];
@@ -60,6 +60,7 @@ export default function HomePage() {
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
   const [showNewClient, setShowNewClient] = useState(false);
+  const [depenses, setDepenses]   = useState<Depense[]>([]);
 
   // Mini agenda : semaine courante
   const weekStart = useMemo(() => getMondayOfWeek(new Date()), []);
@@ -85,9 +86,13 @@ export default function HomePage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/dashboard");
-      if (!res.ok) throw new Error((await res.json()).error || "Erreur serveur");
-      setStats(await res.json());
+      const [dashRes, depRes] = await Promise.all([
+        fetch("/api/dashboard"),
+        fetch("/api/depenses"),
+      ]);
+      if (!dashRes.ok) throw new Error((await dashRes.json()).error || "Erreur serveur");
+      setStats(await dashRes.json());
+      if (depRes.ok) setDepenses(await depRes.json());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur inconnue");
     } finally {
@@ -155,6 +160,57 @@ export default function HomePage() {
           <StatCard title="À réaffecter" value={stats?.toReassign ?? "—"} subtitle="Prestataire refusé" icon={AlertTriangle} color="red" alert={(stats?.toReassign || 0) > 0} href="/prestations" />
           <StatCard title="Devis générés" value={stats?.devisGeneres ?? "—"} subtitle="PDF créés" icon={FileText} color="gray" href="/devis" />
         </div>
+
+        {/* Rentabilité du mois */}
+        {stats && (() => {
+          const now = new Date();
+          const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+          const caMois = [...stats.prestations, ...stats.archive]
+            .filter(p => {
+              if (!p.date) return false;
+              const parts = p.date.split("/");
+              if (parts.length !== 3) return false;
+              return `${parts[2]}-${parts[1]}` === currentMonth;
+            })
+            .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+          const depMois = depenses
+            .filter(d => d.date?.startsWith(currentMonth))
+            .reduce((s, d) => s + d.montant, 0);
+          const benefice = caMois - depMois;
+          return (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-gray-800">Rentabilité du mois</h2>
+                <a href="/depenses" className="text-sm text-blue-600 hover:underline font-medium">Gérer les dépenses</a>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="rounded-xl bg-green-50 p-4 flex items-center gap-3">
+                  <TrendingUp size={20} className="text-green-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-gray-500">CA du mois</p>
+                    <p className="text-xl font-bold text-green-700">{caMois.toFixed(0)} €</p>
+                  </div>
+                </div>
+                <div className="rounded-xl bg-red-50 p-4 flex items-center gap-3">
+                  <TrendingDown size={20} className="text-red-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-gray-500">Dépenses du mois</p>
+                    <p className="text-xl font-bold text-red-700">{depMois.toFixed(0)} €</p>
+                  </div>
+                </div>
+                <div className={`rounded-xl p-4 flex items-center gap-3 ${benefice >= 0 ? "bg-emerald-50" : "bg-orange-50"}`}>
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${benefice >= 0 ? "bg-emerald-500" : "bg-orange-500"}`} />
+                  <div>
+                    <p className="text-xs text-gray-500">Bénéfice net</p>
+                    <p className={`text-xl font-bold ${benefice >= 0 ? "text-emerald-700" : "text-orange-700"}`}>
+                      {benefice >= 0 ? "+" : ""}{benefice.toFixed(0)} €
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {stats && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

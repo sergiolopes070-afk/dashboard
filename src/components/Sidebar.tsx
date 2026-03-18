@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, Briefcase, Archive,
-  FileText, Settings, ChevronRight, Wrench, CalendarDays
+  FileText, Settings, ChevronRight, Wrench, CalendarDays, TrendingDown,
 } from "lucide-react";
 
 const nav = [
@@ -13,6 +13,7 @@ const nav = [
   { href: "/clients",       label: "Clients",           icon: Users },
   { href: "/agenda",        label: "Agenda",            icon: CalendarDays },
   { href: "/devis",         label: "Devis",             icon: FileText },
+  { href: "/depenses",      label: "Dépenses",          icon: TrendingDown },
   { href: "/archive",       label: "Historique",        icon: Archive },
   { href: "/configuration", label: "Configuration",     icon: Settings },
 ];
