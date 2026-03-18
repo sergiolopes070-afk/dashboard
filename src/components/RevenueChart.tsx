@@ -23,7 +23,12 @@ export default function RevenueChart({ prestations }: Props) {
         const d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
         return d.getFullYear() === currentYear && d.getMonth() === idx;
       })
-      .reduce((sum, p) => sum + (parseFloat(p.prix) || 0), 0);
+      .reduce((sum, p) => {
+        const prix = parseFloat(p.prix) || 0;
+        const commVal = parseFloat(p.commission) || 0;
+        const comm = (p.commissionType || "%") === "%" ? prix * commVal / 100 : commVal;
+        return sum + (prix - comm);
+      }, 0);
     return { month, montant: Math.round(montant) };
   });
 
@@ -34,7 +39,7 @@ export default function RevenueChart({ prestations }: Props) {
         <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}€`} />
         <Tooltip
-          formatter={(value) => [`${value} €`, "Chiffre d'affaires"]}
+          formatter={(value) => [`${value} €`, "Bénéfice net"]}
           contentStyle={{ borderRadius: "12px", border: "1px solid #e2e8f0", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }}
         />
         <Bar dataKey="montant" fill="#2563eb" radius={[6, 6, 0, 0]} maxBarSize={40} />

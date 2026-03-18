@@ -179,6 +179,20 @@ export default function HomePage() {
             })
             .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
 
+          const commMois = [...stats.prestations, ...stats.archive]
+            .filter(p => {
+              if (!p.date) return false;
+              const parts = p.date.split("/");
+              if (parts.length !== 3) return false;
+              return `${parts[2]}-${parts[1]}` === currentMonth;
+            })
+            .reduce((s, p) => {
+              const prix = parseFloat(p.prix) || 0;
+              const val  = parseFloat(p.commission) || 0;
+              const comm = (p.commissionType || "%") === "%" ? prix * val / 100 : val;
+              return s + comm;
+            }, 0);
+
           const depPonctuMois = depenses
             .filter(d => d.type === "ponctuel" && d.date?.startsWith(currentMonth))
             .reduce((s, d) => s + d.montant, 0);
@@ -203,6 +217,21 @@ export default function HomePage() {
             })
             .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
 
+          const commWeek = [...stats.prestations, ...stats.archive]
+            .filter(p => {
+              if (!p.date) return false;
+              const parts = p.date.split("/");
+              if (parts.length !== 3) return false;
+              const d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+              return d >= weekStart && d <= weekEnd;
+            })
+            .reduce((s, p) => {
+              const prix = parseFloat(p.prix) || 0;
+              const val  = parseFloat(p.commission) || 0;
+              const comm = (p.commissionType || "%") === "%" ? prix * val / 100 : val;
+              return s + comm;
+            }, 0);
+
           const depPonctuWeek = depenses
             .filter(d => {
               if (d.type !== "ponctuel") return false;
@@ -217,7 +246,8 @@ export default function HomePage() {
           const isSemaine = rentaPeriod === "semaine";
           const ca       = isSemaine ? caWeek  : caMois;
           const dep      = isSemaine ? depWeek : depMois;
-          const benefice = ca - dep;
+          const comm     = isSemaine ? commWeek : commMois;
+          const benefice = ca - dep - comm;
 
           const weekLabel = `${weekStart.getDate()}/${weekStart.getMonth()+1} – ${weekEnd.getDate()}/${weekEnd.getMonth()+1}`;
           const monthName = now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
@@ -278,7 +308,7 @@ export default function HomePage() {
         {stats && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-              <h2 className="font-semibold text-gray-800 mb-4">CA mensuel {new Date().getFullYear()}</h2>
+              <h2 className="font-semibold text-gray-800 mb-4">Bénéfice net mensuel {new Date().getFullYear()}</h2>
               <RevenueChart prestations={[...stats.prestations, ...stats.archive]} />
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">

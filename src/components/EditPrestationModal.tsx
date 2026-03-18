@@ -193,13 +193,21 @@ export default function EditPrestationModal({
               const p = prestataires.find((x) => x.nom === form.prestataire);
               if (!p?.tel) return null;
               const tel = p.tel.replace(/\s/g, "").replace(/^0/, "33");
+              const prixVal  = parseFloat(form.prix || prestation.prix) || 0;
+              const commVal  = parseFloat(form.commission || prestation.commission || "0") || 0;
+              const commType = form.commissionType || prestation.commissionType || "%";
+              const commMontant = commType === "%" ? prixVal * commVal / 100 : commVal;
+              const netPresta   = prixVal - commMontant;
+              const commLine = prixVal > 0 && commMontant > 0
+                ? `💶 Prix total : ${prixVal} €\n💰 Votre rémunération : ${netPresta.toFixed(0)} € (commission KinouClean : ${commMontant.toFixed(0)} €)\n\n`
+                : `💶 Prix : ${form.prix || prestation.prix || "—"} €\n\n`;
               const msg = encodeURIComponent(
                 `Bonjour ${p.nom} 👋,\n\nVous avez été assigné(e) à une prestation KinouClean :\n\n` +
                 `👤 Client : ${prestation.prenom} ${prestation.nom}\n` +
                 `🧹 Prestation : ${prestation.typePresta}${prestation.quantite ? ` (x${prestation.quantite})` : ""}\n` +
                 `📍 Adresse : ${prestation.adresse || "—"}\n` +
                 `📅 Date : ${form.date || prestation.date || "—"}${form.heure || prestation.heure ? ` à ${form.heure || prestation.heure}` : ""}\n` +
-                `💶 Prix : ${form.prix || prestation.prix || "—"} €\n\n` +
+                commLine +
                 `Merci de confirmer votre disponibilité 🙏`
               );
               return (
