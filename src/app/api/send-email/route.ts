@@ -1,20 +1,26 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
+import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 const FROM_NAME = "KinouClean";
 
-/** Crée un transporteur Gmail SMTP si les variables sont présentes */
-function getGmailTransporter() {
-  const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD;
+/** Lit un setting depuis Supabase (fallback si env var absente) */
+async function getSetting(key: string, envFallback?: string): Promise<string | null> {
+  if (envFallback) return envFallback;
+  if (!supabase) return null;
+  const { data } = await supabase.from("settings").select("value").eq("key", key).maybeSingle();
+  return (data?.value as string) || null;
+}
+
+/** Crée un transporteur Gmail SMTP (env vars ou Supabase settings) */
+async function getGmailTransporter() {
+  const user = await getSetting("gmail_user", process.env.GMAIL_USER);
+  const pass = await getSetting("gmail_app_password", process.env.GMAIL_APP_PASSWORD);
   if (!user || !pass) return null;
-  return nodemailer.createTransport({
-    service: "gmail",
-    auth: { user, pass },
-  });
+  return { transporter: nodemailer.createTransport({ service: "gmail", auth: { user, pass } }), user };
 }
 
 function buildEmailHtml(data: {
@@ -158,10 +164,10 @@ export async function POST(req: Request) {
     const subject = "✅ Confirmation de votre demande – KinouClean";
 
     // ── Priorité 1 : Gmail SMTP ──────────────────────────────────────────────
-    const gmail = getGmailTransporter();
-    if (gmail) {
-      await gmail.sendMail({
-        from   : `"${FROM_NAME}" <${process.env.GMAIL_USER}>`,
+    const gmailResult = await getGmailTransporter();
+    if (gmailResult) {
+      await gmailResult.transporter.sendMail({
+        from   : `"${FROM_NAME}" <${gmailResult.user}>`,
         to     : email,
         subject,
         html,
