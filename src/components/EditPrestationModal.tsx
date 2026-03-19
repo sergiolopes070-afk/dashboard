@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X, Save, Loader2, MessageCircle } from "lucide-react";
+import { X, Save, Loader2, MessageCircle, Archive } from "lucide-react";
 import { Prestation, Prestataire, StatutClient, StatutPresta } from "@/lib/constants";
 
 interface EditPrestationModalProps {
@@ -8,6 +8,7 @@ interface EditPrestationModalProps {
   prestataires: Prestataire[];
   onClose: () => void;
   onSaved: (row: string, updates: Record<string, string>) => void;
+  onArchive?: (id: string, label: string) => void;
 }
 
 const STATUTS_CLIENT: StatutClient[] = [
@@ -26,6 +27,7 @@ export default function EditPrestationModal({
   prestataires,
   onClose,
   onSaved,
+  onArchive,
 }: EditPrestationModalProps) {
   const [form, setForm] = useState({
     statut      : prestation.statut       as string,
@@ -355,22 +357,34 @@ export default function EditPrestationModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-5 pb-5">
-          <button
-            onClick={onClose}
-            disabled={saving}
-            className="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
-          >
-            Annuler
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-            {saving ? "Enregistrement..." : "Enregistrer"}
-          </button>
+        <div className="flex items-center justify-between gap-3 px-5 pb-5">
+          {onArchive ? (
+            <button
+              onClick={() => onArchive(prestation.row, `${prestation.prenom} ${prestation.nom} – ${prestation.typePresta}`)}
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-sm font-medium hover:bg-amber-100 transition-colors disabled:opacity-50"
+            >
+              <Archive size={14} />
+              Archiver
+            </button>
+          ) : <span />}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              disabled={saving}
+              className="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+              {saving ? "Enregistrement..." : "Enregistrer"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

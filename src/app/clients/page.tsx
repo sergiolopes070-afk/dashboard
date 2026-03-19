@@ -220,6 +220,7 @@ export default function ClientsPage() {
   const [confirmClientDel, setConfirmClientDel] = useState<string | null>(null);
   const [archiveModal, setArchiveModal] = useState<{ ids: string[]; label: string } | null>(null);
   const [archiveReason, setArchiveReason] = useState("");
+  const [archiveComment, setArchiveComment] = useState("");
   const [archiving, setArchiving]     = useState(false);
 
   const load = useCallback(async () => {
@@ -305,12 +306,13 @@ export default function ClientsPage() {
           fetch("/api/archive", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, reason: archiveReason }),
+            body: JSON.stringify({ id, reason: archiveReason + (archiveComment.trim() ? ` — ${archiveComment.trim()}` : "") }),
           })
         )
       );
       setArchiveModal(null);
       setArchiveReason("");
+      setArchiveComment("");
       load();
     } finally {
       setArchiving(false);
@@ -561,6 +563,16 @@ export default function ClientsPage() {
                 value={["Annulation client", "Prestation terminée", "Client injoignable", "Doublon"].includes(archiveReason) ? "" : archiveReason}
                 onChange={(e) => setArchiveReason(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Commentaire <span className="text-gray-400 font-normal">(optionnel)</span></label>
+              <textarea
+                rows={2}
+                placeholder="Détails supplémentaires sur la situation…"
+                value={archiveComment}
+                onChange={(e) => setArchiveComment(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 resize-none"
               />
             </div>
             <div className="flex gap-2 pt-1">
