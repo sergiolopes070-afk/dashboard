@@ -7,7 +7,8 @@ import {
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import ClientModal from "@/components/ClientModal";
-import { Prestation, STATUT_COLORS } from "@/lib/constants";
+import NewClientModal from "@/components/NewClientModal";
+import { Prestation, Prestataire, STATUT_COLORS } from "@/lib/constants";
 
 interface Client {
   nom: string;
@@ -58,7 +59,7 @@ function PrestationRow({
   p: Prestation;
   onDelete: (id: string) => void;
   onDevisGenerated: () => void;
-  onArchive: (id: string, label: string) => void;
+  onArchive: (ids: string[], label: string) => void;
 }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const [generatingDevis, setGeneratingDevis] = useState(false);
@@ -101,7 +102,7 @@ function PrestationRow({
             </span>
           )}
           <button
-            onClick={() => onArchive(p.row, `${p.typePresta} – ${p.date || "?"}`)}
+            onClick={() => onArchive([p.row], `${p.typePresta} – ${p.date || "?"}`)}
             className="p-1 rounded-lg hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-colors"
             title="Archiver cette prestation"
           >
@@ -210,21 +211,26 @@ function PrestationRow({
 }
 
 export default function ClientsPage() {
-  const [data, setData]         = useState<Prestation[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [search, setSearch]     = useState("");
-  const [modal, setModal]       = useState<{ mode: "add" | "edit"; client?: Client } | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [confirmClientDel, setConfirmClientDel] = useState<string | null>(null); // client key
-  const [archiveModal, setArchiveModal] = useState<{ id: string; label: string } | null>(null);
+  const [data, setData]               = useState<Prestation[]>([]);
+  const [prestataires, setPrestataires] = useState<Prestataire[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [search, setSearch]           = useState("");
+  const [modal, setModal]             = useState<{ mode: "add" | "edit"; client?: Client } | null>(null);
+  const [expanded, setExpanded]       = useState<Set<string>>(new Set());
+  const [confirmClientDel, setConfirmClientDel] = useState<string | null>(null);
+  const [archiveModal, setArchiveModal] = useState<{ ids: string[]; label: string } | null>(null);
   const [archiveReason, setArchiveReason] = useState("");
-  const [archiving, setArchiving] = useState(false);
+  const [archiving, setArchiving]     = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/prestations?t=${Date.now()}`, { cache: "no-store" });
-      if (res.ok) setData(await res.json());
+      const [resPres, resPresta] = await Promise.all([
+        fetch(`/api/prestations?t=${Date.now()}`, { cache: "no-store" }),
+        fetch("/api/prestataires"),
+      ]);
+      if (resPres.ok) setData(await resPres.json());
+      if (resPresta.ok) setPrestataires(await resPresta.json());
     } finally {
       setLoading(false);
     }
@@ -294,11 +300,15 @@ export default function ClientsPage() {
     if (!archiveModal) return;
     setArchiving(true);
     try {
-      await fetch("/api/archive", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: archiveModal.id, reason: archiveReason }),
-      });
+      await Promise.all(
+        archiveModal.ids.map((id) =>
+          fetch("/api/archive", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, reason: archiveReason }),
+          })
+        )
+      );
       setArchiveModal(null);
       setArchiveReason("");
       load();
@@ -374,6 +384,16 @@ export default function ClientsPage() {
                           title="Modifier ce client"
                         >
                           <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setArchiveModal({ ids: c.prestations.map((p) => p.row), label: `${c.prenom} ${c.nom}` });
+                            setArchiveReason("");
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-colors"
+                          title="Archiver ce client"
+                        >
+                          <Archive size={14} />
                         </button>
                         <button
                           onClick={() => setConfirmClientDel(isConfirmingDel ? null : key)}
@@ -470,7 +490,7 @@ export default function ClientsPage() {
                             p={p}
                             onDelete={handleDeletePrestation}
                             onDevisGenerated={load}
-                            onArchive={(id, label) => { setArchiveModal({ id, label }); setArchiveReason(""); }}
+                            onArchive={(ids, label) => { setArchiveModal({ ids, label }); setArchiveReason(""); }}
                           />
                         ))
                       )}
@@ -483,9 +503,16 @@ export default function ClientsPage() {
         )}
       </div>
 
-      {modal && (
+      {modal && modal.mode === "add" && (
+        <NewClientModal
+          prestataires={prestataires}
+          onClose={() => setModal(null)}
+          onSaved={load}
+        />
+      )}
+      {modal && modal.mode === "edit" && (
         <ClientModal
-          mode={modal.mode}
+          mode="edit"
           client={modal.client}
           onClose={() => setModal(null)}
           onSaved={load}
@@ -506,7 +533,10 @@ export default function ClientsPage() {
               </button>
             </div>
             <p className="text-sm text-gray-500">
-              <span className="font-medium text-gray-700">{archiveModal.label}</span> sera déplacée dans l&apos;historique.
+              <span className="font-medium text-gray-700">{archiveModal.label}</span>{" "}
+              {archiveModal.ids.length > 1
+                ? `et ses ${archiveModal.ids.length} prestations seront déplacées dans l'historique.`
+                : "sera déplacée dans l'historique."}
             </p>
             <div className="space-y-2">
               <label className="text-xs font-medium text-gray-600">Raison de l&apos;archivage</label>

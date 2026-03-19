@@ -1,15 +1,16 @@
 "use client";
 import { Prestation } from "@/lib/constants";
 import StatusBadge from "./StatusBadge";
-import { ExternalLink, MessageCircle, FileText, Pencil } from "lucide-react";
+import { ExternalLink, MessageCircle, FileText, Pencil, Archive } from "lucide-react";
 
 interface PrestationTableProps {
   prestations: Prestation[];
   showActions?: boolean;
   onEdit?: (p: Prestation) => void;
+  onArchive?: (id: string, label: string) => void;
 }
 
-export default function PrestationTable({ prestations, showActions = true, onEdit }: PrestationTableProps) {
+export default function PrestationTable({ prestations, showActions = true, onEdit, onArchive }: PrestationTableProps) {
   if (prestations.length === 0) {
     return (
       <div className="text-center py-12 text-gray-400">
@@ -33,11 +34,18 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
             {showActions && (
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</th>
             )}
+            {onArchive && (
+              <th className="py-3 px-2 w-8" />
+            )}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-50">
           {prestations.map((p) => (
-            <tr key={p.row} className="hover:bg-gray-50 transition-colors">
+            <tr
+              key={p.row}
+              className={`hover:bg-gray-50 transition-colors ${onEdit ? "cursor-pointer" : ""}`}
+              onClick={() => onEdit?.(p)}
+            >
               <td className="py-3 px-4">
                 <div className="font-medium text-gray-900">{p.prenom} {p.nom}</div>
                 <div className="text-xs text-gray-400">{p.tel}</div>
@@ -91,7 +99,7 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                 }
               </td>
               {showActions && (
-                <td className="py-3 px-4">
+                <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-2">
                     {onEdit && (
                       <button
@@ -134,6 +142,17 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                       </a>
                     )}
                   </div>
+                </td>
+              )}
+              {onArchive && (
+                <td className="py-3 px-2" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => onArchive(p.row, `${p.prenom} ${p.nom} – ${p.typePresta}`)}
+                    title="Archiver cette prestation"
+                    className="p-1.5 rounded-lg hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-colors"
+                  >
+                    <Archive size={14} />
+                  </button>
                 </td>
               )}
             </tr>
