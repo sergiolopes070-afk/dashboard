@@ -1,135 +1,184 @@
 "use client";
 import {
-  Settings, CheckCircle, AlertTriangle, ExternalLink, Copy,
-  Mail, CreditCard, X, Eye, EyeOff, Loader2, Wifi, WifiOff,
+  Mail, CreditCard, X, Eye, EyeOff, Loader2,
+  CheckCircle2, Circle, ExternalLink, Copy, Check,
+  AlertCircle, ChevronRight, Database,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { useState, useEffect, useCallback } from "react";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
+type Settings = Record<string, string | undefined>;
+
+// ─── Composants utilitaires ───────────────────────────────────────────────────
+
+function CopyBtn({ text, label }: { text: string; label?: string }) {
+  const [ok, setOk] = useState(false);
   return (
     <button
-      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-      className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors"
-      title="Copier"
+      onClick={() => { navigator.clipboard.writeText(text); setOk(true); setTimeout(() => setOk(false), 2000); }}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs transition-colors"
     >
-      {copied ? <CheckCircle size={13} className="text-green-600" /> : <Copy size={13} />}
+      {ok ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+      {label ?? (ok ? "Copié !" : "Copier")}
     </button>
   );
 }
 
-function MaskedInput({ value, onChange, placeholder, label }: {
-  value: string; onChange: (v: string) => void; placeholder?: string; label: string;
+function MaskedField({ label, value, onChange, placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string;
 }) {
   const [show, setShow] = useState(false);
   return (
-    <div className="space-y-1.5">
-      <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">{label}</label>
+    <label className="block">
+      <span className="text-xs font-medium text-gray-500 mb-1.5 block">{label}</span>
       <div className="relative">
         <input
           type={show ? "text" : "password"}
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 pr-10 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors"
         />
         <button type="button" onClick={() => setShow(v => !v)}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-          {show ? <EyeOff size={15} /> : <Eye size={15} />}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+          {show ? <EyeOff size={14} /> : <Eye size={14} />}
         </button>
       </div>
-    </div>
+    </label>
+  );
+}
+
+function TextField({ label, value, onChange, placeholder, type = "text" }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-medium text-gray-500 mb-1.5 block">{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors"
+      />
+    </label>
+  );
+}
+
+// ─── Badge statut ─────────────────────────────────────────────────────────────
+
+function StatusBadge({ connected }: { connected: boolean }) {
+  return connected ? (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+      <CheckCircle2 size={11} /> Connecté
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-gray-100 border border-gray-200 px-2.5 py-1 rounded-full">
+      <Circle size={11} /> Non configuré
+    </span>
   );
 }
 
 // ─── Modal Gmail ─────────────────────────────────────────────────────────────
 
-function GmailModal({ onClose, onSave, currentEmail }: {
+function GmailModal({ currentEmail, onClose, onSave }: {
+  currentEmail?: string;
   onClose: () => void;
   onSave: (user: string, pass: string) => Promise<void>;
-  currentEmail?: string;
 }) {
   const [email, setEmail] = useState(currentEmail || "");
   const [pass, setPass]   = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState("");
 
-  const handleSave = async () => {
-    if (!email.trim() || !pass.trim()) { setError("Les deux champs sont requis."); return; }
-    setSaving(true);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) { setError("L'adresse email est requise."); return; }
+    if (!pass.trim())  { setError("Le mot de passe d'application est requis."); return; }
+    setLoading(true);
+    setError("");
     try { await onSave(email.trim(), pass.trim()); onClose(); }
-    catch (e) { setError(e instanceof Error ? e.message : "Erreur"); }
-    finally { setSaving(false); }
+    catch (err) { setError(err instanceof Error ? err.message : "Erreur inconnue"); }
+    finally { setLoading(false); }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-red-50 rounded-xl flex items-center justify-center">
-              <Mail size={18} className="text-red-500" />
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[440px] overflow-hidden">
+        {/* En-tête */}
+        <div className="bg-gradient-to-r from-red-500 to-orange-500 p-5 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                <Mail size={20} />
+              </div>
+              <div>
+                <h2 className="font-bold text-base">Connexion Gmail</h2>
+                <p className="text-red-100 text-xs">Envoyer des emails aux clients</p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-bold text-gray-900 text-sm">Connexion Gmail</h2>
-              <p className="text-xs text-gray-500">Envoyer des emails via votre compte Google</p>
-            </div>
+            <button onClick={onClose} className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center transition-colors">
+              <X size={15} />
+            </button>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
-            <X size={16} className="text-gray-500" />
-          </button>
         </div>
 
-        {/* Body */}
-        <div className="p-5 space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Adresse Gmail</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="votre@gmail.com"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <TextField
+            label="Adresse Gmail"
+            value={email}
+            onChange={setEmail}
+            placeholder="votre@gmail.com"
+            type="email"
+          />
 
-          <MaskedInput
+          <MaskedField
             label="Mot de passe d'application"
             value={pass}
             onChange={setPass}
             placeholder="xxxx xxxx xxxx xxxx"
           />
 
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 space-y-1">
-            <p className="font-semibold">Où trouver le mot de passe d&apos;application ?</p>
-            <p>Compte Google → Sécurité → Validation en 2 étapes → Mots de passe des applications</p>
+          {/* Info */}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-800 space-y-2">
+            <p className="font-semibold flex items-center gap-1.5">
+              <AlertCircle size={13} /> Comment créer un mot de passe d&apos;application ?
+            </p>
+            <ol className="list-decimal list-inside space-y-1 text-amber-700">
+              <li>Allez sur <strong>Compte Google → Sécurité</strong></li>
+              <li>Activez la <strong>Validation en 2 étapes</strong></li>
+              <li>Cherchez <strong>Mots de passe des applications</strong></li>
+              <li>Créez-en un pour l&apos;appli &quot;KinouClean&quot;</li>
+            </ol>
             <a
               href="https://myaccount.google.com/apppasswords"
               target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-amber-700 underline font-medium mt-1"
+              className="inline-flex items-center gap-1 text-amber-700 underline font-medium"
             >
-              Ouvrir les paramètres Google <ExternalLink size={11} />
+              Ouvrir myaccount.google.com <ExternalLink size={11} />
             </a>
           </div>
 
-          {error && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-        </div>
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700 flex items-start gap-2">
+              <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
+              {error}
+            </div>
+          )}
 
-        {/* Footer */}
-        <div className="flex gap-2 p-5 pt-0">
-          <button onClick={onClose}
-            className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-            Annuler
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-            {saving ? <><Loader2 size={14} className="animate-spin" /> Enregistrement…</> : "Enregistrer"}
-          </button>
-        </div>
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+              Annuler
+            </button>
+            <button type="submit" disabled={loading}
+              className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+              {loading ? <><Loader2 size={14} className="animate-spin" /> Connexion…</> : "Connecter Gmail"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -137,145 +186,197 @@ function GmailModal({ onClose, onSave, currentEmail }: {
 
 // ─── Modal Stripe ─────────────────────────────────────────────────────────────
 
-function StripeModal({ onClose, onSave, currentPubKey }: {
+function StripeModal({ currentPubKey, onClose, onSave }: {
+  currentPubKey?: string;
   onClose: () => void;
   onSave: (secret: string, pub: string) => Promise<void>;
-  currentPubKey?: string;
 }) {
   const [secret, setSecret] = useState("");
-  const [pub,    setPub]    = useState(currentPubKey || "");
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState("");
+  const [pub, setPub]       = useState(currentPubKey || "");
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState("");
 
-  const handleSave = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!secret.trim()) { setError("La clé secrète est requise."); return; }
     if (!secret.startsWith("sk_")) { setError("La clé secrète doit commencer par sk_live_ ou sk_test_"); return; }
-    setSaving(true);
+    setLoading(true);
+    setError("");
     try { await onSave(secret.trim(), pub.trim()); onClose(); }
-    catch (e) { setError(e instanceof Error ? e.message : "Erreur"); }
-    finally { setSaving(false); }
+    catch (err) { setError(err instanceof Error ? err.message : "Erreur inconnue"); }
+    finally { setLoading(false); }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-violet-50 rounded-xl flex items-center justify-center">
-              <CreditCard size={18} className="text-violet-600" />
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[440px] overflow-hidden">
+        {/* En-tête */}
+        <div className="bg-gradient-to-r from-violet-600 to-purple-600 p-5 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                <CreditCard size={20} />
+              </div>
+              <div>
+                <h2 className="font-bold text-base">Connexion Stripe</h2>
+                <p className="text-violet-200 text-xs">Paiements en ligne</p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-bold text-gray-900 text-sm">Connexion Stripe</h2>
-              <p className="text-xs text-gray-500">Accepter les paiements en ligne</p>
-            </div>
+            <button onClick={onClose} className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center transition-colors">
+              <X size={15} />
+            </button>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
-            <X size={16} className="text-gray-500" />
-          </button>
         </div>
 
-        {/* Body */}
-        <div className="p-5 space-y-4">
-          <MaskedInput
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <MaskedField
             label="Clé secrète (sk_live_… ou sk_test_…)"
             value={secret}
             onChange={setSecret}
             placeholder="sk_live_..."
           />
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-              Clé publique <span className="font-normal text-gray-400">(optionnel)</span>
-            </label>
-            <input
-              type="text"
-              value={pub}
-              onChange={e => setPub(e.target.value)}
-              placeholder="pk_live_..."
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 font-mono"
-            />
-          </div>
+          <TextField
+            label="Clé publique (optionnel — pk_live_… ou pk_test_…)"
+            value={pub}
+            onChange={setPub}
+            placeholder="pk_live_..."
+          />
 
-          <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 text-xs text-violet-800 space-y-1">
-            <p className="font-semibold">Où trouver vos clés API Stripe ?</p>
-            <p>Tableau de bord Stripe → Développeurs → Clés API</p>
+          {/* Info */}
+          <div className="bg-violet-50 border border-violet-200 rounded-xl p-3.5 text-xs text-violet-800 space-y-2">
+            <p className="font-semibold flex items-center gap-1.5">
+              <AlertCircle size={13} /> Où trouver vos clés Stripe ?
+            </p>
+            <p className="text-violet-700">
+              Tableau de bord Stripe → <strong>Développeurs</strong> → <strong>Clés API</strong>
+            </p>
             <a
               href="https://dashboard.stripe.com/apikeys"
               target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-violet-700 underline font-medium mt-1"
+              className="inline-flex items-center gap-1 text-violet-700 underline font-medium"
             >
               Ouvrir Stripe Dashboard <ExternalLink size={11} />
             </a>
           </div>
 
-          {error && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700 flex items-start gap-2">
+              <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+              Annuler
+            </button>
+            <button type="submit" disabled={loading}
+              className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+              {loading ? <><Loader2 size={14} className="animate-spin" /> Connexion…</> : "Connecter Stripe"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Carte intégration ────────────────────────────────────────────────────────
+
+function ServiceCard({
+  icon, title, description, connected, detail,
+  onConnect, onDisconnect, disabled,
+  accentClass,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  connected: boolean;
+  detail?: string;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  disabled?: boolean;
+  accentClass: string;
+}) {
+  return (
+    <div className={`bg-white border rounded-2xl p-5 transition-all ${disabled ? "opacity-50 pointer-events-none border-gray-100" : "border-gray-100 shadow-sm hover:shadow-md"}`}>
+      <div className="flex items-start gap-4">
+        {/* Icône */}
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${accentClass}`}>
+          {icon}
         </div>
 
-        {/* Footer */}
-        <div className="flex gap-2 p-5 pt-0">
-          <button onClick={onClose}
-            className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-            Annuler
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            className="flex-1 px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-            {saving ? <><Loader2 size={14} className="animate-spin" /> Enregistrement…</> : "Enregistrer"}
-          </button>
+        {/* Contenu */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-semibold text-gray-900">{title}</span>
+            <StatusBadge connected={connected} />
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            {connected && detail ? detail : description}
+          </p>
+
+          {/* Actions */}
+          <div className="flex gap-2">
+            <button
+              onClick={onConnect}
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                connected
+                  ? "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                  : `text-white ${accentClass.replace("bg-", "bg-").replace("50", "500")} hover:opacity-90`
+              }`}
+            >
+              {connected ? "Modifier" : <><ChevronRight size={12} /> Se connecter</>}
+            </button>
+            {connected && (
+              <button
+                onClick={onDisconnect}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200 transition-colors"
+              >
+                Déconnecter
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Carte de connexion ───────────────────────────────────────────────────────
+// ─── SQL Setup Banner ─────────────────────────────────────────────────────────
 
-function ConnexionCard({
-  icon, title, description, connected, connectedLabel,
-  onConnect, onDisconnect, connectColor,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  connected: boolean;
-  connectedLabel?: string;
-  onConnect: () => void;
-  onDisconnect: () => void;
-  connectColor: string;
-}) {
+const SETUP_SQL = `CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);`;
+
+function SetupBanner() {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
-      <div className="w-12 h-12 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center flex-shrink-0">
-        {icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <span className="font-semibold text-gray-900 text-sm">{title}</span>
-          {connected
-            ? <span className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-700 border border-green-200 rounded-full px-2 py-0.5 font-medium">
-                <Wifi size={10} /> Connecté
-              </span>
-            : <span className="inline-flex items-center gap-1 text-xs bg-gray-50 text-gray-500 border border-gray-200 rounded-full px-2 py-0.5">
-                <WifiOff size={10} /> Non configuré
-              </span>
-          }
+    <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 space-y-3">
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+          <Database size={16} className="text-blue-600" />
         </div>
-        <p className="text-xs text-gray-500">
-          {connected && connectedLabel ? connectedLabel : description}
-        </p>
+        <div>
+          <p className="font-semibold text-blue-900 text-sm">Étape préalable — Créer la table settings</p>
+          <p className="text-xs text-blue-700 mt-0.5">
+            Exécutez ce SQL une seule fois dans <strong>Supabase → SQL Editor</strong> pour activer le stockage des connexions.
+          </p>
+        </div>
       </div>
-      <div className="flex gap-2 flex-shrink-0">
-        {connected && (
-          <button onClick={onDisconnect}
-            className="px-3 py-2 text-xs border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors font-medium">
-            Déconnecter
-          </button>
-        )}
-        <button onClick={onConnect}
-          className={`px-4 py-2 text-xs rounded-xl text-white font-semibold transition-colors ${connectColor}`}>
-          {connected ? "Modifier" : "Se connecter"}
-        </button>
+      <div className="relative">
+        <pre className="bg-gray-900 text-green-400 rounded-xl p-4 text-xs overflow-x-auto font-mono leading-relaxed">
+          {SETUP_SQL}
+        </pre>
+        <div className="absolute top-2.5 right-2.5">
+          <CopyBtn text={SETUP_SQL} />
+        </div>
       </div>
+      <p className="text-xs text-blue-600">
+        Après avoir exécuté ce SQL, rechargez cette page.
+      </p>
     </div>
   );
 }
@@ -283,12 +384,18 @@ function ConnexionCard({
 // ─── Page principale ──────────────────────────────────────────────────────────
 
 export default function ConfigurationPage() {
-  const [settings, setSettings] = useState<Record<string, string>>({});
+  const [settings, setSettings] = useState<Settings>({});
   const [loading, setLoading]   = useState(true);
   const [modal, setModal]       = useState<"gmail" | "stripe" | null>(null);
-  const [saved, setSaved]       = useState("");
+  const [toast, setToast]       = useState<{ msg: string; type: "success" | "error" } | null>(null);
+
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const loadSettings = useCallback(async () => {
+    setLoading(true);
     try {
       const res = await fetch("/api/settings");
       if (res.ok) setSettings(await res.json());
@@ -299,122 +406,129 @@ export default function ConfigurationPage() {
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
 
-  const saveSettings = async (patch: Record<string, string>) => {
+  const save = async (patch: Record<string, string>) => {
     const res = await fetch("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     });
-    if (!res.ok) throw new Error("Erreur lors de la sauvegarde");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Erreur lors de la sauvegarde");
     await loadSettings();
-    setSaved("Sauvegardé ✓");
-    setTimeout(() => setSaved(""), 2500);
+    showToast("Connexion enregistrée !");
   };
 
   const disconnect = async (keys: string[]) => {
     const patch: Record<string, string> = {};
     for (const k of keys) patch[k] = "";
-    await saveSettings(patch);
+    await save(patch);
+    showToast("Service déconnecté", "success");
   };
 
-  const gmailConnected  = !!(settings.gmail_user);
-  const stripeConnected = !!(settings.stripe_secret_key);
+  const tableReady  = settings._tableReady === "true" || settings._tableReady === true as unknown as string;
+  const gmailOk     = !!settings.gmail_user;
+  const stripeOk    = !!settings.stripe_secret_key;
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Topbar title="Configuration" subtitle="Connexions et paramètres" />
-      <div className="flex-1 p-6 max-w-3xl space-y-6">
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      <Topbar title="Configuration" subtitle="Gérez vos connexions et intégrations" />
 
-        {/* Toast */}
-        {saved && (
-          <div className="fixed top-4 right-4 z-50 bg-green-600 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
-            <CheckCircle size={15} /> {saved}
-          </div>
-        )}
-
-        {/* Section intégrations */}
-        <div>
-          <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-            <Settings size={13} /> Intégrations
-          </h2>
-
-          {loading ? (
-            <div className="bg-white rounded-2xl border border-gray-100 p-8 flex items-center justify-center">
-              <Loader2 size={20} className="animate-spin text-gray-400" />
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {/* Gmail */}
-              <ConnexionCard
-                icon={<Mail size={22} className="text-red-500" />}
-                title="Gmail"
-                description="Envoyer les emails de confirmation aux clients"
-                connected={gmailConnected}
-                connectedLabel={settings.gmail_user}
-                onConnect={() => setModal("gmail")}
-                onDisconnect={() => disconnect(["gmail_user", "gmail_app_password"])}
-                connectColor="bg-red-500 hover:bg-red-600"
-              />
-
-              {/* Stripe */}
-              <ConnexionCard
-                icon={<CreditCard size={22} className="text-violet-600" />}
-                title="Stripe"
-                description="Accepter les paiements en ligne et générer des liens de paiement"
-                connected={stripeConnected}
-                connectedLabel={
-                  settings.stripe_publishable_key
-                    ? `${settings.stripe_publishable_key.slice(0, 14)}…`
-                    : "Clé secrète configurée"
-                }
-                onConnect={() => setModal("stripe")}
-                onDisconnect={() => disconnect(["stripe_secret_key", "stripe_publishable_key"])}
-                connectColor="bg-violet-600 hover:bg-violet-700"
-              />
-            </div>
-          )}
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all ${
+          toast.type === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+        }`}>
+          {toast.type === "success" ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+          {toast.msg}
         </div>
+      )}
 
-        {/* Avertissement si Gmail non configuré */}
-        {!loading && !gmailConnected && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3">
-            <AlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" size={18} />
-            <div className="text-sm">
-              <p className="font-semibold text-amber-800">Gmail non connecté</p>
-              <p className="text-amber-700 mt-0.5">
-                Les emails de confirmation clients ne seront pas envoyés.
-                Connectez votre compte Gmail ci-dessus.
-              </p>
-            </div>
+      <div className="flex-1 p-6 max-w-2xl space-y-6">
+
+        {loading ? (
+          <div className="bg-white rounded-2xl border border-gray-100 p-12 flex flex-col items-center gap-3 text-gray-400">
+            <Loader2 size={24} className="animate-spin" />
+            <span className="text-sm">Chargement de la configuration…</span>
           </div>
+        ) : (
+          <>
+            {/* Setup SQL si table manquante */}
+            {!tableReady && <SetupBanner />}
+
+            {/* Section Services */}
+            <section>
+              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                Intégrations
+              </h2>
+              <div className="space-y-3">
+
+                {/* Gmail */}
+                <ServiceCard
+                  icon={<Mail size={22} className="text-red-500" />}
+                  title="Gmail"
+                  description="Envoyer des emails de confirmation et de rappel aux clients"
+                  connected={gmailOk}
+                  detail={settings.gmail_user}
+                  onConnect={() => setModal("gmail")}
+                  onDisconnect={() => disconnect(["gmail_user", "gmail_app_password"])}
+                  disabled={!tableReady && !gmailOk}
+                  accentClass="bg-red-50"
+                />
+
+                {/* Stripe */}
+                <ServiceCard
+                  icon={<CreditCard size={22} className="text-violet-600" />}
+                  title="Stripe"
+                  description="Générer des liens de paiement et encaisser les prestations"
+                  connected={stripeOk}
+                  detail={
+                    settings.stripe_publishable_key
+                      ? `${settings.stripe_publishable_key.slice(0, 16)}…`
+                      : "Clé secrète enregistrée"
+                  }
+                  onConnect={() => setModal("stripe")}
+                  onDisconnect={() => disconnect(["stripe_secret_key", "stripe_publishable_key"])}
+                  disabled={!tableReady && !stripeOk}
+                  accentClass="bg-violet-50"
+                />
+
+              </div>
+            </section>
+
+            {/* Checklist état */}
+            <section>
+              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                État des services
+              </h2>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50">
+                {[
+                  {
+                    label: "Supabase",
+                    ok: settings._supabase === "true" || settings._supabase === true as unknown as string,
+                    detail: "Base de données principale",
+                  },
+                  {
+                    label: "Table settings",
+                    ok: tableReady,
+                    detail: tableReady ? "Prête" : "À créer via SQL (voir ci-dessus)",
+                  },
+                  { label: "Gmail", ok: gmailOk, detail: gmailOk ? settings.gmail_user : "Non configuré" },
+                  { label: "Stripe", ok: stripeOk, detail: stripeOk ? "Clés enregistrées" : "Non configuré" },
+                ].map(({ label, ok, detail }) => (
+                  <div key={label} className="flex items-center gap-4 px-5 py-3.5">
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${ok ? "bg-emerald-400" : "bg-gray-300"}`} />
+                    <span className="text-sm font-medium text-gray-800 w-32">{label}</span>
+                    <span className={`text-xs flex-1 ${ok ? "text-gray-500" : "text-amber-600"}`}>{detail}</span>
+                    {ok
+                      ? <CheckCircle2 size={15} className="text-emerald-500 flex-shrink-0" />
+                      : <Circle size={15} className="text-gray-300 flex-shrink-0" />
+                    }
+                  </div>
+                ))}
+              </div>
+            </section>
+          </>
         )}
-
-        {/* Section technique Supabase */}
-        <div>
-          <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-            <Settings size={13} /> Configuration serveur
-          </h2>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
-            <p className="text-sm text-gray-600">
-              Variables d&apos;environnement requises dans <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">.env.local</code> :
-            </p>
-            <div className="space-y-2">
-              {[
-                { key: "SUPABASE_URL", desc: "URL de votre projet Supabase" },
-                { key: "SUPABASE_SERVICE_ROLE_KEY", desc: "Clé service Supabase (Settings → API)" },
-                { key: "NEXT_PUBLIC_SUPABASE_URL", desc: "Même URL (côté client)" },
-                { key: "NEXT_PUBLIC_SUPABASE_ANON_KEY", desc: "Clé anonyme Supabase" },
-              ].map(({ key, desc }) => (
-                <div key={key} className="flex items-center gap-3 text-xs">
-                  <CopyButton text={key} />
-                  <code className="bg-gray-100 px-2 py-1 rounded font-mono text-gray-700 flex-1">{key}</code>
-                  <span className="text-gray-400 hidden sm:block">{desc}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
       </div>
 
       {/* Modales */}
@@ -422,18 +536,14 @@ export default function ConfigurationPage() {
         <GmailModal
           currentEmail={settings.gmail_user}
           onClose={() => setModal(null)}
-          onSave={async (user, pass) => {
-            await saveSettings({ gmail_user: user, gmail_app_password: pass });
-          }}
+          onSave={(user, pass) => save({ gmail_user: user, gmail_app_password: pass })}
         />
       )}
       {modal === "stripe" && (
         <StripeModal
           currentPubKey={settings.stripe_publishable_key}
           onClose={() => setModal(null)}
-          onSave={async (secret, pub) => {
-            await saveSettings({ stripe_secret_key: secret, stripe_publishable_key: pub });
-          }}
+          onSave={(secret, pub) => save({ stripe_secret_key: secret, stripe_publishable_key: pub })}
         />
       )}
     </div>
