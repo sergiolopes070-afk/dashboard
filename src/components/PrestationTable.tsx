@@ -1,16 +1,17 @@
 "use client";
 import { Prestation } from "@/lib/constants";
 import StatusBadge from "./StatusBadge";
-import { ExternalLink, MessageCircle, FileText, Pencil, Archive } from "lucide-react";
+import { ExternalLink, MessageCircle, FileText, Pencil, Archive, Trash2 } from "lucide-react";
 
 interface PrestationTableProps {
   prestations: Prestation[];
   showActions?: boolean;
   onEdit?: (p: Prestation) => void;
   onArchive?: (id: string, label: string) => void;
+  onDelete?: (id: string, label: string) => void;
 }
 
-export default function PrestationTable({ prestations, showActions = true, onEdit, onArchive }: PrestationTableProps) {
+export default function PrestationTable({ prestations, showActions = true, onEdit, onArchive, onDelete }: PrestationTableProps) {
   if (prestations.length === 0) {
     return (
       <div className="text-center py-12 text-gray-400">
@@ -34,8 +35,8 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
             {showActions && (
               <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Actions</th>
             )}
-            {onArchive && (
-              <th className="py-3 px-2 w-8" />
+            {(onArchive || onDelete) && (
+              <th className="py-3 px-2 w-16" />
             )}
           </tr>
         </thead>
@@ -144,15 +145,28 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                   </div>
                 </td>
               )}
-              {onArchive && (
+              {(onArchive || onDelete) && (
                 <td className="py-3 px-2" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() => onArchive(p.row, `${p.prenom} ${p.nom} – ${p.typePresta}`)}
-                    title="Archiver cette prestation"
-                    className="p-1.5 rounded-lg hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-colors"
-                  >
-                    <Archive size={14} />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {onArchive && (
+                      <button
+                        onClick={() => onArchive(p.row, `${p.prenom} ${p.nom} – ${p.typePresta}`)}
+                        title="Archiver cette prestation"
+                        className="p-1.5 rounded-lg hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-colors"
+                      >
+                        <Archive size={14} />
+                      </button>
+                    )}
+                    {onDelete && (
+                      <button
+                        onClick={() => onDelete(p.row, `${p.prenom} ${p.nom} – ${p.typePresta}`)}
+                        title="Supprimer définitivement"
+                        className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 </td>
               )}
             </tr>

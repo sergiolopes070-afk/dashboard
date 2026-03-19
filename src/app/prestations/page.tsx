@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Search, Filter, Archive, X, Download } from "lucide-react";
+import { Search, Filter, Archive, X, Download, Trash2, Loader2 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import PrestationTable from "@/components/PrestationTable";
 import EditPrestationModal from "@/components/EditPrestationModal";
@@ -20,6 +20,8 @@ export default function PrestationsPage() {
   const [archiveReason, setArchiveReason] = useState("");
   const [archiveComment, setArchiveComment] = useState("");
   const [archiving, setArchiving]         = useState(false);
+  const [deleteModal, setDeleteModal]     = useState<{ id: string; label: string } | null>(null);
+  const [deleting, setDeleting]           = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,6 +79,22 @@ export default function PrestationsPage() {
       load();
     } finally {
       setArchiving(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteModal) return;
+    setDeleting(true);
+    try {
+      await fetch("/api/prestations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: deleteModal.id }),
+      });
+      setDeleteModal(null);
+      load();
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -154,6 +172,7 @@ export default function PrestationsPage() {
               prestations={filtered}
               onEdit={setEditing}
               onArchive={(id, label) => { setArchiveModal({ id, label }); setArchiveReason(""); }}
+              onDelete={(id, label) => setDeleteModal({ id, label })}
             />
           )}
         </div>
@@ -171,6 +190,37 @@ export default function PrestationsPage() {
             setArchiveReason("");
           }}
         />
+      )}
+
+      {/* Modal suppression */}
+      {deleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center">
+            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+              <Trash2 size={22} className="text-red-600" />
+            </div>
+            <h2 className="font-bold text-gray-900 mb-1">Supprimer définitivement ?</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              <span className="font-medium text-gray-700">{deleteModal.label}</span> sera supprimée définitivement. Cette action est irréversible.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteModal(null)}
+                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={deleting}
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors disabled:opacity-50"
+              >
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {deleting ? "Suppression…" : "Supprimer"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal archivage */}
