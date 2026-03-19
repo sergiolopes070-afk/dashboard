@@ -2,28 +2,30 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Archive, Phone, Mail, MapPin, User, Wrench, Calendar,
-  Clock, Euro, FileText, MessageSquare, Search, ChevronDown, ChevronUp, Tag, RefreshCw, Star,
+  Clock, Euro, FileText, MessageSquare, Search, Tag, RefreshCw,
+  Star, X, CheckCircle2, ExternalLink,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import NewClientModal from "@/components/NewClientModal";
 import { Prestation, Prestataire } from "@/lib/constants";
 
-// ─── Fiche archivée ──────────────────────────────────────────────────────────
+// ─── Étoiles ────────────────────────────────────────────────────────────────
 
-function StarRating({ value, onChange }: { value?: number; onChange: (v: number) => void }) {
+function StarRating({ value, onChange, size = 16 }: { value?: number; onChange?: (v: number) => void; size?: number }) {
   const [hovered, setHovered] = useState(0);
   return (
     <div className="flex items-center gap-0.5">
       {[1,2,3,4,5].map(i => (
         <button
           key={i}
-          onClick={() => onChange(i)}
-          onMouseEnter={() => setHovered(i)}
-          onMouseLeave={() => setHovered(0)}
-          className="transition-transform hover:scale-110"
+          onClick={() => onChange?.(i)}
+          onMouseEnter={() => onChange ? setHovered(i) : undefined}
+          onMouseLeave={() => onChange ? setHovered(0) : undefined}
+          className={onChange ? "transition-transform hover:scale-110" : "cursor-default"}
+          disabled={!onChange}
         >
           <Star
-            size={16}
+            size={size}
             className={`${(hovered || value || 0) >= i ? "fill-amber-400 text-amber-400" : "text-gray-300"}`}
           />
         </button>
@@ -32,8 +34,15 @@ function StarRating({ value, onChange }: { value?: number; onChange: (v: number)
   );
 }
 
-function FicheArchive({ p, onReprogrammer }: { p: Prestation; onReprogrammer: (p: Prestation) => void }) {
-  const [open, setOpen] = useState(false);
+// ─── Modal compte rendu ──────────────────────────────────────────────────────
+
+function CompteRenduModal({
+  p, onClose, onReprogrammer,
+}: {
+  p: Prestation;
+  onClose: () => void;
+  onReprogrammer: (p: Prestation) => void;
+}) {
   const [satisfaction, setSatisfaction] = useState(p.satisfaction);
   const [savingSat, setSavingSat] = useState(false);
 
@@ -62,198 +71,343 @@ function FicheArchive({ p, onReprogrammer }: { p: Prestation; onReprogrammer: (p
   const prix = parseFloat(p.prix);
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      {/* ── Header fiche ─────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-5 py-4">
-        {/* Identité client */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
-            <span className="text-emerald-700 font-bold text-sm">
-              {(p.prenom?.[0] ?? "?").toUpperCase()}{(p.nom?.[0] ?? "").toUpperCase()}
-            </span>
-          </div>
-          <div className="min-w-0">
-            <p className="font-semibold text-gray-900 truncate">
-              {p.prenom} {p.nom}
-            </p>
-            <p className="text-xs text-gray-400 truncate">{p.typePresta}</p>
-          </div>
-        </div>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
 
-        {/* Métadonnées rapides */}
-        <div className="hidden sm:flex items-center gap-4 text-xs text-gray-500 shrink-0 mx-4">
-          {dateLabel && (
-            <span className="flex items-center gap-1">
-              <Calendar size={12} className="text-gray-400" />
-              {dateLabel}
-            </span>
-          )}
-          {p.heure && (
-            <span className="flex items-center gap-1">
-              <Clock size={12} className="text-gray-400" />
-              {p.heure}
-            </span>
-          )}
-        </div>
-
-        {/* Satisfaction + reprogrammer */}
-        <div className="hidden sm:flex items-center gap-2 shrink-0">
-          <StarRating value={satisfaction} onChange={saveSatisfaction} />
-          {savingSat && <span className="text-xs text-gray-400">…</span>}
+        {/* ── Header modal ────────────────────────────────────────────── */}
+        <div className="bg-gradient-to-r from-emerald-600 to-emerald-500 px-6 py-5 flex items-start justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+              <span className="text-white font-bold text-lg">
+                {(p.prenom?.[0] ?? "?").toUpperCase()}{(p.nom?.[0] ?? "").toUpperCase()}
+              </span>
+            </div>
+            <div>
+              <h2 className="text-white font-bold text-lg leading-tight">
+                {p.prenom} {p.nom}
+              </h2>
+              <p className="text-emerald-100 text-sm mt-0.5">{p.typePresta}</p>
+              {dateLabel && (
+                <p className="text-emerald-200 text-xs mt-1 flex items-center gap-1">
+                  <Calendar size={11} />
+                  {dateLabel}{p.heure ? ` à ${p.heure}` : ""}
+                </p>
+              )}
+            </div>
+          </div>
           <button
-            onClick={(e) => { e.stopPropagation(); onReprogrammer(p); }}
-            title="Reprogrammer cette prestation"
-            className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+            onClick={onClose}
+            className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors shrink-0"
           >
-            <RefreshCw size={11} />
-            Reprogram.
+            <X size={18} />
           </button>
         </div>
 
-        {/* Prix + badge terminé + toggle */}
-        <div className="flex items-center gap-3 shrink-0">
+        {/* ── Badges statut ───────────────────────────────────────────── */}
+        <div className="flex items-center gap-2 px-6 py-3 border-b border-gray-100 bg-gray-50 flex-wrap">
           {!isNaN(prix) && prix > 0 && (
-            <span className="font-bold text-emerald-700 text-sm">
-              {prix.toFixed(0)} €
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-sm font-bold">
+              <Euro size={13} />{prix.toFixed(2)} €
             </span>
           )}
           {p.archiveReason ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">
+              <Tag size={11} />{p.archiveReason}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
+              <CheckCircle2 size={11} />Terminée
+            </span>
+          )}
+          {p.prestataire && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
+              <User size={11} />{p.prestataire}
+            </span>
+          )}
+        </div>
+
+        {/* ── Corps scrollable ─────────────────────────────────────────── */}
+        <div className="overflow-y-auto flex-1 p-6 space-y-5">
+
+          {/* Client */}
+          <section>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <User size={11} /> Informations client
+            </h3>
+            <div className="bg-gray-50 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-gray-400 mb-0.5">Nom complet</p>
+                <p className="font-semibold text-gray-800">{p.prenom} {p.nom}</p>
+              </div>
+              {p.tel && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-0.5">Téléphone</p>
+                  <a href={`tel:${p.tel}`} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline font-medium">
+                    <Phone size={13} />{p.tel}
+                  </a>
+                </div>
+              )}
+              {p.email && (
+                <div className="sm:col-span-2">
+                  <p className="text-xs text-gray-400 mb-0.5">Email</p>
+                  <a href={`mailto:${p.email}`} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline break-all">
+                    <Mail size={13} />{p.email}
+                  </a>
+                </div>
+              )}
+              {p.adresse && (
+                <div className="sm:col-span-2">
+                  <p className="text-xs text-gray-400 mb-0.5">Adresse</p>
+                  <p className="flex items-start gap-1.5 text-sm text-gray-700">
+                    <MapPin size={13} className="mt-0.5 shrink-0 text-gray-400" />{p.adresse}
+                  </p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Prestation */}
+          <section>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <Wrench size={11} /> Détails de la prestation
+            </h3>
+            <div className="bg-gray-50 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-gray-400 mb-0.5">Type</p>
+                <p className="font-semibold text-gray-800">{p.typePresta || "—"}</p>
+              </div>
+              {p.quantite && p.quantite !== "1" && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-0.5">Quantité</p>
+                  <p className="text-sm text-gray-700">{p.quantite}</p>
+                </div>
+              )}
+              {dateLabel && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-0.5">Date d&apos;intervention</p>
+                  <p className="flex items-center gap-1.5 text-sm text-gray-700">
+                    <Calendar size={13} className="text-gray-400" />
+                    {dateLabel}
+                  </p>
+                </div>
+              )}
+              {p.heure && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-0.5">Heure</p>
+                  <p className="flex items-center gap-1.5 text-sm text-gray-700">
+                    <Clock size={13} className="text-gray-400" />{p.heure}
+                  </p>
+                </div>
+              )}
+              {!isNaN(prix) && prix > 0 && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-0.5">Prix</p>
+                  <p className="flex items-center gap-1.5 text-sm font-bold text-emerald-700">
+                    <Euro size={13} />{prix.toFixed(2)} €
+                  </p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Prestataire */}
+          {p.prestataire && (
+            <section>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                <User size={11} /> Prestataire
+              </h3>
+              <div className="bg-gray-50 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-400 mb-0.5">Nom</p>
+                  <p className="font-semibold text-gray-800">{p.prestataire}</p>
+                </div>
+                {p.emailPresta && (
+                  <div>
+                    <p className="text-xs text-gray-400 mb-0.5">Email</p>
+                    <a href={`mailto:${p.emailPresta}`} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline break-all">
+                      <Mail size={13} />{p.emailPresta}
+                    </a>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Notes */}
+          {(p.message || p.commentaire) && (
+            <section>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                <MessageSquare size={11} /> Notes & commentaires
+              </h3>
+              <div className="space-y-2">
+                {p.message && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                    <p className="text-xs font-medium text-blue-500 mb-1">Message client</p>
+                    <p className="text-sm text-blue-800 italic">&quot;{p.message}&quot;</p>
+                  </div>
+                )}
+                {p.commentaire && (
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
+                    <p className="text-xs font-medium text-gray-400 mb-1">Commentaire interne</p>
+                    <p className="text-sm text-gray-700">{p.commentaire}</p>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Satisfaction */}
+          <section>
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+              <Star size={11} /> Satisfaction client
+            </h3>
+            <div className="bg-gray-50 rounded-xl p-4 flex items-center gap-3">
+              <StarRating value={satisfaction} onChange={saveSatisfaction} size={22} />
+              {savingSat && <span className="text-xs text-gray-400">Enregistrement…</span>}
+              {!satisfaction && !savingSat && (
+                <span className="text-xs text-gray-400">Cliquez pour noter</span>
+              )}
+              {satisfaction && !savingSat && (
+                <span className="text-xs text-gray-500">{satisfaction}/5 étoile{satisfaction > 1 ? "s" : ""}</span>
+              )}
+            </div>
+          </section>
+
+          {/* Archivage */}
+          {p.archiveReason && (
+            <section>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                <Archive size={11} /> Raison d&apos;archivage
+              </h3>
+              <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                <p className="text-sm text-amber-800">{p.archiveReason}</p>
+              </div>
+            </section>
+          )}
+
+        </div>
+
+        {/* ── Footer actions ───────────────────────────────────────────── */}
+        <div className="border-t border-gray-100 px-6 py-4 flex items-center justify-between gap-3 bg-gray-50">
+          {(p.devisPDF || p.genDevis === "FAIT") ? (
+            <a
+              href={p.devisPDF || `/api/devis/${p.row}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-white transition-colors"
+            >
+              <FileText size={14} /> Voir le devis
+            </a>
+          ) : <div />}
+          <div className="flex items-center gap-2">
+            {p.tel && (
+              <a
+                href={`https://wa.me/${p.tel.replace(/\s/g, "").replace(/^0/, "33")}`}
+                target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-green-200 text-sm text-green-700 hover:bg-green-50 transition-colors"
+              >
+                <ExternalLink size={14} /> WhatsApp
+              </a>
+            )}
+            <button
+              onClick={() => { onClose(); onReprogrammer(p); }}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              <RefreshCw size={14} /> Reprogrammer
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Carte archive (cliquable) ───────────────────────────────────────────────
+
+function CarteArchive({ p, onClick }: { p: Prestation; onClick: () => void }) {
+  const dateLabel = (() => {
+    if (!p.date) return null;
+    const parts = p.date.split("/");
+    if (parts.length !== 3) return p.date;
+    const d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+    return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  })();
+
+  const prix = parseFloat(p.prix);
+
+  return (
+    <button
+      onClick={onClick}
+      className="w-full bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-emerald-200 transition-all text-left group"
+    >
+      <div className="flex items-center gap-4 px-5 py-4">
+        {/* Avatar */}
+        <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 group-hover:bg-emerald-200 transition-colors">
+          <span className="text-emerald-700 font-bold text-sm">
+            {(p.prenom?.[0] ?? "?").toUpperCase()}{(p.nom?.[0] ?? "").toUpperCase()}
+          </span>
+        </div>
+
+        {/* Infos principales */}
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-900 truncate">{p.prenom} {p.nom}</p>
+          <p className="text-xs text-gray-500 truncate">{p.typePresta}</p>
+        </div>
+
+        {/* Date */}
+        {dateLabel && (
+          <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-400 shrink-0">
+            <Calendar size={12} />
+            {dateLabel}{p.heure ? ` · ${p.heure}` : ""}
+          </div>
+        )}
+
+        {/* Satisfaction mini */}
+        {p.satisfaction && (
+          <div className="hidden sm:flex items-center gap-0.5 shrink-0">
+            {[1,2,3,4,5].map(i => (
+              <Star key={i} size={11} className={p.satisfaction! >= i ? "fill-amber-400 text-amber-400" : "text-gray-200"} />
+            ))}
+          </div>
+        )}
+
+        {/* Prix + badge */}
+        <div className="flex items-center gap-2 shrink-0">
+          {!isNaN(prix) && prix > 0 && (
+            <span className="font-bold text-emerald-700 text-sm">{prix.toFixed(0)} €</span>
+          )}
+          {p.archiveReason ? (
             <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium">
-              <Tag size={10} />
-              {p.archiveReason}
+              <Tag size={10} />{p.archiveReason.split(" — ")[0]}
             </span>
           ) : (
             <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-medium">
-              <Archive size={10} />
-              Terminée
+              <CheckCircle2 size={10} />Terminée
             </span>
           )}
-          <button
-            onClick={() => setOpen((v) => !v)}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-400"
-            aria-label={open ? "Réduire" : "Voir la fiche complète"}
-          >
-            {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
+        </div>
+
+        {/* Indicateur cliquable */}
+        <div className="text-gray-300 group-hover:text-emerald-500 transition-colors shrink-0">
+          <ExternalLink size={14} />
         </div>
       </div>
-
-      {/* ── Fiche détaillée (dépliable) ──────────────────────────── */}
-      {open && (
-        <div className="border-t border-gray-50 px-5 pb-5 pt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-
-          {/* Bloc client */}
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1">
-              <User size={11} /> Client
-            </p>
-            <div className="space-y-1.5">
-              <p className="font-semibold text-gray-800 text-sm">{p.prenom} {p.nom}</p>
-              {p.tel && (
-                <a href={`tel:${p.tel}`} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600">
-                  <Phone size={11} className="text-gray-400" />{p.tel}
-                </a>
-              )}
-              {p.email && (
-                <a href={`mailto:${p.email}`} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600 break-all">
-                  <Mail size={11} className="text-gray-400" />{p.email}
-                </a>
-              )}
-              {(p.adresse) && (
-                <p className="flex items-start gap-1.5 text-xs text-gray-600">
-                  <MapPin size={11} className="text-gray-400 mt-0.5 shrink-0" />{p.adresse}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Bloc prestation */}
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1">
-              <Wrench size={11} /> Prestation
-            </p>
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium text-gray-800">{p.typePresta || "—"}</p>
-              {p.quantite && p.quantite !== "1" && (
-                <p className="text-xs text-gray-500">Quantité : {p.quantite}</p>
-              )}
-              {dateLabel && (
-                <p className="flex items-center gap-1.5 text-xs text-gray-600">
-                  <Calendar size={11} className="text-gray-400" />{dateLabel}{p.heure ? ` à ${p.heure}` : ""}
-                </p>
-              )}
-              {p.adresse && (
-                <p className="flex items-start gap-1.5 text-xs text-gray-600">
-                  <MapPin size={11} className="text-gray-400 mt-0.5 shrink-0" />{p.adresse}
-                </p>
-              )}
-              {!isNaN(prix) && prix > 0 && (
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
-                  <Euro size={11} />{prix.toFixed(2)} €
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Bloc prestataire + notes */}
-          <div className="space-y-2">
-            {p.prestataire && (
-              <>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1">
-                  <User size={11} /> Prestataire
-                </p>
-                <div className="space-y-1.5">
-                  <p className="text-sm text-gray-800">{p.prestataire}</p>
-                  {p.emailPresta && (
-                    <a href={`mailto:${p.emailPresta}`} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-blue-600 break-all">
-                      <Mail size={11} className="text-gray-400" />{p.emailPresta}
-                    </a>
-                  )}
-                </div>
-              </>
-            )}
-            {(p.message || p.commentaire) && (
-              <div className="mt-2">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1 mb-1">
-                  <MessageSquare size={11} /> Notes
-                </p>
-                {p.message && <p className="text-xs text-gray-600 italic">&quot;{p.message}&quot;</p>}
-                {p.commentaire && <p className="text-xs text-gray-500 mt-1">{p.commentaire}</p>}
-              </div>
-            )}
-            {p.archiveReason && (
-              <div className="mt-2">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1 mb-1">
-                  <Tag size={11} /> Raison archivage
-                </p>
-                <p className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded-lg">{p.archiveReason}</p>
-              </div>
-            )}
-            {(p.devisPDF || p.genDevis === "FAIT") && (
-              <a
-                href={p.devisPDF || `/api/devis/${p.row}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:underline"
-              >
-                <FileText size={11} /> Voir le devis
-              </a>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    </button>
   );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ArchivePage() {
-  const [data, setData]         = useState<Prestation[]>([]);
+  const [data, setData]                 = useState<Prestation[]>([]);
   const [prestataires, setPrestataires] = useState<Prestataire[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [search, setSearch]     = useState("");
-  const [error, setError]       = useState<string | null>(null);
+  const [loading, setLoading]           = useState(true);
+  const [search, setSearch]             = useState("");
+  const [error, setError]               = useState<string | null>(null);
+  const [selected, setSelected]         = useState<Prestation | null>(null);
   const [reprogrammer, setReprogrammer] = useState<Prestation | null>(null);
 
   const load = useCallback(async () => {
@@ -358,13 +512,22 @@ export default function ArchivePage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {filtered.map((p) => (
-              <FicheArchive key={p.row} p={p} onReprogrammer={setReprogrammer} />
+              <CarteArchive key={p.row} p={p} onClick={() => setSelected(p)} />
             ))}
           </div>
         )}
       </div>
+
+      {/* Modal compte rendu */}
+      {selected && (
+        <CompteRenduModal
+          p={selected}
+          onClose={() => setSelected(null)}
+          onReprogrammer={(p) => { setReprogrammer(p); }}
+        />
+      )}
 
       {/* Modal reprogrammer */}
       {reprogrammer && (
