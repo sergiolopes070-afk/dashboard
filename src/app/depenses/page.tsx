@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Plus, Trash2, Pencil, Receipt, TrendingDown, Calendar,
-  RefreshCw, Paperclip, ExternalLink, X, Upload, Euro,
+  RefreshCw, Paperclip, ExternalLink, X, Upload, Euro, Download,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { Depense, CATEGORIES_DEPENSES } from "@/lib/constants";
@@ -252,6 +252,19 @@ export default function DepensesPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const exportCSV = () => {
+    const headers = ["Nom", "Catégorie", "Montant", "Type", "Date", "Notes"];
+    const rows = depenses.map(d => [
+      d.nom, d.categorie, d.montant, d.type, d.date, d.notes ?? "",
+    ].map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `depenses_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
   const filtered = useMemo(() => depenses.filter(d => {
     if (filterType !== "tous" && d.type !== filterType) return false;
     if (filterCat  !== "tous" && d.categorie !== filterCat) return false;
@@ -289,13 +302,22 @@ export default function DepensesPage() {
         onRefresh={load}
         loading={loading}
         action={
-          <button
-            onClick={() => setModal("new")}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={15} />
-            Nouvelle dépense
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={exportCSV}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              <Download size={14} />
+              Export CSV
+            </button>
+            <button
+              onClick={() => setModal("new")}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              <Plus size={15} />
+              Nouvelle dépense
+            </button>
+          </div>
         }
       />
 

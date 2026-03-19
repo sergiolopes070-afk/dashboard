@@ -53,6 +53,9 @@ function rowToPrestation(row: Record<string, any>): Prestation {
     commission     : row.commission != null ? String(row.commission) : "",
     commissionType : (row.commission_type === "euro" ? "€" : "%") as "%" | "€",
     archiveReason  : row.archive_reason || "",
+    tags           : Array.isArray(client.tags) ? client.tags : (client.tags ? String(client.tags).split(",").map((t: string) => t.trim()).filter(Boolean) : []),
+    satisfaction   : row.satisfaction != null ? Number(row.satisfaction) : undefined,
+    updatedAt      : (row.updated_at as string) || "",
   };
 }
 
@@ -124,6 +127,7 @@ export async function updatePrestation(
       case "envoyer":      prestaPatch.mail_client_envoye = value === "OUI";            break;
       case "genDevis":     prestaPatch.devis_genere  = value === "OUI" || value === "FAIT"; break;
       case "commentaire":  prestaPatch.commentaire   = value;                           break;
+      case "satisfaction": prestaPatch.satisfaction   = value ? parseInt(value) : null; break;
       case "lienWA":       prestaPatch.lien_wa        = value;                          break;
       case "devisPDF":     prestaPatch.devis_url      = value;                          break;
       case "commission":       prestaPatch.commission      = value ? parseFloat(value) : 0;           break;
@@ -326,6 +330,12 @@ export async function deletePrestataire(id: string): Promise<void> {
     .from("prestataires")
     .update({ actif: false })
     .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function updateClientTags(clientId: string, tags: string[]): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("clients").update({ tags }).eq("id", clientId);
   if (error) throw new Error(error.message);
 }
 

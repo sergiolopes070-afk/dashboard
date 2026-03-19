@@ -2,15 +2,54 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Archive, Phone, Mail, MapPin, User, Wrench, Calendar,
-  Clock, Euro, FileText, MessageSquare, Search, ChevronDown, ChevronUp, Tag,
+  Clock, Euro, FileText, MessageSquare, Search, ChevronDown, ChevronUp, Tag, RefreshCw, Star,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
-import { Prestation } from "@/lib/constants";
+import NewClientModal from "@/components/NewClientModal";
+import { Prestation, Prestataire } from "@/lib/constants";
 
 // ─── Fiche archivée ──────────────────────────────────────────────────────────
 
-function FicheArchive({ p }: { p: Prestation }) {
+function StarRating({ value, onChange }: { value?: number; onChange: (v: number) => void }) {
+  const [hovered, setHovered] = useState(0);
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1,2,3,4,5].map(i => (
+        <button
+          key={i}
+          onClick={() => onChange(i)}
+          onMouseEnter={() => setHovered(i)}
+          onMouseLeave={() => setHovered(0)}
+          className="transition-transform hover:scale-110"
+        >
+          <Star
+            size={16}
+            className={`${(hovered || value || 0) >= i ? "fill-amber-400 text-amber-400" : "text-gray-300"}`}
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FicheArchive({ p, onReprogrammer }: { p: Prestation; onReprogrammer: (p: Prestation) => void }) {
   const [open, setOpen] = useState(false);
+  const [satisfaction, setSatisfaction] = useState(p.satisfaction);
+  const [savingSat, setSavingSat] = useState(false);
+
+  const saveSatisfaction = async (v: number) => {
+    setSatisfaction(v);
+    setSavingSat(true);
+    try {
+      await fetch("/api/prestations", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ row: p.row, updates: { satisfaction: String(v) } }),
+      });
+    } finally {
+      setSavingSat(false);
+    }
+  };
 
   const dateLabel = (() => {
     if (!p.date) return null;
@@ -55,6 +94,20 @@ function FicheArchive({ p }: { p: Prestation }) {
               {p.heure}
             </span>
           )}
+        </div>
+
+        {/* Satisfaction + reprogrammer */}
+        <div className="hidden sm:flex items-center gap-2 shrink-0">
+          <StarRating value={satisfaction} onChange={saveSatisfaction} />
+          {savingSat && <span className="text-xs text-gray-400">…</span>}
+          <button
+            onClick={(e) => { e.stopPropagation(); onReprogrammer(p); }}
+            title="Reprogrammer cette prestation"
+            className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+          >
+            <RefreshCw size={11} />
+            Reprogram.
+          </button>
         </div>
 
         {/* Prix + badge terminé + toggle */}
@@ -196,20 +249,25 @@ function FicheArchive({ p }: { p: Prestation }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ArchivePage() {
-  const [data, setData]     = useState<Prestation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [error, setError]   = useState<string | null>(null);
+  const [data, setData]         = useState<Prestation[]>([]);
+  const [prestataires, setPrestataires] = useState<Prestataire[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [search, setSearch]     = useState("");
+  const [error, setError]       = useState<string | null>(null);
+  const [reprogrammer, setReprogrammer] = useState<Prestation | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/archive?t=${Date.now()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error((await res.json()).error);
-      const raw: Prestation[] = await res.json();
-      // Plus récent en premier
+      const [archiveRes, prestataireRes] = await Promise.all([
+        fetch(`/api/archive?t=${Date.now()}`, { cache: "no-store" }),
+        fetch("/api/prestataires"),
+      ]);
+      if (!archiveRes.ok) throw new Error((await archiveRes.json()).error);
+      const raw: Prestation[] = await archiveRes.json();
       setData([...raw].reverse());
+      if (prestataireRes.ok) setPrestataires(await prestataireRes.json());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur");
     } finally {
@@ -302,11 +360,31 @@ export default function ArchivePage() {
         ) : (
           <div className="space-y-3">
             {filtered.map((p) => (
-              <FicheArchive key={p.row} p={p} />
+              <FicheArchive key={p.row} p={p} onReprogrammer={setReprogrammer} />
             ))}
           </div>
         )}
       </div>
+
+      {/* Modal reprogrammer */}
+      {reprogrammer && (
+        <NewClientModal
+          prestataires={prestataires}
+          initialValues={{
+            prenom     : reprogrammer.prenom,
+            nom        : reprogrammer.nom,
+            tel        : reprogrammer.tel,
+            email      : reprogrammer.email,
+            adresse    : reprogrammer.adresse,
+            typePresta : reprogrammer.typePresta,
+            quantite   : reprogrammer.quantite,
+            prix       : reprogrammer.prix,
+            prestataire: reprogrammer.prestataire,
+          }}
+          onClose={() => setReprogrammer(null)}
+          onSaved={() => setReprogrammer(null)}
+        />
+      )}
     </div>
   );
 }

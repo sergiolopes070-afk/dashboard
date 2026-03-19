@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Users, Briefcase, TrendingUp, Wrench,
   AlertTriangle, Clock, FileText, CalendarCheck, UserPlus, UserCheck, CalendarDays, ChevronRight, TrendingDown,
+  BellRing, RefreshCcw, CheckCircle2,
 } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import PrestationTable from "@/components/PrestationTable";
@@ -147,6 +148,91 @@ export default function HomePage() {
             <a href="/prestations" className="ml-auto text-sm text-red-600 underline font-medium">Voir</a>
           </div>
         )}
+
+        {/* ── Relances automatiques ─────────────────────────────── */}
+        {stats && (() => {
+          const now = Date.now();
+          const toRelance = stats.prestations.filter(p => {
+            if (p.statut !== "EMAIL ENVOYÉ") return false;
+            if (!p.timestamp) return false;
+            const diffDays = (now - new Date(p.timestamp).getTime()) / 86400000;
+            return diffDays > 3;
+          });
+          if (toRelance.length === 0) return null;
+          return (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <BellRing size={16} className="text-amber-600" />
+                <p className="text-sm font-semibold text-amber-800">
+                  {toRelance.length} client{toRelance.length > 1 ? "s" : ""} à relancer
+                  <span className="font-normal text-amber-600 ml-1">(email envoyé depuis +3 jours, pas de réponse)</span>
+                </p>
+                <a href="/prestations?statut=EMAIL+ENVOY%C3%89" className="ml-auto text-xs text-amber-700 underline font-medium">Voir tout</a>
+              </div>
+              <div className="space-y-2">
+                {toRelance.slice(0, 3).map(p => {
+                  const days = Math.floor((now - new Date(p.timestamp).getTime()) / 86400000);
+                  const waLink = p.tel ? `https://wa.me/${p.tel.replace(/\s/g,"").replace(/^0/,"33")}?text=${encodeURIComponent(`Bonjour ${p.prenom} 👋, suite à votre demande de prestation ${p.typePresta}, avez-vous eu le temps de confirmer ? 🙏`)}` : null;
+                  return (
+                    <div key={p.row} className="flex items-center gap-3 bg-white rounded-xl p-3 border border-amber-100">
+                      <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-xs flex-shrink-0">
+                        {(p.prenom?.[0] ?? "?").toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{p.prenom} {p.nom}</p>
+                        <p className="text-xs text-gray-500">{p.typePresta} · il y a {days} jours</p>
+                      </div>
+                      {waLink && (
+                        <a href={waLink} target="_blank" rel="noopener noreferrer"
+                          className="text-xs px-2 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex-shrink-0">
+                          WhatsApp
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Notifications récentes (acceptations/refus prestataire) ── */}
+        {stats && (() => {
+          const now = Date.now();
+          const recent = stats.prestations.filter(p => {
+            if (!["ACCEPTÉ", "REFUSÉ"].includes(p.statutPresta as string)) return false;
+            if (!p.updatedAt) return false;
+            const diffH = (now - new Date(p.updatedAt).getTime()) / 3600000;
+            return diffH < 48;
+          });
+          if (recent.length === 0) return null;
+          return (
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <RefreshCcw size={16} className="text-blue-600" />
+                <p className="text-sm font-semibold text-blue-800">
+                  {recent.length} réponse{recent.length > 1 ? "s" : ""} de prestataire — dernières 48h
+                </p>
+              </div>
+              <div className="space-y-2">
+                {recent.map(p => (
+                  <div key={p.row} className="flex items-center gap-3 bg-white rounded-xl p-3 border border-blue-100">
+                    <div className={`p-1.5 rounded-lg ${p.statutPresta === "ACCEPTÉ" ? "bg-green-100" : "bg-red-100"}`}>
+                      {p.statutPresta === "ACCEPTÉ"
+                        ? <CheckCircle2 size={14} className="text-green-600" />
+                        : <AlertTriangle size={14} className="text-red-500" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{p.prestataire}</p>
+                      <p className="text-xs text-gray-500">{p.statutPresta === "ACCEPTÉ" ? "a accepté" : "a refusé"} · {p.prenom} {p.nom} – {p.typePresta}</p>
+                    </div>
+                    <a href="/prestations" className="text-xs text-blue-600 hover:underline flex-shrink-0">Voir</a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard title="Chiffre d'affaires" value={stats ? `${stats.totalCA.toFixed(0)} €` : "—"} subtitle="Total toutes prestations" icon={TrendingUp} color="green" href="/prestations" />

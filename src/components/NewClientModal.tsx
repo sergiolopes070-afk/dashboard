@@ -170,6 +170,7 @@ interface Props {
   prestataires: Prestataire[];
   onClose: () => void;
   onSaved: () => void;
+  initialValues?: Partial<typeof EMPTY>;
 }
 
 const EMPTY = {
@@ -193,8 +194,8 @@ const EMPTY = {
   message        : "",
 };
 
-export default function NewClientModal({ prestataires, onClose, onSaved }: Props) {
-  const [form, setForm]                   = useState(EMPTY);
+export default function NewClientModal({ prestataires, onClose, onSaved, initialValues }: Props) {
+  const [form, setForm]                   = useState({ ...EMPTY, ...initialValues });
   const [saving, setSaving]               = useState(false);
   const [error, setError]                 = useState<string | null>(null);
   const [savedPrestataire, setSavedPrestataire] = useState<Prestataire | null>(null);

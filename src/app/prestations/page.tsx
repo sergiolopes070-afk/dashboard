@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Search, Filter, Archive, X } from "lucide-react";
+import { Search, Filter, Archive, X, Download } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import PrestationTable from "@/components/PrestationTable";
 import EditPrestationModal from "@/components/EditPrestationModal";
@@ -44,6 +44,23 @@ export default function PrestationsPage() {
     );
   }, []);
 
+  const exportCSV = () => {
+    const headers = ["Prénom", "Nom", "Tel", "Email", "Adresse", "Type", "Quantité", "Date", "Heure", "Prix", "Statut", "Prestataire", "Commission", "Commentaire"];
+    const rows = filtered.map(p => [
+      p.prenom, p.nom, p.tel, p.email, p.adresse,
+      p.typePresta, p.quantite, p.date, p.heure,
+      p.prix, p.statut, p.prestataire,
+      p.commission ? `${p.commission}${p.commissionType}` : "",
+      p.commentaire,
+    ].map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","));
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `prestations_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
   const handleArchiveConfirm = async () => {
     if (!archiveModal) return;
     setArchiving(true);
@@ -86,6 +103,15 @@ export default function PrestationsPage() {
         subtitle={`${filtered.length} prestation${filtered.length > 1 ? "s" : ""}`}
         onRefresh={load}
         loading={loading}
+        action={
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            <Download size={14} />
+            Export CSV
+          </button>
+        }
       />
       <div className="flex-1 p-6 space-y-4">
         {error && (

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { appendPrestation, updatePrestation, deleteClient } from "@/lib/sheets";
+import { appendPrestation, updatePrestation, deleteClient, updateClientTags } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 
@@ -66,18 +66,23 @@ export async function DELETE(req: Request) {
   }
 }
 
-// PATCH : modifier les infos client sur toutes ses prestations
+// PATCH : modifier les infos client ou les tags
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
+    // Tags update: { clientId, tags }
+    if (body.clientId && body.tags !== undefined) {
+      await updateClientTags(body.clientId, body.tags);
+      return NextResponse.json({ success: true });
+    }
+    // Client info update: { rows, updates }
     const { rows, updates } = body as {
       rows: string[];
       updates: Record<string, string>;
     };
     if (!rows?.length || !updates) {
-      return NextResponse.json({ error: "rows et updates requis" }, { status: 400 });
+      return NextResponse.json({ error: "rows/updates ou clientId/tags requis" }, { status: 400 });
     }
-    // Client info is stored in the clients table; one update is enough
     await updatePrestation(rows[0], updates);
     return NextResponse.json({ success: true });
   } catch (err: unknown) {

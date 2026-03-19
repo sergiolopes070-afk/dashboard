@@ -10,6 +10,16 @@ import ClientModal from "@/components/ClientModal";
 import NewClientModal from "@/components/NewClientModal";
 import { Prestation, Prestataire, STATUT_COLORS } from "@/lib/constants";
 
+const TAGS_PRESET = ["Régulier", "VIP", "Difficile", "Sensible", "Pro", "Fidèle"];
+const TAG_COLORS: Record<string, string> = {
+  "Régulier": "bg-blue-100 text-blue-700",
+  "VIP"     : "bg-purple-100 text-purple-700",
+  "Difficile": "bg-red-100 text-red-700",
+  "Sensible": "bg-orange-100 text-orange-700",
+  "Pro"     : "bg-gray-100 text-gray-700",
+  "Fidèle"  : "bg-green-100 text-green-700",
+};
+
 interface Client {
   nom: string;
   prenom: string;
@@ -19,6 +29,8 @@ interface Client {
   prestations: Prestation[];
   totalCA: number;
   derniere: string;
+  tags: string[];
+  clientId: string;
 }
 
 function StatusBadge({ label }: { label: string }) {
@@ -222,6 +234,7 @@ export default function ClientsPage() {
   const [archiveReason, setArchiveReason] = useState("");
   const [archiveComment, setArchiveComment] = useState("");
   const [archiving, setArchiving]     = useState(false);
+  const [tagEditKey, setTagEditKey]   = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -249,12 +262,15 @@ export default function ClientsPage() {
           nom: p.nom, prenom: p.prenom, tel: p.tel,
           email: p.email, adresse: p.adresse,
           prestations: [], totalCA: 0, derniere: p.date,
+          tags: p.tags ?? [], clientId: p.clientId,
         });
       }
       const c = map.get(key)!;
       c.prestations.push(p);
       c.totalCA += parseFloat(p.prix) || 0;
       if (p.date > c.derniere) c.derniere = p.date;
+      // Merge tags from any prestation (they're all the same client)
+      if (p.tags?.length && c.tags.length === 0) c.tags = p.tags;
     }
     return Array.from(map.values()).sort((a, b) => b.prestations.length - a.prestations.length);
   }, [data]);
@@ -295,6 +311,22 @@ export default function ClientsPage() {
     });
     setConfirmClientDel(null);
     load();
+  };
+
+  const handleToggleTag = async (c: Client, tag: string) => {
+    const current = c.tags ?? [];
+    const next = current.includes(tag) ? current.filter(t => t !== tag) : [...current, tag];
+    // Optimistic update
+    setData(prev => prev.map(p =>
+      (p.email === c.email || (!p.email && `${p.nom}-${p.prenom}-${p.tel}` === `${c.nom}-${c.prenom}-${c.tel}`))
+        ? { ...p, tags: next }
+        : p
+    ));
+    await fetch("/api/clients", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: c.clientId, tags: next }),
+    });
   };
 
   const handleArchiveConfirm = async () => {
@@ -375,6 +407,41 @@ export default function ClientsPage() {
                         <p className="text-xs text-gray-400 mt-0.5">
                           {c.prestations.length} prestation{c.prestations.length > 1 ? "s" : ""}
                         </p>
+                        {/* Tags */}
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {(c.tags ?? []).map(tag => (
+                            <span
+                              key={tag}
+                              className={`text-xs px-2 py-0.5 rounded-full font-medium ${TAG_COLORS[tag] ?? "bg-gray-100 text-gray-600"}`}
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setTagEditKey(tagEditKey === key ? null : key); }}
+                            className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-400 hover:bg-gray-200 transition-colors"
+                            title="Gérer les tags"
+                          >
+                            {tagEditKey === key ? "✕" : "+"}
+                          </button>
+                        </div>
+                        {tagEditKey === key && (
+                          <div className="flex flex-wrap gap-1 mt-1.5 p-2 bg-gray-50 rounded-xl border border-gray-100">
+                            {TAGS_PRESET.map(tag => (
+                              <button
+                                key={tag}
+                                onClick={(e) => { e.stopPropagation(); handleToggleTag(c, tag); }}
+                                className={`text-xs px-2 py-0.5 rounded-full transition-colors ${
+                                  (c.tags ?? []).includes(tag)
+                                    ? (TAG_COLORS[tag] ?? "bg-gray-200 text-gray-700") + " font-semibold"
+                                    : "bg-white border border-gray-200 text-gray-500 hover:border-gray-300"
+                                }`}
+                              >
+                                {(c.tags ?? []).includes(tag) ? "✓ " : ""}{tag}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-1 rounded-lg">

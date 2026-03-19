@@ -1,9 +1,11 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
-import { Phone, Mail, Wrench, UserPlus, Pencil, Trash2, X, Save, Loader2 } from "lucide-react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { Phone, Mail, Wrench, UserPlus, Pencil, Trash2, X, Save, Loader2, BarChart2, Euro, CheckCircle2, XCircle, CalendarOff } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import NewPrestataireModal from "@/components/NewPrestataireModal";
-import { Prestataire } from "@/lib/constants";
+import { Prestataire, Prestation } from "@/lib/constants";
+
+const JOURS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
 // ─── Modal édition ────────────────────────────────────────────────────────────
 
@@ -100,26 +102,66 @@ function EditPrestataireModal({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PrestatairesPage() {
-  const [data, setData]         = useState<Prestataire[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState<string | null>(null);
-  const [showNew, setShowNew]   = useState(false);
-  const [editing, setEditing]   = useState<Prestataire | null>(null);
+  const [data, setData]             = useState<Prestataire[]>([]);
+  const [prestations, setPrestations] = useState<Prestation[]>([]);
+  const [archive, setArchive]       = useState<Prestation[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState<string | null>(null);
+  const [showNew, setShowNew]       = useState(false);
+  const [editing, setEditing]       = useState<Prestataire | null>(null);
   const [confirmDel, setConfirmDel] = useState<Prestataire | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [deleting, setDeleting]     = useState(false);
+  // Disponibilités : map prestataire.id → jours off (0=Lun … 6=Dim)
+  const [dispos, setDispos] = useState<Record<string, number[]>>({});
+  const [savingDispo, setSavingDispo] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/prestataires");
-      if (!res.ok) throw new Error((await res.json()).error);
-      setData(await res.json());
+      const [resPrest, resPrestations, resArchive] = await Promise.all([
+        fetch("/api/prestataires"),
+        fetch("/api/prestations"),
+        fetch("/api/archive"),
+      ]);
+      if (!resPrest.ok) throw new Error((await resPrest.json()).error);
+      const prestataireData: Prestataire[] = await resPrest.json();
+      setData(prestataireData);
+      if (resPrestations.ok) setPrestations(await resPrestations.json());
+      if (resArchive.ok) setArchive(await resArchive.json());
+      // Load stored dispos from localStorage
+      const stored = localStorage.getItem("prestataires_dispos");
+      if (stored) setDispos(JSON.parse(stored));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur");
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // Stats per prestataire
+  const statsMap = useMemo(() => {
+    const all = [...prestations, ...archive];
+    const map: Record<string, { missions: number; ca: number; accepte: number; refuse: number }> = {};
+    for (const p of all) {
+      if (!p.prestataire) continue;
+      if (!map[p.prestataire]) map[p.prestataire] = { missions: 0, ca: 0, accepte: 0, refuse: 0 };
+      map[p.prestataire].missions++;
+      map[p.prestataire].ca += parseFloat(p.prix) || 0;
+      if (p.statutPresta === "ACCEPTÉ") map[p.prestataire].accepte++;
+      if (p.statutPresta === "REFUSÉ")  map[p.prestataire].refuse++;
+    }
+    return map;
+  }, [prestations, archive]);
+
+  const toggleDispo = (prestataireId: string, jour: number) => {
+    setDispos(prev => {
+      const current = prev[prestataireId] ?? [];
+      const next = current.includes(jour) ? current.filter(j => j !== jour) : [...current, jour];
+      const updated = { ...prev, [prestataireId]: next };
+      localStorage.setItem("prestataires_dispos", JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -217,51 +259,96 @@ export default function PrestatairesPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {data.map((p) => (
-              <div key={p.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex gap-4 group">
-                <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center flex-shrink-0">
-                  <Wrench size={20} className="text-orange-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900">{p.nom}</p>
-                  {p.email && (
-                    <a href={`mailto:${p.email}`} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline mt-1 truncate">
-                      <Mail size={13} />{p.email}
-                    </a>
-                  )}
-                  {p.tel && (
-                    <a href={`tel:${p.tel}`} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mt-0.5">
-                      <Phone size={13} />{p.tel}
-                    </a>
-                  )}
-                  {p.tel && (
-                    <a
-                      href={`https://wa.me/${p.tel.replace(/\s/g, "").replace(/^0/, "33")}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 mt-2 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-lg hover:bg-green-100 transition-colors"
-                    >
-                      <span>WhatsApp</span>
-                    </a>
-                  )}
-                </div>
-                {/* Actions */}
-                <div className="flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => setEditing(p)}
-                    className="p-1.5 rounded-lg hover:bg-orange-50 text-gray-400 hover:text-orange-600 transition-colors"
-                    title="Modifier"
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    onClick={() => setConfirmDel(p)}
-                    className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
-                    title="Supprimer"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
+              {(() => {
+                const s = statsMap[p.nom] ?? { missions: 0, ca: 0, accepte: 0, refuse: 0 };
+                const tauxAccept = (s.accepte + s.refuse) > 0
+                  ? Math.round(s.accepte / (s.accepte + s.refuse) * 100)
+                  : null;
+                const joursOff = dispos[p.id] ?? [];
+                return (
+                  <div key={p.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col gap-4 group">
+                    <div className="flex gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center flex-shrink-0">
+                        <Wrench size={20} className="text-orange-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900">{p.nom}</p>
+                        {p.email && (
+                          <a href={`mailto:${p.email}`} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline mt-1 truncate">
+                            <Mail size={13} />{p.email}
+                          </a>
+                        )}
+                        {p.tel && (
+                          <a href={`tel:${p.tel}`} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mt-0.5">
+                            <Phone size={13} />{p.tel}
+                          </a>
+                        )}
+                        {p.tel && (
+                          <a
+                            href={`https://wa.me/${p.tel.replace(/\s/g, "").replace(/^0/, "33")}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 mt-2 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-lg hover:bg-green-100 transition-colors"
+                          >
+                            WhatsApp
+                          </a>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => setEditing(p)} className="p-1.5 rounded-lg hover:bg-orange-50 text-gray-400 hover:text-orange-600 transition-colors" title="Modifier">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => setConfirmDel(p)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors" title="Supprimer">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Stats */}
+                    <div className="grid grid-cols-3 gap-2 pt-3 border-t border-gray-50">
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-1 text-gray-500 mb-0.5"><BarChart2 size={11} /><span className="text-xs">Missions</span></div>
+                        <p className="font-bold text-gray-900 text-lg">{s.missions}</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-1 text-gray-500 mb-0.5"><Euro size={11} /><span className="text-xs">CA généré</span></div>
+                        <p className="font-bold text-emerald-700 text-lg">{s.ca.toFixed(0)} €</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="flex items-center justify-center gap-1 text-gray-500 mb-0.5">
+                          {tauxAccept !== null && tauxAccept >= 70 ? <CheckCircle2 size={11} className="text-green-500" /> : <XCircle size={11} className="text-orange-500" />}
+                          <span className="text-xs">Acceptation</span>
+                        </div>
+                        <p className={`font-bold text-lg ${tauxAccept !== null ? (tauxAccept >= 70 ? "text-green-700" : "text-orange-600") : "text-gray-400"}`}>
+                          {tauxAccept !== null ? `${tauxAccept}%` : "—"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Disponibilités */}
+                    <div className="pt-2 border-t border-gray-50">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1 mb-2">
+                        <CalendarOff size={11} /> Jours off
+                        {savingDispo === p.id && <span className="text-blue-500 normal-case font-normal ml-1">sauvegardé</span>}
+                      </p>
+                      <div className="flex gap-1">
+                        {JOURS.map((j, i) => (
+                          <button
+                            key={i}
+                            onClick={() => toggleDispo(p.id, i)}
+                            className={`flex-1 text-xs py-1 rounded-lg font-medium transition-colors ${
+                              joursOff.includes(i)
+                                ? "bg-red-100 text-red-700"
+                                : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                            }`}
+                          >
+                            {j}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             ))}
             {data.length === 0 && !loading && (
               <div className="col-span-3 text-center py-12 text-gray-400">
