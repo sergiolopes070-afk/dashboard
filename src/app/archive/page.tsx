@@ -43,11 +43,19 @@ function CompteRenduModal({
   onClose: () => void;
   onReprogrammer: (p: Prestation) => void;
 }) {
-  const [satisfaction, setSatisfaction] = useState(p.satisfaction);
+  const LS_KEY = `satisfaction_${p.row}`;
+  const [satisfaction, setSatisfaction] = useState<number | undefined>(() => {
+    // Priorité : DB → localStorage
+    if (p.satisfaction) return p.satisfaction;
+    const stored = typeof window !== "undefined" ? localStorage.getItem(LS_KEY) : null;
+    return stored ? Number(stored) : undefined;
+  });
   const [savingSat, setSavingSat] = useState(false);
 
   const saveSatisfaction = async (v: number) => {
     setSatisfaction(v);
+    // Sauvegarde locale immédiate (persiste même si la colonne DB n'existe pas encore)
+    localStorage.setItem(LS_KEY, String(v));
     setSavingSat(true);
     try {
       await fetch("/api/prestations", {
@@ -328,6 +336,12 @@ function CompteRenduModal({
 // ─── Carte archive (cliquable) ───────────────────────────────────────────────
 
 function CarteArchive({ p, onClick }: { p: Prestation; onClick: () => void }) {
+  const [satisfaction] = useState<number | undefined>(() => {
+    if (p.satisfaction) return p.satisfaction;
+    const stored = typeof window !== "undefined" ? localStorage.getItem(`satisfaction_${p.row}`) : null;
+    return stored ? Number(stored) : undefined;
+  });
+
   const dateLabel = (() => {
     if (!p.date) return null;
     const parts = p.date.split("/");
@@ -366,10 +380,10 @@ function CarteArchive({ p, onClick }: { p: Prestation; onClick: () => void }) {
         )}
 
         {/* Satisfaction mini */}
-        {p.satisfaction && (
+        {satisfaction && (
           <div className="hidden sm:flex items-center gap-0.5 shrink-0">
             {[1,2,3,4,5].map(i => (
-              <Star key={i} size={11} className={p.satisfaction! >= i ? "fill-amber-400 text-amber-400" : "text-gray-200"} />
+              <Star key={i} size={11} className={satisfaction >= i ? "fill-amber-400 text-amber-400" : "text-gray-200"} />
             ))}
           </div>
         )}
