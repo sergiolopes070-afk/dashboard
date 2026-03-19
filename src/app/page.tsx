@@ -452,7 +452,7 @@ export default function HomePage() {
                 <h2 className="font-semibold text-gray-800">Agenda de la semaine</h2>
               </div>
               <a href="/agenda" className="flex items-center gap-1 text-sm text-blue-600 hover:underline font-medium">
-                Ouvrir l'agenda <ChevronRight size={14} />
+                Ouvrir l&apos;agenda <ChevronRight size={14} />
               </a>
             </div>
             <div className="grid grid-cols-7 gap-1">

@@ -71,7 +71,7 @@ export default function DevisPage() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center text-gray-400">
             <FileText size={40} className="mx-auto mb-3 opacity-20" />
             <p className="font-medium">Aucun devis généré</p>
-            <p className="text-sm mt-1">Ouvrez une fiche client et cliquez sur "Générer devis" pour en créer un.</p>
+            <p className="text-sm mt-1">Ouvrez une fiche client et cliquez sur &quot;Générer devis&quot; pour en créer un.</p>
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

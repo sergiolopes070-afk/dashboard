@@ -25,7 +25,7 @@ export async function GET(req: Request) {
   ]);
 
   type ClientRow = { id: string; nom: string; prenom: string; tel: string; email: string; adresse: string };
-  type PrestaRow = { id: string; type_prestation: string; adresse: string; date_intervention: string; clients: { nom: string; prenom: string } | null };
+  type PrestaRow = { id: string; type_prestation: string; adresse: string; date_intervention: string; clients: { nom: string; prenom: string }[] | null };
 
   const results = [
     ...(clients ?? []).map((c: ClientRow) => ({
@@ -37,7 +37,7 @@ export async function GET(req: Request) {
     ...(prestations ?? []).map((p: PrestaRow) => ({
       type  : "prestation",
       label : p.type_prestation ?? "—",
-      sub   : [p.clients ? `${p.clients.prenom ?? ""} ${p.clients.nom ?? ""}`.trim() : "", p.date_intervention].filter(Boolean).join(" · "),
+      sub   : [p.clients?.[0] ? `${p.clients[0].prenom ?? ""} ${p.clients[0].nom ?? ""}`.trim() : "", p.date_intervention].filter(Boolean).join(" · "),
       href  : "/prestations",
     })),
   ];

@@ -490,7 +490,7 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
                 onChange={(e) => set("prestataire", e.target.value)}
                 className={inputCls}
               >
-                <option value="">— Laisser en attente d'affectation —</option>
+                <option value="">— Laisser en attente d&apos;affectation —</option>
                 {prestataires.map((p) => (
                   <option key={p.nom} value={p.nom}>{p.nom}</option>
                 ))}
@@ -518,7 +518,7 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
                 <Clock size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
                 <div>
                   <p className="text-sm font-semibold text-amber-800">
-                    En attente d'affectation
+                    En attente d&apos;affectation
                   </p>
                   <p className="text-xs text-amber-600 mt-0.5">
                     La prestation sera créée sans prestataire. Elle apparaîtra dans la liste

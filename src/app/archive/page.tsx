@@ -217,7 +217,7 @@ function FicheArchive({ p, onReprogrammer }: { p: Prestation; onReprogrammer: (p
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1 mb-1">
                   <MessageSquare size={11} /> Notes
                 </p>
-                {p.message && <p className="text-xs text-gray-600 italic">"{p.message}"</p>}
+                {p.message && <p className="text-xs text-gray-600 italic">&quot;{p.message}&quot;</p>}
                 {p.commentaire && <p className="text-xs text-gray-500 mt-1">{p.commentaire}</p>}
               </div>
             )}

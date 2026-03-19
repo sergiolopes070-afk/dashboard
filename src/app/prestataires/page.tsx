@@ -113,7 +113,7 @@ export default function PrestatairesPage() {
   const [deleting, setDeleting]     = useState(false);
   // Disponibilités : map prestataire.id → jours off (0=Lun … 6=Dim)
   const [dispos, setDispos] = useState<Record<string, number[]>>({});
-  const [savingDispo, setSavingDispo] = useState<string | null>(null);
+  const [savingDispo] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -258,8 +258,7 @@ export default function PrestatairesPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {data.map((p) => (
-              {(() => {
+            {data.map((p) => {
                 const s = statsMap[p.nom] ?? { missions: 0, ca: 0, accepte: 0, refuse: 0 };
                 const tauxAccept = (s.accepte + s.refuse) > 0
                   ? Math.round(s.accepte / (s.accepte + s.refuse) * 100)
@@ -348,8 +347,7 @@ export default function PrestatairesPage() {
                     </div>
                   </div>
                 );
-              })()}
-            ))}
+            })}
             {data.length === 0 && !loading && (
               <div className="col-span-3 text-center py-12 text-gray-400">
                 <Wrench size={40} className="mx-auto mb-3 opacity-20" />

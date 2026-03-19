@@ -99,12 +99,11 @@ const DAY_SLOTS = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => {
 });
 
 function DayDetailModal({
-  day, events, prestataires, colorMap, idByNom,
+  day, events, colorMap, idByNom,
   onClose, onCreateSlot, onSelectEvent,
 }: {
   day: Date;
   events: Prestation[];
-  prestataires: Prestataire[];
   colorMap: Record<string, typeof PALETTE[0]>;
   idByNom: Record<string, string>;
   onClose: () => void;
@@ -228,12 +227,11 @@ function useVilleFromCP(cp: string) {
 
 // ─── Composant QuickCreate ────────────────────────────────────────────────────
 function QuickCreateModal({
-  initial, prestataires, colorMap,
+  initial, prestataires,
   onClose, onSaved,
 }: {
   initial: { date: string; heure: string };
   prestataires: Prestataire[];
-  colorMap: Record<string, typeof PALETTE[0]>;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -534,13 +532,6 @@ export default function AgendaPage() {
     setSelectedMonthDay(day);
   }
 
-  // Depuis le popup jour, aller à la semaine de ce jour
-  function handleGoToWeekFromDay(day: Date) {
-    setSelectedMonthDay(null);
-    setWeekStart(getMondayOfWeek(day));
-    setViewMode("week");
-  }
-
   // Clic sur un créneau horaire vide (vue semaine)
   function handleSlotClick(e: React.MouseEvent<HTMLDivElement>, day: Date) {
     const y = e.nativeEvent.offsetY;
@@ -614,7 +605,7 @@ export default function AgendaPage() {
           </button>
           <button onClick={navToday}
             className="px-3 py-1 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition-colors">
-            Aujourd'hui
+            Aujourd&apos;hui
           </button>
           <button onClick={navNext} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
             <ChevronRight size={18} className="text-gray-600" />
@@ -866,7 +857,6 @@ export default function AgendaPage() {
         <DayDetailModal
           day={selectedMonthDay}
           events={eventsForDay(selectedMonthDay)}
-          prestataires={prestataires}
           colorMap={colorMap}
           idByNom={idByNom}
           onClose={() => setSelectedMonthDay(null)}
@@ -880,7 +870,6 @@ export default function AgendaPage() {
         <QuickCreateModal
           initial={createSlot}
           prestataires={prestataires}
-          colorMap={colorMap}
           onClose={() => setCreateSlot(null)}
           onSaved={() => { setCreateSlot(null); loadData(); }}
         />

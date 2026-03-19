@@ -357,7 +357,7 @@ export function DevisPDF({ d }: { d: DevisData }) {
             <Text style={styles.devisTitle}>DEVIS</Text>
             <Text style={styles.devisRef}>N° {d.refNumber}</Text>
             <Text style={styles.devisDate}>Date : {d.date}</Text>
-            <Text style={styles.devisDate}>Valable jusqu'au : {d.validite}</Text>
+            <Text style={styles.devisDate}>{"Valable jusqu'au : "}{d.validite}</Text>
           </View>
         </View>
 
@@ -420,7 +420,7 @@ export function DevisPDF({ d }: { d: DevisData }) {
         <View style={styles.notesBox}>
           <Text style={styles.notesTitle}>Conditions & informations</Text>
           <Text style={styles.notesText}>
-            Ce devis est valable 30 jours à compter de sa date d'émission.
+            {"Ce devis est valable 30 jours à compter de sa date d'émission."}
             {"\n"}Paiement à réception de la facture — virement bancaire ou espèces.
             {"\n"}TVA non applicable — article 293 B du CGI (auto-entrepreneur).
           </Text>
