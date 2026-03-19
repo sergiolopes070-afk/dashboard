@@ -380,13 +380,11 @@ function CarteArchive({ p, onClick }: { p: Prestation; onClick: () => void }) {
         )}
 
         {/* Satisfaction mini */}
-        {satisfaction && (
-          <div className="hidden sm:flex items-center gap-0.5 shrink-0">
-            {[1,2,3,4,5].map(i => (
-              <Star key={i} size={11} className={satisfaction >= i ? "fill-amber-400 text-amber-400" : "text-gray-200"} />
-            ))}
-          </div>
-        )}
+        <div className="hidden sm:flex items-center gap-0.5 shrink-0">
+          {[1,2,3,4,5].map(i => (
+            <Star key={i} size={11} className={(satisfaction ?? 0) >= i ? "fill-amber-400 text-amber-400" : "text-gray-200"} />
+          ))}
+        </div>
 
         {/* Prix + badge */}
         <div className="flex items-center gap-2 shrink-0">
