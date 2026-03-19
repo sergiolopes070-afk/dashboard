@@ -4,6 +4,7 @@ import { Search, Filter } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import PrestationTable from "@/components/PrestationTable";
 import EditPrestationModal from "@/components/EditPrestationModal";
+import ArchiveModal from "@/components/ArchiveModal";
 import { Prestation, Prestataire } from "@/lib/constants";
 
 const STATUTS = ["Tous", "EMAIL ENVOYÉ", "CONFIRMÉ", "EN ATTENTE PRESTA", "PRESTATAIRE REFUSÉ – À RÉAFFECTER", "TERMINÉ", "ANNULÉ"];
@@ -16,6 +17,7 @@ export default function PrestationsPage() {
   const [search, setSearch]               = useState("");
   const [statut, setStatut]               = useState("Tous");
   const [editing, setEditing]             = useState<Prestation | null>(null);
+  const [archiving, setArchiving]         = useState<Prestation | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -34,10 +36,14 @@ export default function PrestationsPage() {
     }
   }, []);
 
-  const handleSaved = useCallback((row: number, updates: Record<string, string>) => {
+  const handleSaved = useCallback((row: string, updates: Record<string, string>) => {
     setData((prev) =>
       prev.map((p) => (p.row === row ? { ...p, ...updates } : p))
     );
+  }, []);
+
+  const handleArchived = useCallback((id: string) => {
+    setData((prev) => prev.filter((p) => p.row !== id));
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -103,6 +109,7 @@ export default function PrestationsPage() {
             <PrestationTable
               prestations={filtered}
               onEdit={setEditing}
+              onArchive={setArchiving}
             />
           )}
         </div>
@@ -114,6 +121,15 @@ export default function PrestationsPage() {
           prestataires={prestataires}
           onClose={() => setEditing(null)}
           onSaved={handleSaved}
+          onArchive={(p) => { setEditing(null); setArchiving(p); }}
+        />
+      )}
+
+      {archiving && (
+        <ArchiveModal
+          prestation={archiving}
+          onClose={() => setArchiving(null)}
+          onArchived={handleArchived}
         />
       )}
     </div>

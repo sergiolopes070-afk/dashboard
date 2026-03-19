@@ -1,15 +1,16 @@
 "use client";
 import { Prestation } from "@/lib/constants";
 import StatusBadge from "./StatusBadge";
-import { ExternalLink, MessageCircle, FileText, Pencil } from "lucide-react";
+import { ExternalLink, MessageCircle, FileText, Pencil, Archive } from "lucide-react";
 
 interface PrestationTableProps {
   prestations: Prestation[];
   showActions?: boolean;
   onEdit?: (p: Prestation) => void;
+  onArchive?: (p: Prestation) => void;
 }
 
-export default function PrestationTable({ prestations, showActions = true, onEdit }: PrestationTableProps) {
+export default function PrestationTable({ prestations, showActions = true, onEdit, onArchive }: PrestationTableProps) {
   if (prestations.length === 0) {
     return (
       <div className="text-center py-12 text-gray-400">
@@ -77,6 +78,15 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                         className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
                       >
                         <Pencil size={14} />
+                      </button>
+                    )}
+                    {onArchive && (
+                      <button
+                        onClick={() => onArchive(p)}
+                        title="Archiver"
+                        className="p-1.5 rounded-lg bg-orange-50 text-orange-500 hover:bg-orange-100 transition-colors"
+                      >
+                        <Archive size={14} />
                       </button>
                     )}
                     {p.lienWA && (

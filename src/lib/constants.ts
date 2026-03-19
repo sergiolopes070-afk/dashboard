@@ -2,93 +2,89 @@
 // KINOUCLEAN DASHBOARD – Constantes et types
 // ============================================================
 
-export const SHEET_NAME    = "Clients – Prestationss";
-export const SHEET_PRESTA  = "Prestataires";
-export const SHEET_ARCHIVE = "Historique Prestations";
-
-export const COL = {
-  TIMESTAMP    : 0,   // A
-  NOM          : 1,   // B
-  PRENOM       : 2,   // C
-  TEL          : 3,   // D
-  EMAIL        : 4,   // E
-  TYPE_PRESTA  : 5,   // F
-  QUANTITE     : 6,   // G
-  ADRESSE      : 7,   // H
-  DATE         : 8,   // I
-  HEURE        : 9,   // J
-  MESSAGE      : 10,  // K
-  PRIX         : 11,  // L
-  ENVOYER      : 12,  // M
-  STATUT       : 13,  // N
-  RAPPEL       : 14,  // O
-  AVIS         : 15,  // P
-  PRESTATAIRE  : 16,  // Q
-  EMAIL_PRESTA : 17,  // R
-  COMMENTAIRE  : 18,  // S
-  STATUT_PRESTA: 19,  // T
-  LIEN_WA      : 20,  // U
-  GEN_DEVIS    : 21,  // V
-  DEVIS_PDF    : 22,  // W
-};
-
 export type StatutClient =
+  | "NOUVEAU"
   | "EMAIL ENVOYÉ"
   | "CONFIRMÉ"
+  | "EN ATTENTE PRESTA"
+  | "PRESTATAIRE REFUSÉ – À RÉAFFECTER"
   | "TERMINÉ"
   | "ANNULÉ"
-  | "PRESTATAIRE REFUSÉ – À RÉAFFECTER"
   | "";
 
 export type StatutPresta =
-  | "EN ATTENTE PRESTA"
+  | "EN ATTENTE"
   | "ACCEPTÉ"
   | "REFUSÉ"
   | "";
 
+// Interface plate (join clients + prestataires) utilisée par l'UI
 export interface Prestation {
-  row: number;
-  timestamp: string;
-  nom: string;
-  prenom: string;
-  tel: string;
-  email: string;
-  typePresta: string;
+  row: string;          // UUID de la prestation
+  client_id: string;
+  prestataire_id: string | null;
+  timestamp: string;    // created_at
+  nom: string;          // clients.nom
+  prenom: string;       // clients.prenom
+  tel: string;          // clients.tel
+  email: string;        // clients.email
+  typePresta: string;   // type_prestation
   quantite: string;
-  adresse: string;
-  date: string;
-  heure: string;
+  adresse: string;      // adresse d'intervention
+  date: string;         // DD/MM/YYYY (converti depuis DATE)
+  heure: string;        // HH:MM (converti depuis TIME)
   message: string;
-  prix: string;
-  envoyer: string;
+  prix: string;         // converti depuis NUMERIC
+  envoyer: string;      // "OUI" si mail_client_envoye = true
   statut: StatutClient;
-  rappel: string;
+  rappel: string;       // "OUI" si rappel_j1_envoye = true
   avis: string;
-  prestataire: string;
-  emailPresta: string;
+  prestataire: string;  // prestataires.nom
+  emailPresta: string;  // prestataires.email
   commentaire: string;
   statutPresta: StatutPresta;
   lienWA: string;
-  genDevis: string;
-  devisPDF: string;
+  genDevis: string;     // "FAIT" si devis_genere = true
+  devisPDF: string;     // devis_url
+  commission: string;   // "50%" ou "50" (converti depuis DECIMAL + type)
+  raisonArchivage: string;
 }
 
 export interface Prestataire {
+  id: string;
   nom: string;
   email: string;
+  tel: string;          // tel_wa
+}
+
+export interface Client {
+  id: string;
+  prenom: string;
+  nom: string;
   tel: string;
+  email: string;
+  adresse: string;
+  source: string;
+  statut: string;
+  tags: string[];
+  notes: string;
+  total_ca: number;
+  nb_prestations: number;
+  created_at: string;
 }
 
 export const STATUT_COLORS: Record<string, string> = {
-  "EMAIL ENVOYÉ": "bg-blue-100 text-blue-800",
-  "CONFIRMÉ": "bg-green-100 text-green-800",
-  "TERMINÉ": "bg-gray-100 text-gray-700",
-  "ANNULÉ": "bg-red-100 text-red-800",
-  "PRESTATAIRE REFUSÉ – À RÉAFFECTER": "bg-orange-100 text-orange-800",
-  "EN ATTENTE PRESTA": "bg-yellow-100 text-yellow-800",
-  "ACCEPTÉ": "bg-green-100 text-green-800",
-  "REFUSÉ": "bg-red-100 text-red-800",
-  "RAPPEL ENVOYÉ": "bg-purple-100 text-purple-800",
+  "NOUVEAU"                            : "bg-gray-100 text-gray-600",
+  "EMAIL ENVOYÉ"                       : "bg-blue-100 text-blue-800",
+  "CONFIRMÉ"                           : "bg-green-100 text-green-800",
+  "TERMINÉ"                            : "bg-gray-100 text-gray-700",
+  "ANNULÉ"                             : "bg-red-100 text-red-800",
+  "PRESTATAIRE REFUSÉ – À RÉAFFECTER"  : "bg-orange-100 text-orange-800",
+  "EN ATTENTE"                         : "bg-yellow-100 text-yellow-800",
+  "EN ATTENTE PRESTA"                  : "bg-yellow-100 text-yellow-800",
+  "ACCEPTÉ"                            : "bg-green-100 text-green-800",
+  "REFUSÉ"                             : "bg-red-100 text-red-800",
+  "RAPPEL ENVOYÉ"                      : "bg-purple-100 text-purple-800",
 };
 
 export const LOGO_URL = "https://lh3.googleusercontent.com/d/1JeOWpfLrxjZqlglaN7ayL460GTET432f";

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPrestations, updatePrestation } from "@/lib/sheets";
-import { SHEET_NAME, SHEET_ARCHIVE } from "@/lib/constants";
+import { getPrestations, updatePrestation } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -17,16 +16,14 @@ export async function GET() {
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { row, updates, sheet } = body as {
-      row: number;
+    const { row, updates } = body as {
+      row: string;
       updates: Record<string, string>;
-      sheet?: string;
     };
     if (!row || !updates) {
       return NextResponse.json({ error: "row et updates requis" }, { status: 400 });
     }
-    const sheetName = sheet === "archive" ? SHEET_ARCHIVE : SHEET_NAME;
-    await updatePrestation(row, updates, sheetName);
+    await updatePrestation(row, updates);
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";

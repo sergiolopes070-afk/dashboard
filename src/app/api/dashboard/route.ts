@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDashboardStats } from "@/lib/sheets";
+import { getDashboardStats } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;

@@ -15,19 +15,21 @@ const RevenueChart = dynamic(() => import("@/components/RevenueChart"), { ssr: f
 const TypeChart    = dynamic(() => import("@/components/TypeChart"),    { ssr: false });
 
 interface Stats {
-  totalPrestations : number;
-  totalClients     : number;
-  totalPrestataires: number;
-  totalCA          : number;
-  upcoming         : number;
-  toReassign       : number;
-  waitingPresta    : number;
-  devisGeneres     : number;
-  prestations      : Prestation[];
-  prestataires     : Prestataire[];
-  archive          : Prestation[];
-  upcomingList     : Prestation[];
-  toReassignList   : Prestation[];
+  totalPrestations  : number;
+  totalClients      : number;
+  totalPrestataires : number;
+  totalCA           : number;
+  totalCommission   : number;
+  totalBenefice     : number;
+  upcoming          : number;
+  toReassign        : number;
+  waitingPresta     : number;
+  devisGeneres      : number;
+  prestations       : Prestation[];
+  prestataires      : Prestataire[];
+  archive           : Prestation[];
+  upcomingList      : Prestation[];
+  toReassignList    : Prestation[];
 }
 
 export default function HomePage() {
@@ -67,11 +69,10 @@ export default function HomePage() {
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex gap-4">
             <AlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" size={20} />
             <div>
-              <p className="font-semibold text-amber-800">Connexion Google Sheets requise</p>
+              <p className="font-semibold text-amber-800">Erreur de connexion Supabase</p>
               <p className="text-sm text-amber-700 mt-1">{error}</p>
               <p className="text-sm text-amber-600 mt-2">
-                Configurez <code className="bg-amber-100 px-1 rounded">.env.local</code> avec vos credentials Google —{" "}
-                <a href="/configuration" className="underline font-medium">voir Configuration</a>.
+                Vérifiez <code className="bg-amber-100 px-1 rounded">.env.local</code> avec vos credentials Supabase.
               </p>
             </div>
           </div>
@@ -89,14 +90,14 @@ export default function HomePage() {
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard title="Chiffre d'affaires" value={stats ? `${stats.totalCA.toFixed(0)} €` : "—"} subtitle="Total toutes prestations" icon={TrendingUp} color="green" />
-          <StatCard title="Prestations actives" value={stats?.totalPrestations ?? "—"} subtitle="En cours" icon={Briefcase} color="blue" />
+          <StatCard title="Bénéfice net" value={stats ? `${stats.totalBenefice.toFixed(0)} €` : "—"} subtitle={stats ? `Comm. versées : ${stats.totalCommission.toFixed(0)} €` : "—"} icon={TrendingUp} color="blue" />
           <StatCard title="Clients" value={stats?.totalClients ?? "—"} subtitle="Clients uniques" icon={Users} color="purple" />
           <StatCard title="Prestataires" value={stats?.totalPrestataires ?? "—"} subtitle="Équipe active" icon={Wrench} color="orange" />
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard title="Interventions à venir" value={stats?.upcoming ?? "—"} subtitle="Confirmées" icon={CalendarCheck} color="blue" />
-          <StatCard title="En attente prestataire" value={stats?.waitingPresta ?? "—"} subtitle="Proposition envoyée" icon={Clock} color="orange" />
+          <StatCard title="Prestations actives" value={stats?.totalPrestations ?? "—"} subtitle="En cours" icon={Briefcase} color="green" />
           <StatCard title="À réaffecter" value={stats?.toReassign ?? "—"} subtitle="Prestataire refusé" icon={AlertTriangle} color="red" alert={(stats?.toReassign || 0) > 0} />
           <StatCard title="Devis générés" value={stats?.devisGeneres ?? "—"} subtitle="PDF créés" icon={FileText} color="gray" />
         </div>

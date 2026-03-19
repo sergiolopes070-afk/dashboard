@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPrestataires } from "@/lib/sheets";
+import { getPrestataires } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
