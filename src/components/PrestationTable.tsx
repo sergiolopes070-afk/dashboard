@@ -3,27 +3,29 @@ import { Prestation } from "@/lib/constants";
 import StatusBadge from "./StatusBadge";
 import {
   ExternalLink, MessageCircle, FileText, Pencil, Archive, Trash2,
-  CreditCard, Copy, Check, X, Loader2, ExternalLink as OpenIcon,
+  CreditCard, Copy, Check, X, Loader2,
 } from "lucide-react";
 import { useState } from "react";
 
 // ─── Bouton / Modal paiement Stripe ──────────────────────────────────────────
 
 function PaymentButton({ p }: { p: Prestation }) {
-  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [url, setUrl]     = useState(p.stripePaymentUrl || "");
-  const [errMsg, setErr]  = useState("");
-  const [copied, setCopied] = useState(false);
-  const [open, setOpen]   = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [url, setUrl]         = useState(p.stripePaymentUrl || "");
+  const [errMsg, setErr]      = useState("");
+  const [copied, setCopied]   = useState(false);
+  const [open, setOpen]       = useState(false);
 
   const amount = parseFloat(p.prix) || 0;
   if (amount <= 0 || p.statut === "ANNULÉ") return null;
 
+  const isPaid = p.statut === "PAYÉ";
+
   const generate = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (url) { setOpen(true); return; } // lien déjà généré → ouvrir direct
+    if (url) { setErr(""); setOpen(true); return; }
 
-    setState("loading");
+    setLoading(true);
     try {
       const res  = await fetch("/api/stripe/checkout", {
         method : "POST",
@@ -39,148 +41,196 @@ function PaymentButton({ p }: { p: Prestation }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur Stripe");
       setUrl(data.url);
-      setState("done");
+      setErr("");
       setOpen(true);
     } catch (err) {
       setErr(err instanceof Error ? err.message : "Erreur inconnue");
-      setState("error");
       setOpen(true);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const copy = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const copy = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const hasLink = !!url;
+  // ── Message WhatsApp ──
+  const waText = encodeURIComponent(
+    `Bonjour ${p.prenom} 👋,\n\nVoici votre lien de paiement sécurisé KinouClean pour votre prestation *${p.typePresta}* :\n\n${url}\n\nMontant : *${amount} €*\n\nMerci et à bientôt ! 🙏`
+  );
+  const waHref = p.tel
+    ? `https://wa.me/${p.tel.replace(/\D/g, "")}?text=${waText}`
+    : `https://wa.me/?text=${waText}`;
+
+  // ── Message email ──
+  const emailHref = `mailto:${p.email || ""}?subject=${encodeURIComponent(`Votre lien de paiement – KinouClean`)}&body=${encodeURIComponent(
+    `Bonjour ${p.prenom},\n\nVoici votre lien de paiement sécurisé :\n${url}\n\nMontant : ${amount} €\nPrestation : ${p.typePresta}${p.date ? `\nDate : ${p.date}` : ""}\n\nCordialement,\nKinouClean`
+  )}`;
 
   return (
     <>
-      {/* Bouton dans la table */}
+      {/* Bouton table */}
       <button
         onClick={generate}
-        title={hasLink ? "Voir le lien de paiement" : "Générer un lien de paiement Stripe"}
+        title={isPaid ? "Paiement reçu ✓" : url ? "Voir / partager le lien" : "Générer un lien de paiement Stripe"}
         className={`p-1.5 rounded-lg transition-colors ${
-          hasLink
-            ? "bg-violet-100 text-violet-700 hover:bg-violet-200"
-            : "bg-violet-50 text-violet-500 hover:bg-violet-100"
+          isPaid
+            ? "bg-emerald-100 text-emerald-700 cursor-default"
+            : url
+              ? "bg-violet-100 text-violet-700 hover:bg-violet-200"
+              : "bg-violet-50 text-violet-500 hover:bg-violet-100"
         }`}
       >
-        {state === "loading"
-          ? <Loader2 size={14} className="animate-spin" />
-          : <CreditCard size={14} />
+        {loading    ? <Loader2 size={14} className="animate-spin" />
+         : isPaid   ? <Check size={14} />
+         : <CreditCard size={14} />
         }
       </button>
 
-      {/* Modal résultat */}
+      {/* Modal */}
       {open && (
         <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={e => { e.stopPropagation(); setOpen(false); setState("idle"); }}
+          onClick={e => { e.stopPropagation(); setOpen(false); }}
         >
-          <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
-            onClick={e => e.stopPropagation()}
-          >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+
             {/* Header */}
-            <div className={`p-5 text-white ${state === "error" ? "bg-red-500" : "bg-gradient-to-r from-violet-600 to-purple-600"}`}>
+            <div className={`p-5 text-white ${errMsg ? "bg-red-500" : isPaid ? "bg-gradient-to-r from-emerald-600 to-green-600" : "bg-gradient-to-r from-violet-600 to-purple-600"}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                    <CreditCard size={20} />
+                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-lg">
+                    {errMsg ? "⚠️" : isPaid ? "✅" : <CreditCard size={20} />}
                   </div>
                   <div>
                     <h2 className="font-bold text-base">
-                      {state === "error" ? "Erreur Stripe" : "Lien de paiement"}
+                      {errMsg ? "Erreur" : isPaid ? "Paiement reçu !" : url ? "Lien de paiement" : "Générer le lien"}
                     </h2>
-                    <p className="text-white/70 text-xs">
-                      {state === "error" ? "" : `${p.prenom} ${p.nom} — ${amount} €`}
-                    </p>
+                    <p className="text-white/70 text-xs">{p.prenom} {p.nom} · {amount} €</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => { setOpen(false); setState("idle"); }}
-                  className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center"
-                >
+                <button onClick={() => setOpen(false)} className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center">
                   <X size={15} />
                 </button>
               </div>
             </div>
 
             <div className="p-5 space-y-4">
-              {state === "error" ? (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-                  {errMsg}
-                  {errMsg.includes("Configuration") && (
-                    <a href="/configuration" className="block mt-2 underline font-medium">
-                      → Aller dans Configuration
+
+              {errMsg ? (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 space-y-2">
+                  <p>{errMsg}</p>
+                  {errMsg.toLowerCase().includes("configur") && (
+                    <a href="/configuration" className="inline-flex items-center gap-1 underline font-medium text-red-600">
+                      <ExternalLink size={12} /> Configurer Stripe
                     </a>
                   )}
                 </div>
               ) : (
                 <>
-                  {/* Infos prestation */}
-                  <div className="bg-violet-50 rounded-xl p-3.5 space-y-1.5 text-sm">
+                  {/* Récap prestation */}
+                  <div className={`rounded-xl p-3.5 space-y-1.5 text-sm ${isPaid ? "bg-emerald-50 border border-emerald-200" : "bg-violet-50"}`}>
                     <div className="flex justify-between">
                       <span className="text-gray-500">Prestation</span>
-                      <span className="font-medium text-gray-800">{p.typePresta}</span>
+                      <span className="font-semibold text-gray-800">{p.typePresta}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">Montant</span>
-                      <span className="font-bold text-violet-700">{amount} €</span>
+                      <span className={`font-bold ${isPaid ? "text-emerald-700" : "text-violet-700"}`}>{amount} €</span>
                     </div>
                     {p.date && (
                       <div className="flex justify-between">
                         <span className="text-gray-500">Date</span>
-                        <span className="font-medium text-gray-800">{p.date}</span>
+                        <span className="font-medium text-gray-700">{p.date}</span>
+                      </div>
+                    )}
+                    {isPaid && (
+                      <div className="pt-1 flex items-center gap-1.5 text-emerald-700 font-semibold text-xs">
+                        <Check size={13} /> Paiement confirmé par Stripe
                       </div>
                     )}
                   </div>
 
-                  {/* Lien */}
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 mb-1.5">Lien de paiement Stripe</p>
-                    <div className="flex gap-2">
-                      <input
-                        readOnly
-                        value={url}
-                        className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-mono bg-gray-50 text-gray-700 truncate"
-                      />
-                      <button
-                        onClick={copy}
-                        className={`px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-                          copied
-                            ? "bg-emerald-500 text-white"
-                            : "bg-gray-100 hover:bg-gray-200 text-gray-700"
-                        }`}
-                      >
-                        {copied ? <><Check size={12} /> Copié</> : <><Copy size={12} /> Copier</>}
-                      </button>
+                  {/* Lien + copie */}
+                  {url && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-500">Lien de paiement Stripe</p>
+                      <div className="flex gap-2">
+                        <input
+                          readOnly value={url}
+                          className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-mono bg-gray-50 text-gray-600 truncate min-w-0"
+                        />
+                        <button
+                          onClick={() => copy()}
+                          className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 transition-colors ${
+                            copied ? "bg-emerald-500 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                          }`}
+                        >
+                          {copied ? <><Check size={12} /> Copié !</> : <><Copy size={12} /> Copier</>}
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Actions */}
-                  <div className="flex gap-2 pt-1">
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-semibold text-center flex items-center justify-center gap-2 transition-colors"
-                    >
-                      <OpenIcon size={14} /> Ouvrir le paiement
-                    </a>
-                    {p.email && (
+                  {/* Boutons partage */}
+                  {url && !isPaid && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-500">Envoyer au client</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* WhatsApp */}
+                        <a
+                          href={waHref}
+                          target="_blank" rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="flex items-center justify-center gap-2 py-2.5 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl text-xs font-semibold transition-colors"
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                          </svg>
+                          WhatsApp
+                        </a>
+
+                        {/* Email */}
+                        {p.email ? (
+                          <a
+                            href={emailHref}
+                            onClick={e => e.stopPropagation()}
+                            className="flex items-center justify-center gap-2 py-2.5 bg-gray-800 hover:bg-gray-900 text-white rounded-xl text-xs font-semibold transition-colors"
+                          >
+                            <ExternalLink size={13} /> Email
+                          </a>
+                        ) : (
+                          <button disabled className="flex items-center justify-center gap-2 py-2.5 bg-gray-100 text-gray-400 rounded-xl text-xs cursor-not-allowed">
+                            <ExternalLink size={13} /> Pas d&apos;email
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Ouvrir dans Stripe */}
                       <a
-                        href={`mailto:${p.email}?subject=Lien%20de%20paiement%20KinouClean&body=Bonjour%20${encodeURIComponent(p.prenom)}%2C%0A%0AVoici%20votre%20lien%20de%20paiement%20s%C3%A9curis%C3%A9%20%3A%0A${encodeURIComponent(url)}%0A%0AMontant%20%3A%20${amount}%20%E2%82%AC%0A%0ACordialement%2C%0AKinouClean`}
-                        className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium text-center flex items-center justify-center gap-2 transition-colors"
+                        href={url}
+                        target="_blank" rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="flex items-center justify-center gap-2 w-full py-2.5 border border-violet-200 text-violet-700 hover:bg-violet-50 rounded-xl text-xs font-medium transition-colors"
                       >
-                        <ExternalLink size={14} /> Envoyer par email
+                        <CreditCard size={13} /> Aperçu de la page de paiement
                       </a>
-                    )}
-                  </div>
+                    </div>
+                  )}
+
+                  {isPaid && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-sm text-emerald-800 flex items-start gap-2.5">
+                      <Check size={16} className="flex-shrink-0 mt-0.5 text-emerald-600" />
+                      <div>
+                        <p className="font-semibold">Paiement confirmé</p>
+                        <p className="text-xs text-emerald-700 mt-0.5">Le prestataire a été notifié par email automatiquement.</p>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>

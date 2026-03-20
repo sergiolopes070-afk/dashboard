@@ -8,6 +8,7 @@ export type StatutClient =
   | "TERMINÉ"
   | "ANNULÉ"
   | "PRESTATAIRE REFUSÉ – À RÉAFFECTER"
+  | "PAYÉ"
   | "";
 
 export type StatutPresta =
@@ -68,6 +69,7 @@ export const STATUT_COLORS: Record<string, string> = {
   "ACCEPTÉ": "bg-green-100 text-green-800",
   "REFUSÉ": "bg-red-100 text-red-800",
   "RAPPEL ENVOYÉ": "bg-purple-100 text-purple-800",
+  "PAYÉ": "bg-emerald-100 text-emerald-800",
 };
 
 export const LOGO_URL = "https://lh3.googleusercontent.com/d/1JeOWpfLrxjZqlglaN7ayL460GTET432f";

@@ -173,13 +173,15 @@ function GmailModal({ currentEmail, onClose, onSave }: {
 
 // ─── Modal Stripe ─────────────────────────────────────────────────────────────
 
-function StripeModal({ currentPubKey, onClose, onSave }: {
+function StripeModal({ currentPubKey, currentWebhookSecret, onClose, onSave }: {
   currentPubKey?: string;
+  currentWebhookSecret?: string;
   onClose: () => void;
-  onSave: (secret: string, pub: string) => Promise<void>;
+  onSave: (secret: string, pub: string, webhookSecret: string) => Promise<void>;
 }) {
-  const [secret, setSecret] = useState("");
-  const [pub, setPub]       = useState(currentPubKey || "");
+  const [secret, setSecret]   = useState("");
+  const [pub, setPub]         = useState(currentPubKey || "");
+  const [whSecret, setWh]     = useState(currentWebhookSecret || "");
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
 
@@ -189,7 +191,7 @@ function StripeModal({ currentPubKey, onClose, onSave }: {
     if (!secret.startsWith("sk_")) { setError("La clé secrète doit commencer par sk_live_ ou sk_test_"); return; }
     setLoading(true);
     setError("");
-    try { await onSave(secret.trim(), pub.trim()); onClose(); }
+    try { await onSave(secret.trim(), pub.trim(), whSecret.trim()); onClose(); }
     catch (err) { setError(err instanceof Error ? err.message : "Erreur inconnue"); }
     finally { setLoading(false); }
   };
@@ -230,19 +232,28 @@ function StripeModal({ currentPubKey, onClose, onSave }: {
             placeholder="pk_live_..."
           />
 
-          {/* Info */}
+          <MaskedField
+            label="Secret webhook (whsec_… — pour confirmer les paiements)"
+            value={whSecret}
+            onChange={setWh}
+            placeholder="whsec_..."
+          />
+
+          {/* Info clés */}
           <div className="bg-violet-50 border border-violet-200 rounded-xl p-3.5 text-xs text-violet-800 space-y-2">
             <p className="font-semibold flex items-center gap-1.5">
-              <AlertCircle size={13} /> Où trouver vos clés Stripe ?
+              <AlertCircle size={13} /> Configuration Stripe
             </p>
             <p className="text-violet-700">
-              Tableau de bord Stripe → <strong>Développeurs</strong> → <strong>Clés API</strong>
+              <strong>Clés API</strong> → Stripe Dashboard → Développeurs → Clés API
             </p>
-            <a
-              href="https://dashboard.stripe.com/apikeys"
-              target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-violet-700 underline font-medium"
-            >
+            <p className="text-violet-700">
+              <strong>Webhook</strong> → Développeurs → Webhooks → Ajouter un endpoint :<br />
+              <code className="bg-violet-100 px-1 rounded font-mono">/api/stripe/webhook</code><br />
+              Événement : <code className="bg-violet-100 px-1 rounded font-mono">checkout.session.completed</code>
+            </p>
+            <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-violet-700 underline font-medium">
               Ouvrir Stripe Dashboard <ExternalLink size={11} />
             </a>
           </div>
@@ -357,10 +368,15 @@ function ServiceCard({
 
 // ─── SQL Setup Banner ─────────────────────────────────────────────────────────
 
-const SETUP_SQL = `CREATE TABLE IF NOT EXISTS settings (
+const SETUP_SQL = `-- Table de configuration (Gmail, Stripe…)
+CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
-);`;
+);
+
+-- Colonne lien de paiement Stripe sur les prestations
+ALTER TABLE prestations
+  ADD COLUMN IF NOT EXISTS stripe_payment_url TEXT;`;
 
 function SetupBanner() {
   return (
@@ -576,8 +592,13 @@ export default function ConfigurationPage() {
       {modal === "stripe" && (
         <StripeModal
           currentPubKey={settings.stripe_publishable_key}
+          currentWebhookSecret={settings.stripe_webhook_secret}
           onClose={() => setModal(null)}
-          onSave={(secret, pub) => save({ stripe_secret_key: secret, stripe_publishable_key: pub })}
+          onSave={(secret, pub, webhookSecret) => save({
+            stripe_secret_key    : secret,
+            stripe_publishable_key: pub,
+            stripe_webhook_secret: webhookSecret,
+          })}
         />
       )}
     </div>
