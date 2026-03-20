@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 30, // 30 jours
     path: "/",
+    // Pas de maxAge → cookie de session (expire à la fermeture du navigateur)
   });
 
   return response;
