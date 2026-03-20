@@ -67,19 +67,6 @@ function TextField({ label, value, onChange, placeholder, type = "text" }: {
   );
 }
 
-// ─── Badge statut ─────────────────────────────────────────────────────────────
-
-function StatusBadge({ connected }: { connected: boolean }) {
-  return connected ? (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-      <CheckCircle2 size={11} /> Connecté
-    </span>
-  ) : (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-gray-100 border border-gray-200 px-2.5 py-1 rounded-full">
-      <Circle size={11} /> Non configuré
-    </span>
-  );
-}
 
 // ─── Modal Gmail ─────────────────────────────────────────────────────────────
 
@@ -288,7 +275,7 @@ function StripeModal({ currentPubKey, onClose, onSave }: {
 function ServiceCard({
   icon, title, description, connected, detail,
   onConnect, onDisconnect, disabled,
-  accentClass,
+  accentClass, connectBtnClass,
 }: {
   icon: React.ReactNode;
   title: string;
@@ -299,22 +286,45 @@ function ServiceCard({
   onDisconnect: () => void;
   disabled?: boolean;
   accentClass: string;
+  connectBtnClass: string;
 }) {
   return (
-    <div className={`bg-white border rounded-2xl p-5 transition-all ${disabled ? "opacity-50 pointer-events-none border-gray-100" : "border-gray-100 shadow-sm hover:shadow-md"}`}>
+    <div className={`rounded-2xl p-5 transition-all border-2 ${
+      disabled
+        ? "opacity-50 pointer-events-none bg-white border-gray-100"
+        : connected
+          ? "bg-emerald-50 border-emerald-300 shadow-sm"
+          : "bg-white border-gray-100 shadow-sm hover:shadow-md"
+    }`}>
       <div className="flex items-start gap-4">
         {/* Icône */}
-        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${accentClass}`}>
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 relative ${
+          connected ? "bg-white shadow-sm" : accentClass
+        }`}>
           {icon}
+          {connected && (
+            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center shadow">
+              <Check size={10} className="text-white" strokeWidth={3} />
+            </span>
+          )}
         </div>
 
         {/* Contenu */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-semibold text-gray-900">{title}</span>
-            <StatusBadge connected={connected} />
+            <span className={`font-bold text-sm ${connected ? "text-emerald-900" : "text-gray-900"}`}>{title}</span>
+            {connected ? (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full">
+                <CheckCircle2 size={11} /> Bien configuré
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 bg-gray-100 border border-gray-200 px-2.5 py-0.5 rounded-full">
+                <Circle size={11} /> Non configuré
+              </span>
+            )}
           </div>
-          <p className="text-xs text-gray-500 mb-3">
+
+          <p className={`text-xs mb-3 ${connected ? "text-emerald-700 font-medium" : "text-gray-500"}`}>
             {connected && detail ? detail : description}
           </p>
 
@@ -324,8 +334,8 @@ function ServiceCard({
               onClick={onConnect}
               className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
                 connected
-                  ? "bg-gray-100 hover:bg-gray-200 text-gray-700"
-                  : `text-white ${accentClass.replace("bg-", "bg-").replace("50", "500")} hover:opacity-90`
+                  ? "bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                  : `text-white ${connectBtnClass}`
               }`}
             >
               {connected ? "Modifier" : <><ChevronRight size={12} /> Se connecter</>}
@@ -333,7 +343,7 @@ function ServiceCard({
             {connected && (
               <button
                 onClick={onDisconnect}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-red-500 hover:bg-red-50 hover:text-red-700 border border-transparent hover:border-red-200 transition-colors"
               >
                 Déconnecter
               </button>
@@ -464,7 +474,7 @@ export default function ConfigurationPage() {
 
                 {/* Gmail */}
                 <ServiceCard
-                  icon={<Mail size={22} className="text-red-500" />}
+                  icon={<Mail size={22} className={gmailOk ? "text-red-400" : "text-red-500"} />}
                   title="Gmail"
                   description="Envoyer des emails de confirmation et de rappel aux clients"
                   connected={gmailOk}
@@ -473,11 +483,12 @@ export default function ConfigurationPage() {
                   onDisconnect={() => disconnect(["gmail_user", "gmail_app_password"])}
                   disabled={!tableReady && !gmailOk}
                   accentClass="bg-red-50"
+                  connectBtnClass="bg-red-500 hover:bg-red-600"
                 />
 
                 {/* Stripe */}
                 <ServiceCard
-                  icon={<CreditCard size={22} className="text-violet-600" />}
+                  icon={<CreditCard size={22} className={stripeOk ? "text-violet-500" : "text-violet-600"} />}
                   title="Stripe"
                   description="Générer des liens de paiement et encaisser les prestations"
                   connected={stripeOk}
@@ -490,6 +501,7 @@ export default function ConfigurationPage() {
                   onDisconnect={() => disconnect(["stripe_secret_key", "stripe_publishable_key"])}
                   disabled={!tableReady && !stripeOk}
                   accentClass="bg-violet-50"
+                  connectBtnClass="bg-violet-600 hover:bg-violet-700"
                 />
 
               </div>
@@ -506,23 +518,45 @@ export default function ConfigurationPage() {
                     label: "Supabase",
                     ok: settings._supabase === "true" || settings._supabase === true as unknown as string,
                     detail: "Base de données principale",
+                    okLabel: "Connecté",
                   },
                   {
                     label: "Table settings",
                     ok: tableReady,
-                    detail: tableReady ? "Prête" : "À créer via SQL (voir ci-dessus)",
+                    detail: tableReady ? "Stockage des connexions prêt" : "À créer via SQL (voir ci-dessus)",
+                    okLabel: "Prête",
                   },
-                  { label: "Gmail", ok: gmailOk, detail: gmailOk ? settings.gmail_user : "Non configuré" },
-                  { label: "Stripe", ok: stripeOk, detail: stripeOk ? "Clés enregistrées" : "Non configuré" },
-                ].map(({ label, ok, detail }) => (
-                  <div key={label} className="flex items-center gap-4 px-5 py-3.5">
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${ok ? "bg-emerald-400" : "bg-gray-300"}`} />
-                    <span className="text-sm font-medium text-gray-800 w-32">{label}</span>
-                    <span className={`text-xs flex-1 ${ok ? "text-gray-500" : "text-amber-600"}`}>{detail}</span>
-                    {ok
-                      ? <CheckCircle2 size={15} className="text-emerald-500 flex-shrink-0" />
-                      : <Circle size={15} className="text-gray-300 flex-shrink-0" />
-                    }
+                  {
+                    label: "Gmail",
+                    ok: gmailOk,
+                    detail: gmailOk ? (settings.gmail_user ?? "") : "Non configuré",
+                    okLabel: "Bien configuré",
+                  },
+                  {
+                    label: "Stripe",
+                    ok: stripeOk,
+                    detail: stripeOk ? "Clés API enregistrées" : "Non configuré",
+                    okLabel: "Bien configuré",
+                  },
+                ].map(({ label, ok, detail, okLabel }) => (
+                  <div key={label} className={`flex items-center gap-4 px-5 py-3.5 transition-colors ${ok ? "bg-emerald-50/40" : ""}`}>
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${ok ? "bg-emerald-100" : "bg-gray-100"}`}>
+                      {ok
+                        ? <CheckCircle2 size={16} className="text-emerald-600" />
+                        : <Circle size={16} className="text-gray-300" />
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-800">{label}</span>
+                        {ok && (
+                          <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                            ✓ {okLabel}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-xs mt-0.5 truncate ${ok ? "text-emerald-600" : "text-amber-500"}`}>{detail}</p>
+                    </div>
                   </div>
                 ))}
               </div>
