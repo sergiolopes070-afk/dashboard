@@ -52,10 +52,11 @@ function rowToPrestation(row: Record<string, any>): Prestation {
     devisPDF     : row.devis_url   || "",
     commission     : row.commission != null ? String(row.commission) : "",
     commissionType : (row.commission_type === "euro" ? "€" : "%") as "%" | "€",
-    archiveReason  : row.archive_reason || "",
-    tags           : Array.isArray(client.tags) ? client.tags : (client.tags ? String(client.tags).split(",").map((t: string) => t.trim()).filter(Boolean) : []),
-    satisfaction   : row.satisfaction != null ? Number(row.satisfaction) : undefined,
-    updatedAt      : (row.updated_at as string) || "",
+    archiveReason    : row.archive_reason || "",
+    tags             : Array.isArray(client.tags) ? client.tags : (client.tags ? String(client.tags).split(",").map((t: string) => t.trim()).filter(Boolean) : []),
+    satisfaction     : row.satisfaction != null ? Number(row.satisfaction) : undefined,
+    updatedAt        : (row.updated_at as string) || "",
+    stripePaymentUrl : (row.stripe_payment_url as string) || "",
   };
 }
 
@@ -129,7 +130,8 @@ export async function updatePrestation(
       case "commentaire":  prestaPatch.commentaire   = value;                           break;
       case "satisfaction": prestaPatch.satisfaction   = value ? parseInt(value) : null; break;
       case "lienWA":       prestaPatch.lien_wa        = value;                          break;
-      case "devisPDF":     prestaPatch.devis_url      = value;                          break;
+      case "devisPDF":          prestaPatch.devis_url           = value;  break;
+      case "stripePaymentUrl":  prestaPatch.stripe_payment_url  = value;  break;
       case "commission":       prestaPatch.commission      = value ? parseFloat(value) : 0;           break;
       case "commissionType":   prestaPatch.commission_type = value === "€" ? "euro" : "percent";      break;
       case "prestataire": {

@@ -44,10 +44,11 @@ export interface Prestation {
   devisPDF: string;
   commission: string;     // valeur (ex: "20" = 20% ou 20€)
   commissionType: "%" | "€"; // type de commission
-  archiveReason?: string; // raison de l'archivage (annulation, etc.)
-  tags?: string[];         // tags du client (Régulier, VIP, etc.)
-  satisfaction?: number;   // note de satisfaction 1-5
-  updatedAt?: string;      // dernière mise à jour (pour notifications)
+  archiveReason?: string;    // raison de l'archivage (annulation, etc.)
+  tags?: string[];           // tags du client (Régulier, VIP, etc.)
+  satisfaction?: number;     // note de satisfaction 1-5
+  updatedAt?: string;        // dernière mise à jour (pour notifications)
+  stripePaymentUrl?: string; // lien de paiement Stripe Checkout
 }
 
 export interface Prestataire {
