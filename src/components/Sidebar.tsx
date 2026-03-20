@@ -1,9 +1,9 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Users, Briefcase, Archive,
-  FileText, Settings, ChevronRight, Wrench, CalendarDays, TrendingDown,
+  FileText, Settings, ChevronRight, Wrench, CalendarDays, TrendingDown, LogOut,
 } from "lucide-react";
 
 const nav = [
@@ -20,6 +20,13 @@ const nav = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }
   return (
     <aside className="h-screen w-64 bg-[#0f172a] text-white flex flex-col fixed left-0 top-0 z-30 shadow-xl">
       {/* Logo */}
@@ -60,9 +67,19 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-6 py-4 border-t border-white/10">
-        <p className="text-xs text-gray-500">Gomes Lopes Sergio</p>
-        <p className="text-xs text-gray-500">kinouclean@gmail.com</p>
+      <div className="px-4 py-4 border-t border-white/10 space-y-3">
+        <div>
+          <p className="text-xs text-gray-500">Gomes Lopes Sergio</p>
+          <p className="text-xs text-gray-500">kinouclean@gmail.com</p>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm text-gray-400
+                     hover:bg-red-500/10 hover:text-red-400 transition-all"
+        >
+          <LogOut size={16} />
+          <span>Se déconnecter</span>
+        </button>
       </div>
     </aside>
   );
