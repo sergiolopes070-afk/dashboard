@@ -1,7 +1,8 @@
 "use client";
-import { RefreshCw, Bell, Search, X } from "lucide-react";
+import { RefreshCw, Bell, Search, X, Menu } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import DarkModeToggle from "./DarkModeToggle";
+import { useSidebar } from "./SidebarContext";
 
 interface TopbarProps {
   title: string;
@@ -131,6 +132,7 @@ function GlobalSearch() {
 
 export default function Topbar({ title, subtitle, onRefresh, loading, alerts, action }: TopbarProps) {
   const [spinning, setSpinning] = useState(false);
+  const { toggle } = useSidebar();
 
   const handleRefresh = () => {
     if (!onRefresh) return;
@@ -140,7 +142,15 @@ export default function Topbar({ title, subtitle, onRefresh, loading, alerts, ac
   };
 
   return (
-    <header className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between gap-4">
+    <header className="bg-white border-b border-gray-100 px-4 py-4 flex items-center justify-between gap-4">
+      {/* Hamburger - mobile only */}
+      <button
+        onClick={toggle}
+        className="p-2 rounded-xl hover:bg-gray-100 transition-colors md:hidden shrink-0"
+        aria-label="Ouvrir le menu"
+      >
+        <Menu size={20} className="text-gray-600" />
+      </button>
       <div className="shrink-0">
         <h1 className="text-xl font-bold text-gray-900">{title}</h1>
         {subtitle && <p className="text-sm text-gray-400 mt-0.5">{subtitle}</p>}
