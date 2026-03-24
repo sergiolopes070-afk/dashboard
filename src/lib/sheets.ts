@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { Prestation, Prestataire, Depense } from "./constants";
+import { Prestation, Prestataire, Depense, ModePaiement } from "./constants";
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
 
@@ -57,6 +57,7 @@ function rowToPrestation(row: Record<string, any>): Prestation {
     satisfaction     : row.satisfaction != null ? Number(row.satisfaction) : undefined,
     updatedAt        : (row.updated_at as string) || "",
     stripePaymentUrl : (row.stripe_payment_url as string) || "",
+    modePaiement     : ((row.mode_paiement as string) || "") as ModePaiement,
   };
 }
 
@@ -132,6 +133,7 @@ export async function updatePrestation(
       case "lienWA":       prestaPatch.lien_wa        = value;                          break;
       case "devisPDF":          prestaPatch.devis_url           = value;  break;
       case "stripePaymentUrl":  prestaPatch.stripe_payment_url  = value;  break;
+      case "modePaiement":      prestaPatch.mode_paiement       = value || null; break;
       case "commission":       prestaPatch.commission      = value ? parseFloat(value) : 0;           break;
       case "commissionType":   prestaPatch.commission_type = value === "€" ? "euro" : "percent";      break;
       case "prestataire": {

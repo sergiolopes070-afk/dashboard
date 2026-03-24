@@ -17,6 +17,31 @@ export type StatutPresta =
   | "REFUSÉ"
   | "";
 
+export type ModePaiement =
+  | "Espèces"
+  | "Lien de paiement"
+  | "Virement bancaire"
+  | "Chèque"
+  | "Carte sur place"
+  | "";
+
+export const MODES_PAIEMENT: ModePaiement[] = [
+  "",
+  "Espèces",
+  "Lien de paiement",
+  "Virement bancaire",
+  "Chèque",
+  "Carte sur place",
+];
+
+export const MODE_PAIEMENT_ICONS: Record<string, string> = {
+  "Espèces"          : "💵",
+  "Lien de paiement" : "🔗",
+  "Virement bancaire": "🏦",
+  "Chèque"           : "📝",
+  "Carte sur place"  : "💳",
+};
+
 export interface Prestation {
   row: string; // UUID (prestation id)
   clientId: string; // UUID (client id)
@@ -43,8 +68,9 @@ export interface Prestation {
   lienWA: string;
   genDevis: string;
   devisPDF: string;
-  commission: string;     // valeur (ex: "20" = 20% ou 20€)
+  commission: string;        // valeur (ex: "20" = 20% ou 20€)
   commissionType: "%" | "€"; // type de commission
+  modePaiement?: ModePaiement; // mode de paiement choisi
   archiveReason?: string;    // raison de l'archivage (annulation, etc.)
   tags?: string[];           // tags du client (Régulier, VIP, etc.)
   satisfaction?: number;     // note de satisfaction 1-5

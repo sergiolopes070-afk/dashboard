@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { X, Save, Loader2, MessageCircle, Archive } from "lucide-react";
-import { Prestation, Prestataire, StatutClient, StatutPresta } from "@/lib/constants";
+import { Prestation, Prestataire, StatutClient, StatutPresta, MODES_PAIEMENT, MODE_PAIEMENT_ICONS } from "@/lib/constants";
 
 interface EditPrestationModalProps {
   prestation: Prestation;
@@ -30,13 +30,14 @@ export default function EditPrestationModal({
   onArchive,
 }: EditPrestationModalProps) {
   const [form, setForm] = useState({
-    statut      : prestation.statut       as string,
-    statutPresta: prestation.statutPresta as string,
-    prestataire : prestation.prestataire,
-    emailPresta : prestation.emailPresta,
+    statut        : prestation.statut       as string,
+    statutPresta  : prestation.statutPresta as string,
+    prestataire   : prestation.prestataire,
+    emailPresta   : prestation.emailPresta,
     prix           : prestation.prix,
     commission     : prestation.commission || "",
     commissionType : (prestation.commissionType || "%") as "%" | "€",
+    modePaiement   : prestation.modePaiement || "",
     date           : prestation.date,
     heure       : prestation.heure,
     envoyer     : prestation.envoyer,
@@ -71,13 +72,14 @@ export default function EditPrestationModal({
     setError(null);
     try {
       const updates: Record<string, string> = {
-        statut      : form.statut,
-        statutPresta: form.statutPresta,
-        prestataire : form.prestataire,
-        emailPresta : form.emailPresta,
+        statut        : form.statut,
+        statutPresta  : form.statutPresta,
+        prestataire   : form.prestataire,
+        emailPresta   : form.emailPresta,
         prix           : form.prix,
         commission     : form.commission,
         commissionType : form.commissionType,
+        modePaiement   : form.modePaiement,
         date           : form.date,
         heure       : form.heure,
         envoyer     : form.envoyer,
@@ -310,6 +312,31 @@ export default function EditPrestationModal({
                 </div>
               );
             })()}
+          </fieldset>
+
+          {/* Mode de paiement */}
+          <fieldset className="space-y-3">
+            <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Mode de paiement</legend>
+            <div className="flex flex-wrap gap-2">
+              {MODES_PAIEMENT.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, modePaiement: mode }))}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${
+                    form.modePaiement === mode
+                      ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600"
+                  }`}
+                >
+                  {mode ? (
+                    <>{MODE_PAIEMENT_ICONS[mode]} {mode}</>
+                  ) : (
+                    <span className="text-gray-400">Non défini</span>
+                  )}
+                </button>
+              ))}
+            </div>
           </fieldset>
 
           {/* Actions */}

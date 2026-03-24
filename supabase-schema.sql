@@ -61,6 +61,7 @@ CREATE TABLE prestations (
   calendar_event_id  TEXT,
   commission         DECIMAL DEFAULT 0,
   commission_type    TEXT DEFAULT 'percent',
+  mode_paiement      TEXT DEFAULT NULL,  -- Espèces / Lien de paiement / Virement bancaire / Chèque / Carte sur place
   archive            BOOLEAN DEFAULT FALSE
 );
 
@@ -138,3 +139,7 @@ CREATE POLICY "Acces authentifie" ON logs         FOR ALL USING (auth.role() = '
 CREATE POLICY "Acces authentifie" ON depenses     FOR ALL USING (auth.role() = 'authenticated');
 
 -- ✅ TERMINÉ – tu dois voir 6 tables dans Éditeur de table
+
+-- ─── MIGRATIONS (à exécuter si la table existe déjà) ─────────────────────────
+-- Ajoute le champ mode de paiement sur une base existante :
+-- ALTER TABLE prestations ADD COLUMN IF NOT EXISTS mode_paiement TEXT DEFAULT NULL;

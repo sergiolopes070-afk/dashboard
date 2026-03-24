@@ -5,6 +5,7 @@ import {
   ExternalLink, MessageCircle, FileText, Pencil, Archive, Trash2,
   CreditCard, Copy, Check, X, Loader2, Send,
 } from "lucide-react";
+import { MODE_PAIEMENT_ICONS } from "@/lib/constants";
 import { useState } from "react";
 
 // ─── Bouton / Modal paiement Stripe ──────────────────────────────────────────
@@ -304,6 +305,13 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                   ? <span className="font-semibold text-green-700">{p.prix} €</span>
                   : <span className="text-gray-300">—</span>
                 }
+                {p.modePaiement && (
+                  <div className="mt-0.5">
+                    <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-lg bg-gray-100 text-gray-600">
+                      {MODE_PAIEMENT_ICONS[p.modePaiement]} {p.modePaiement}
+                    </span>
+                  </div>
+                )}
                 {p.prix && p.commission && parseFloat(p.commission) > 0 && (() => {
                   const prix  = parseFloat(p.prix)       || 0;
                   const val   = parseFloat(p.commission) || 0;
