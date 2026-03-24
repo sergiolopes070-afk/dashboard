@@ -123,7 +123,7 @@ export default function HomePage() {
         }
       />
 
-      <div className="flex-1 p-6 space-y-6">
+      <div className="flex-1 p-3 sm:p-6 space-y-3 sm:space-y-6">
 
         {error && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex gap-4">
@@ -362,7 +362,7 @@ export default function HomePage() {
                 {isSemaine ? `Semaine du ${weekLabel}` : monthName.charAt(0).toUpperCase() + monthName.slice(1)}
                 {isSemaine && depMensuelTotal > 0 && " · charges fixes au prorata"}
               </p>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <div className="rounded-xl bg-green-50 p-4 flex items-center gap-3">
                   <TrendingUp size={20} className="text-green-600 flex-shrink-0" />
                   <div>

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo, useRef } from "react";
-import { ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, SlidersHorizontal } from "lucide-react";
 import { Prestation, Prestataire, StatutClient } from "@/lib/constants";
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ function firstMondayOfMonthGrid(d: Date): Date {
 // ─── Options prestation ───────────────────────────────────────────────────────
 const TYPES_PRESTA = [
   "Ménage", "Repassage", "Vitres", "Débarras",
-  "Après travaux", "Bureaux", "Lavage Canapé", "Autre",
+  "Après travaux", "Bureaux", "Lavage Canapé", "Lavage véhicule", "Autre",
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -427,6 +427,7 @@ export default function AgendaPage() {
   const [selectedEvent,   setSelectedEvent]   = useState<Prestation | null>(null);
   const [createSlot,      setCreateSlot]      = useState<{ date: string; heure: string } | null>(null);
   const [selectedMonthDay, setSelectedMonthDay] = useState<Date | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const today = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
@@ -552,77 +553,110 @@ export default function AgendaPage() {
   };
 
   // ─────────────────────────────────────────────────────────────────────────
+
+  // Sidebar prestataires content (partagé desktop + mobile)
+  const sidebarContent = (
+    <>
+      <div className="font-semibold text-sm text-gray-700 mb-1">Prestataires</div>
+      <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-400 uppercase tracking-wide">
+        <input type="checkbox" checked={allChecked} onChange={e => toggleAll(e.target.checked)} className="w-3.5 h-3.5 rounded" />
+        Tous
+      </label>
+      <div className="flex flex-col gap-2">
+        {prestataires.map(p => {
+          const color = colorMap[p.id] ?? PALETTE[0];
+          return (
+            <label key={p.id} className="flex items-center gap-2.5 cursor-pointer group"
+              onClick={() => setChecked(prev => ({ ...prev, [p.id]: !prev[p.id] }))}>
+              <span className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0"
+                style={{ borderColor: color.bg, backgroundColor: checked[p.id] ? color.bg : "transparent" }}>
+                {checked[p.id] && (
+                  <svg viewBox="0 0 10 8" className="w-2.5 h-2">
+                    <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </span>
+              <span className="text-sm text-gray-700 truncate">{p.nom}</span>
+            </label>
+          );
+        })}
+        <label className="flex items-center gap-2.5 cursor-pointer group"
+          onClick={() => setShowSansPresta(v => !v)}>
+          <span className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0"
+            style={{ borderColor:"#9CA3AF", backgroundColor: showSansPresta ? "#9CA3AF" : "transparent" }}>
+            {showSansPresta && (
+              <svg viewBox="0 0 10 8" className="w-2.5 h-2">
+                <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </span>
+          <span className="text-sm text-gray-400 truncate">Sans prestataire</span>
+        </label>
+      </div>
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
 
-      {/* ── Sidebar ───────────────────────────────────────────────────────── */}
-      <aside className="w-56 shrink-0 bg-white border-r border-gray-200 p-4 flex flex-col gap-3">
-        <div className="font-semibold text-sm text-gray-700 mb-1">Prestataires</div>
-        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-400 uppercase tracking-wide">
-          <input type="checkbox" checked={allChecked} onChange={e => toggleAll(e.target.checked)} className="w-3.5 h-3.5 rounded" />
-          Tous
-        </label>
-        <div className="flex flex-col gap-2">
-          {prestataires.map(p => {
-            const color = colorMap[p.id] ?? PALETTE[0];
-            return (
-              <label key={p.id} className="flex items-center gap-2.5 cursor-pointer group"
-                onClick={() => setChecked(prev => ({ ...prev, [p.id]: !prev[p.id] }))}>
-                <span className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0"
-                  style={{ borderColor: color.bg, backgroundColor: checked[p.id] ? color.bg : "transparent" }}>
-                  {checked[p.id] && (
-                    <svg viewBox="0 0 10 8" className="w-2.5 h-2">
-                      <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  )}
-                </span>
-                <span className="text-sm text-gray-700 truncate">{p.nom}</span>
-              </label>
-            );
-          })}
-          <label className="flex items-center gap-2.5 cursor-pointer group"
-            onClick={() => setShowSansPresta(v => !v)}>
-            <span className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0"
-              style={{ borderColor:"#9CA3AF", backgroundColor: showSansPresta ? "#9CA3AF" : "transparent" }}>
-              {showSansPresta && (
-                <svg viewBox="0 0 10 8" className="w-2.5 h-2">
-                  <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              )}
-            </span>
-            <span className="text-sm text-gray-400 truncate">Sans prestataire</span>
-          </label>
+      {/* ── Sidebar filtre mobile (drawer) ────────────────────────────────── */}
+      {filterOpen && (
+        <div className="fixed inset-0 z-40 md:hidden" onClick={() => setFilterOpen(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="absolute left-0 top-0 bottom-0 w-56 bg-white p-4 flex flex-col gap-3 shadow-xl"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-semibold text-sm text-gray-700">Filtres</span>
+              <button onClick={() => setFilterOpen(false)} className="p-1 hover:bg-gray-100 rounded-full">
+                <X size={16} className="text-gray-400" />
+              </button>
+            </div>
+            {sidebarContent}
+          </div>
         </div>
+      )}
+
+      {/* ── Sidebar desktop ───────────────────────────────────────────────── */}
+      <aside className="hidden md:flex w-56 shrink-0 bg-white border-r border-gray-200 p-4 flex-col gap-3">
+        {sidebarContent}
       </aside>
 
       {/* ── Calendrier ────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Barre navigation */}
-        <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center gap-2 shrink-0">
-          <button onClick={navPrev} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+        <div className="bg-white border-b border-gray-200 px-2 sm:px-4 py-2.5 flex items-center gap-1 sm:gap-2 shrink-0">
+          {/* Bouton filtre prestataires - mobile only */}
+          <button
+            onClick={() => setFilterOpen(true)}
+            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors md:hidden shrink-0"
+            title="Filtrer par prestataire"
+          >
+            <SlidersHorizontal size={17} className="text-gray-600" />
+          </button>
+          <button onClick={navPrev} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors shrink-0">
             <ChevronLeft size={18} className="text-gray-600" />
           </button>
           <button onClick={navToday}
-            className="px-3 py-1 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition-colors">
-            Aujourd&apos;hui
+            className="px-2 sm:px-3 py-1 text-xs sm:text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition-colors shrink-0">
+            Auj.
           </button>
-          <button onClick={navNext} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+          <button onClick={navNext} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors shrink-0">
             <ChevronRight size={18} className="text-gray-600" />
           </button>
-          <h2 className="text-sm font-semibold text-gray-800 ml-2 flex-1">
+          <h2 className="text-xs sm:text-sm font-semibold text-gray-800 ml-1 flex-1 truncate">
             {viewMode === "week" ? weekLabel : monthLabel}
           </h2>
           {/* Toggle semaine / mois */}
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium shrink-0">
             <button
               onClick={() => setViewMode("week")}
-              className={`px-3 py-1.5 transition-colors ${viewMode==="week" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
-              Semaine
+              className={`px-2 sm:px-3 py-1.5 transition-colors ${viewMode==="week" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+              Sem.
             </button>
             <button
               onClick={() => { setViewMode("month"); setMonthDate(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1)); }}
-              className={`px-3 py-1.5 transition-colors ${viewMode==="month" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+              className={`px-2 sm:px-3 py-1.5 transition-colors ${viewMode==="month" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
               Mois
             </button>
           </div>
@@ -634,19 +668,21 @@ export default function AgendaPage() {
 
           /* ══ VUE SEMAINE ══════════════════════════════════════════════════ */
           <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Wrapper scroll horizontal mobile */}
+            <div className="flex-1 flex flex-col overflow-hidden overflow-x-auto">
             {/* En-têtes jours */}
             <div className="grid bg-white border-b border-gray-200 shrink-0"
-              style={{ gridTemplateColumns: "48px repeat(7, 1fr)" }}>
+              style={{ gridTemplateColumns: "40px repeat(7, minmax(44px, 1fr))", minWidth: "360px" }}>
               <div />
               {weekDays.map((day, i) => {
                 const isToday = sameDay(day, today);
                 return (
-                  <div key={i} className="py-2 text-center border-l border-gray-100">
-                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">{JOURS_SHORT[i]}</p>
+                  <div key={i} className="py-1.5 text-center border-l border-gray-100">
+                    <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">{JOURS_SHORT[i]}</p>
                     <button
                       onClick={() => handleDayHeaderClick(day)}
                       title="Voir le mois"
-                      className={`mx-auto mt-0.5 w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold transition-colors
+                      className={`mx-auto mt-0.5 w-7 h-7 flex items-center justify-center rounded-full text-xs font-bold transition-colors
                         ${isToday ? "bg-blue-600 text-white" : "text-gray-700 hover:bg-gray-100"}`}>
                       {day.getDate()}
                     </button>
@@ -657,10 +693,10 @@ export default function AgendaPage() {
 
             {/* Grille avec heures */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden">
-              <div className="flex" style={{ minHeight: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
+              <div className="flex" style={{ minHeight: `${(HOUR_END - HOUR_START) * HOUR_PX}px`, minWidth: "360px" }}>
 
                 {/* Colonne heures */}
-                <div className="w-12 shrink-0 relative bg-white" style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
+                <div className="w-10 shrink-0 relative bg-white" style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
                   {HOURS.map((h, i) => (
                     <div key={h} className="absolute right-2 text-xs text-gray-400 font-medium"
                       style={{ top: `${i * HOUR_PX - 7}px` }}>
@@ -737,6 +773,7 @@ export default function AgendaPage() {
                 })}
               </div>
             </div>
+            </div>{/* fin wrapper scroll horizontal */}
           </div>
 
         ) : (
@@ -749,7 +786,8 @@ export default function AgendaPage() {
               {JOURS_LONG.map((j, i) => (
                 <div key={i} className={`py-2 text-center text-xs font-semibold uppercase tracking-wide
                   ${i >= 5 ? "text-gray-400" : "text-gray-500"}`}>
-                  {j}
+                  <span className="hidden sm:inline">{j}</span>
+                  <span className="sm:hidden">{JOURS_SHORT[i]}</span>
                 </div>
               ))}
             </div>
@@ -765,7 +803,7 @@ export default function AgendaPage() {
                   <div
                     key={idx}
                     onClick={() => handleMonthDayClick(day)}
-                    className={`border-b border-r border-gray-100 p-1.5 cursor-pointer hover:bg-blue-50/50 transition-colors min-h-[100px] group/day
+                    className={`border-b border-r border-gray-100 p-1 sm:p-1.5 cursor-pointer hover:bg-blue-50/50 transition-colors min-h-[60px] sm:min-h-[100px] group/day
                       ${!inCurrentMonth ? "bg-gray-50/50" : ""}
                       ${isWeekend && inCurrentMonth ? "bg-orange-50/20" : ""}`}
                     title="Voir le détail du jour"

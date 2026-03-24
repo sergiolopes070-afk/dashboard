@@ -79,7 +79,7 @@ function GlobalSearch() {
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-2 w-96 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
+        <div className="absolute top-full left-0 mt-2 w-screen max-w-sm sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
             <Search size={15} className="text-gray-400" />
             <input
@@ -151,9 +151,9 @@ export default function Topbar({ title, subtitle, onRefresh, loading, alerts, ac
       >
         <Menu size={20} className="text-gray-600" />
       </button>
-      <div className="shrink-0">
-        <h1 className="text-xl font-bold text-gray-900">{title}</h1>
-        {subtitle && <p className="text-sm text-gray-400 mt-0.5">{subtitle}</p>}
+      <div className="shrink-0 min-w-0">
+        <h1 className="text-base sm:text-xl font-bold text-gray-900 truncate">{title}</h1>
+        {subtitle && <p className="text-xs sm:text-sm text-gray-400 mt-0.5 hidden sm:block">{subtitle}</p>}
       </div>
       <div className="flex-1 hidden md:flex">
         <GlobalSearch />
@@ -175,10 +175,10 @@ export default function Topbar({ title, subtitle, onRefresh, loading, alerts, ac
           <button
             onClick={handleRefresh}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-2 py-2 sm:px-4 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
             <RefreshCw size={15} className={spinning || loading ? "animate-spin" : ""} />
-            Actualiser
+            <span className="hidden sm:inline">Actualiser</span>
           </button>
         )}
       </div>
