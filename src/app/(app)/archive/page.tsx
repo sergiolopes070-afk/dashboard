@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Archive, Phone, Mail, MapPin, User, Wrench, Calendar,
   Clock, Euro, FileText, MessageSquare, Search, Tag, RefreshCw,
-  Star, X, CheckCircle2, ExternalLink,
+  Star, X, CheckCircle2, ExternalLink, Trash2,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import NewClientModal from "@/components/NewClientModal";
@@ -37,11 +37,12 @@ function StarRating({ value, onChange, size = 16 }: { value?: number; onChange?:
 // ─── Modal compte rendu ──────────────────────────────────────────────────────
 
 function CompteRenduModal({
-  p, onClose, onReprogrammer,
+  p, onClose, onReprogrammer, onDelete,
 }: {
   p: Prestation;
   onClose: () => void;
   onReprogrammer: (p: Prestation) => void;
+  onDelete: (id: string) => void;
 }) {
   const LS_KEY = `satisfaction_${p.row}`;
   const [satisfaction, setSatisfaction] = useState<number | undefined>(() => {
@@ -51,6 +52,7 @@ function CompteRenduModal({
     return stored ? Number(stored) : undefined;
   });
   const [savingSat, setSavingSat] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
 
   const saveSatisfaction = async (v: number) => {
     setSatisfaction(v);
@@ -299,33 +301,64 @@ function CompteRenduModal({
         </div>
 
         {/* ── Footer actions ───────────────────────────────────────────── */}
-        <div className="border-t border-gray-100 px-6 py-4 flex items-center justify-between gap-3 bg-gray-50">
-          {(p.devisPDF || p.genDevis === "FAIT") ? (
-            <a
-              href={p.devisPDF || `/api/devis/${p.row}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-white transition-colors"
-            >
-              <FileText size={14} /> Voir le devis
-            </a>
-          ) : <div />}
-          <div className="flex items-center gap-2">
-            {p.tel && (
-              <a
-                href={`https://wa.me/${p.tel.replace(/\s/g, "").replace(/^0/, "33")}`}
-                target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-green-200 text-sm text-green-700 hover:bg-green-50 transition-colors"
+        <div className="border-t border-gray-100 px-6 py-4 bg-gray-50 space-y-2">
+          {/* Confirmation suppression */}
+          {confirmDel && (
+            <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+              <p className="text-xs text-red-700 font-medium">Supprimer définitivement cet enregistrement ?</p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { onDelete(p.row); onClose(); }}
+                  className="px-3 py-1 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-colors"
+                >
+                  Supprimer
+                </button>
+                <button
+                  onClick={() => setConfirmDel(false)}
+                  className="px-3 py-1 rounded-lg bg-white border border-gray-200 text-gray-600 text-xs hover:bg-gray-50 transition-colors"
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              {(p.devisPDF || p.genDevis === "FAIT") && (
+                <a
+                  href={p.devisPDF || `/api/devis/${p.row}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-white transition-colors"
+                >
+                  <FileText size={14} /> Voir le devis
+                </a>
+              )}
+              <button
+                onClick={() => setConfirmDel(true)}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-red-200 text-sm text-red-600 hover:bg-red-50 transition-colors"
               >
-                <ExternalLink size={14} /> WhatsApp
-              </a>
-            )}
-            <button
-              onClick={() => { onClose(); onReprogrammer(p); }}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
-            >
-              <RefreshCw size={14} /> Reprogrammer
-            </button>
+                <Trash2 size={14} /> Supprimer
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              {p.tel && (
+                <a
+                  href={`https://wa.me/${p.tel.replace(/\s/g, "").replace(/^0/, "33")}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl border border-green-200 text-sm text-green-700 hover:bg-green-50 transition-colors"
+                >
+                  <ExternalLink size={14} /> WhatsApp
+                </a>
+              )}
+              <button
+                onClick={() => { onClose(); onReprogrammer(p); }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+              >
+                <RefreshCw size={14} /> Reprogrammer
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -335,12 +368,13 @@ function CompteRenduModal({
 
 // ─── Carte archive (cliquable) ───────────────────────────────────────────────
 
-function CarteArchive({ p, onClick }: { p: Prestation; onClick: () => void }) {
+function CarteArchive({ p, onClick, onDelete }: { p: Prestation; onClick: () => void; onDelete: (id: string) => void }) {
   const [satisfaction] = useState<number | undefined>(() => {
     if (p.satisfaction) return p.satisfaction;
     const stored = typeof window !== "undefined" ? localStorage.getItem(`satisfaction_${p.row}`) : null;
     return stored ? Number(stored) : undefined;
   });
+  const [confirmDel, setConfirmDel] = useState(false);
 
   const dateLabel = (() => {
     if (!p.date) return null;
@@ -353,11 +387,40 @@ function CarteArchive({ p, onClick }: { p: Prestation; onClick: () => void }) {
   const prix = parseFloat(p.prix);
 
   return (
-    <button
-      onClick={onClick}
-      className="w-full bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-emerald-200 transition-all text-left group"
-    >
-      <div className="flex items-center gap-4 px-5 py-4">
+    <div className="relative w-full bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-emerald-200 transition-all group">
+      {/* Bouton supprimer */}
+      <div className="absolute top-3 right-3 z-10" onClick={e => e.stopPropagation()}>
+        {confirmDel ? (
+          <span className="inline-flex items-center gap-1">
+            <button
+              onClick={() => onDelete(p.row)}
+              className="px-2 py-0.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-colors"
+            >
+              Confirmer
+            </button>
+            <button
+              onClick={() => setConfirmDel(false)}
+              className="px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600 text-xs hover:bg-gray-200 transition-colors"
+            >
+              Annuler
+            </button>
+          </span>
+        ) : (
+          <button
+            onClick={() => setConfirmDel(true)}
+            className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 text-gray-300 hover:text-red-500 transition-all"
+            title="Supprimer cette entrée"
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
+      </div>
+
+      <button
+        onClick={onClick}
+        className="w-full text-left"
+      >
+      <div className="flex items-center gap-4 px-5 py-4 pr-16">
         {/* Avatar */}
         <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 group-hover:bg-emerald-200 transition-colors">
           <span className="text-emerald-700 font-bold text-sm">
@@ -407,7 +470,8 @@ function CarteArchive({ p, onClick }: { p: Prestation; onClick: () => void }) {
           <ExternalLink size={14} />
         </div>
       </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -421,6 +485,15 @@ export default function ArchivePage() {
   const [error, setError]               = useState<string | null>(null);
   const [selected, setSelected]         = useState<Prestation | null>(null);
   const [reprogrammer, setReprogrammer] = useState<Prestation | null>(null);
+
+  const handleDelete = async (id: string) => {
+    await fetch("/api/archive", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setData(prev => prev.filter(p => p.row !== id));
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -526,7 +599,7 @@ export default function ArchivePage() {
         ) : (
           <div className="space-y-2">
             {filtered.map((p) => (
-              <CarteArchive key={p.row} p={p} onClick={() => setSelected(p)} />
+              <CarteArchive key={p.row} p={p} onClick={() => setSelected(p)} onDelete={handleDelete} />
             ))}
           </div>
         )}
@@ -538,6 +611,7 @@ export default function ArchivePage() {
           p={selected}
           onClose={() => setSelected(null)}
           onReprogrammer={(p) => { setReprogrammer(p); }}
+          onDelete={(id) => { handleDelete(id); setSelected(null); }}
         />
       )}
 
