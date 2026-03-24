@@ -3,7 +3,7 @@ import { Prestation } from "@/lib/constants";
 import StatusBadge from "./StatusBadge";
 import {
   ExternalLink, MessageCircle, FileText, Pencil, Archive, Trash2,
-  CreditCard, Copy, Check, X, Loader2,
+  CreditCard, Copy, Check, X, Loader2, Send,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -376,15 +376,43 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                         <FileText size={14} />
                       </a>
                     )}
-                    {p.email && (
-                      <a
-                        href={`mailto:${p.email}`}
-                        title="Email client"
-                        className="p-1.5 rounded-lg bg-gray-50 text-gray-500 hover:bg-gray-100 transition-colors"
-                      >
-                        <ExternalLink size={14} />
-                      </a>
-                    )}
+                    {p.email && (() => {
+                      const details = [
+                        p.typePresta ? `  • Prestation : ${p.typePresta}${p.quantite ? ` (x${p.quantite})` : ""}` : "",
+                        p.adresse    ? `  • Adresse    : ${p.adresse}` : "",
+                        p.date       ? `  • Date       : ${p.date}${p.heure ? ` à ${p.heure}` : ""}` : "",
+                        p.prix       ? `  • Montant    : ${p.prix} €` : "",
+                      ].filter(Boolean).join("\n");
+                      const body = [
+                        `Bonjour ${p.prenom},`,
+                        ``,
+                        `Nous avons bien enregistré votre demande et vous remercions de votre confiance.`,
+                        ``,
+                        `Voici le récapitulatif de votre rendez-vous :`,
+                        ``,
+                        details,
+                        ``,
+                        `Pour toute question ou modification, n'hésitez pas à nous contacter — nous sommes à votre entière disposition.`,
+                        ``,
+                        `Nous nous réjouissons de vous accueillir prochainement et vous souhaitons une excellente journée.`,
+                        ``,
+                        `À très bientôt,`,
+                        ``,
+                        `L'équipe KinouClean`,
+                      ].join("\n");
+                      const subject = encodeURIComponent("Confirmation de votre rendez-vous – KinouClean");
+                      return (
+                        <a
+                          href={`mailto:${p.email}?subject=${subject}&body=${encodeURIComponent(body)}`}
+                          title="Envoyer un mail de confirmation"
+                          onClick={e => e.stopPropagation()}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors text-xs font-medium whitespace-nowrap"
+                        >
+                          <Send size={12} />
+                          Mail
+                        </a>
+                      );
+                    })()}
                   </div>
                 </td>
               )}

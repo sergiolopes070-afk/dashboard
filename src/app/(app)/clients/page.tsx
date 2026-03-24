@@ -496,29 +496,36 @@ export default function ClientsPage() {
                       )}
                       {c.email && (() => {
                         const last = c.prestations[0];
-                        const lignes = [
+                        const details = [
+                          last?.typePresta ? `  • Prestation : ${last.typePresta}${last.quantite ? ` (x${last.quantite})` : ""}` : "",
+                          last?.adresse    ? `  • Adresse    : ${last.adresse}` : "",
+                          last?.date       ? `  • Date       : ${last.date}${last.heure ? ` à ${last.heure}` : ""}` : "",
+                          last?.prix       ? `  • Montant    : ${last.prix} €` : "",
+                        ].filter(Boolean).join("\n");
+                        const body = [
                           `Bonjour ${c.prenom},`,
                           ``,
-                          `Suite à votre demande, voici le récapitulatif de votre prestation :`,
+                          `Nous avons bien enregistré votre demande et vous remercions de votre confiance.`,
                           ``,
-                          last?.typePresta ? `• Prestation : ${last.typePresta}${last.quantite ? ` (x${last.quantite})` : ""}` : "",
-                          last?.adresse    ? `• Adresse    : ${last.adresse}` : "",
-                          last?.date       ? `• Date       : ${last.date}${last.heure ? ` à ${last.heure}` : ""}` : "",
-                          last?.prix       ? `• Prix       : ${last.prix} €` : "",
+                          `Voici le récapitulatif de votre rendez-vous :`,
                           ``,
-                          `N'hésitez pas à nous contacter pour toute question.`,
+                          details,
                           ``,
-                          `Cordialement,`,
-                          `KinouClean`,
-                        ].filter(l => l !== undefined && !(l === "" && false)).join("\n");
-                        const subject = encodeURIComponent("Confirmation de votre prestation – KinouClean");
-                        const body    = encodeURIComponent(lignes);
+                          `Pour toute question ou modification, n'hésitez pas à nous contacter — nous sommes à votre entière disposition.`,
+                          ``,
+                          `Nous nous réjouissons de vous accueillir prochainement et vous souhaitons une excellente journée.`,
+                          ``,
+                          `À très bientôt,`,
+                          ``,
+                          `L'équipe KinouClean`,
+                        ].join("\n");
+                        const subject = encodeURIComponent("Confirmation de votre rendez-vous – KinouClean");
                         return (
                           <div className="flex items-center gap-2">
                             <Mail size={13} className="text-gray-400 flex-shrink-0" />
                             <span className="text-sm text-gray-500 truncate flex-1">{c.email}</span>
                             <a
-                              href={`mailto:${c.email}?subject=${subject}&body=${body}`}
+                              href={`mailto:${c.email}?subject=${subject}&body=${encodeURIComponent(body)}`}
                               className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors whitespace-nowrap"
                               title="Ouvrir dans votre application mail"
                             >
