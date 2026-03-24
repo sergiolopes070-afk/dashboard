@@ -30,20 +30,26 @@ export async function POST(req: Request) {
     // Envoyer l'email de confirmation si l'adresse email est renseignée
     if (body.email) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-      fetch(`${baseUrl}/api/send-email`, {
-        method : "POST",
-        headers: { "Content-Type": "application/json" },
-        body   : JSON.stringify({
-          email     : body.email,
-          prenom    : body.prenom,
-          typePresta: body.typePresta,
-          quantite  : body.quantite,
-          adresse   : body.adresse,
-          date      : body.date,
-          heure     : body.heure,
-          prix      : body.prix,
-        }),
-      }).catch((e) => console.error("Erreur envoi email:", e));
+      try {
+        const emailRes = await fetch(`${baseUrl}/api/send-email`, {
+          method : "POST",
+          headers: { "Content-Type": "application/json" },
+          body   : JSON.stringify({
+            email     : body.email,
+            prenom    : body.prenom,
+            typePresta: body.typePresta,
+            quantite  : body.quantite,
+            adresse   : body.adresse,
+            date      : body.date,
+            heure     : body.heure,
+            prix      : body.prix,
+          }),
+        });
+        const emailData = await emailRes.json();
+        console.log("Email result:", emailData);
+      } catch (e) {
+        console.error("Erreur envoi email:", e);
+      }
     }
 
     return NextResponse.json({ success: true, id: prestationId });
