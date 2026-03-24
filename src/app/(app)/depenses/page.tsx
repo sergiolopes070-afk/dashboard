@@ -3,9 +3,10 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Plus, Trash2, Pencil, Receipt, TrendingDown, Calendar,
   RefreshCw, Paperclip, ExternalLink, X, Upload, Euro, Download,
+  TrendingUp, BadgeEuro,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
-import { Depense, CATEGORIES_DEPENSES } from "@/lib/constants";
+import { Depense, Prestation, CATEGORIES_DEPENSES } from "@/lib/constants";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,33 @@ function monthLabel(iso: string) {
   if (!iso) return "";
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+}
+
+/** Convertit "dd/mm/yyyy" → "yyyy-mm-dd" pour comparaison */
+function frToIso(fr: string): string {
+  if (!fr) return "";
+  const parts = fr.split("/");
+  if (parts.length !== 3) return "";
+  return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+}
+
+/** Premier jour du mois courant en ISO */
+function firstDayOfMonth(): string {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+/** Premier jour du trimestre courant */
+function firstDayOfQuarter(): string {
+  const n = new Date();
+  const q = Math.floor(n.getMonth() / 3);
+  const month = q * 3 + 1;
+  return `${n.getFullYear()}-${String(month).padStart(2, "0")}-01`;
+}
+
+/** Premier jour de l'année courante */
+function firstDayOfYear(): string {
+  return `${new Date().getFullYear()}-01-01`;
 }
 
 const TYPE_COLORS = {
@@ -228,21 +256,44 @@ function DepenseModal({ initial, onClose, onSave }: ModalProps) {
 
 // ─── Page principale ──────────────────────────────────────────────────────────
 
+type Preset = "mois" | "trimestre" | "annee" | "tout" | "custom";
+
 export default function DepensesPage() {
-  const [depenses, setDepenses] = useState<Depense[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState<string | null>(null);
-  const [modal,    setModal]    = useState<"new" | Depense | null>(null);
-  const [filterType, setFilterType] = useState<"tous" | "ponctuel" | "mensuel">("tous");
-  const [filterCat,  setFilterCat]  = useState("tous");
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const [depenses,    setDepenses]    = useState<Depense[]>([]);
+  const [prestations, setPrestations] = useState<Prestation[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState<string | null>(null);
+  const [modal,       setModal]       = useState<"new" | Depense | null>(null);
+  const [filterType,  setFilterType]  = useState<"tous" | "ponctuel" | "mensuel">("tous");
+  const [filterCat,   setFilterCat]   = useState("tous");
+  const [deleting,    setDeleting]    = useState<string | null>(null);
+
+  // ── Période ──
+  const [preset,      setPreset]      = useState<Preset>("mois");
+  const [periodeDebut, setPeriodeDebut] = useState(firstDayOfMonth());
+  const [periodeFin,   setPeriodeFin]   = useState(todayIso());
+
+  function applyPreset(p: Preset) {
+    setPreset(p);
+    const today = todayIso();
+    if (p === "mois")      { setPeriodeDebut(firstDayOfMonth());   setPeriodeFin(today); }
+    if (p === "trimestre") { setPeriodeDebut(firstDayOfQuarter()); setPeriodeFin(today); }
+    if (p === "annee")     { setPeriodeDebut(firstDayOfYear());    setPeriodeFin(today); }
+    if (p === "tout")      { setPeriodeDebut("2000-01-01");        setPeriodeFin("2099-12-31"); }
+    // "custom" : l'utilisateur modifie manuellement les dates
+  }
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const res = await fetch("/api/depenses");
-      if (!res.ok) throw new Error((await res.json()).error);
-      setDepenses(await res.json());
+      const [resD, resP] = await Promise.all([
+        fetch("/api/depenses"),
+        fetch("/api/prestations"),
+      ]);
+      if (!resD.ok) throw new Error((await resD.json()).error);
+      if (!resP.ok) throw new Error((await resP.json()).error);
+      setDepenses(await resD.json());
+      setPrestations(await resP.json());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur inconnue");
     } finally {
@@ -265,21 +316,50 @@ export default function DepensesPage() {
     a.click(); URL.revokeObjectURL(url);
   };
 
+  // ── Filtres liste ──
   const filtered = useMemo(() => depenses.filter(d => {
     if (filterType !== "tous" && d.type !== filterType) return false;
     if (filterCat  !== "tous" && d.categorie !== filterCat) return false;
     return true;
   }), [depenses, filterType, filterCat]);
 
-  // ── Totaux ──
+  // ── Calculs période ──
+  const depensesPeriode = useMemo(() =>
+    depenses.filter(d => d.date >= periodeDebut && d.date <= periodeFin),
+    [depenses, periodeDebut, periodeFin]
+  );
+
+  const totalDepensesPeriode = useMemo(() =>
+    depensesPeriode.reduce((s, d) => s + d.montant, 0),
+    [depensesPeriode]
+  );
+
+  const revenusPeriode = useMemo(() =>
+    prestations
+      .filter(p => {
+        const iso = frToIso(p.date);
+        return iso >= periodeDebut && iso <= periodeFin;
+      })
+      .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0),
+    [prestations, periodeDebut, periodeFin]
+  );
+
+  const beneficeNet = revenusPeriode - totalDepensesPeriode;
+
+  // ── Labels période ──
+  const periodeLabel = useMemo(() => {
+    if (preset === "tout") return "Toutes périodes";
+    if (preset === "mois") return `Mois en cours (${monthLabel(periodeDebut)})`;
+    if (preset === "trimestre") return "Trimestre en cours";
+    if (preset === "annee") return `Année ${new Date().getFullYear()}`;
+    return `${frDate(periodeDebut.split("-").reverse().join("/"))} → ${frDate(periodeFin.split("-").reverse().join("/"))}`;
+  }, [preset, periodeDebut, periodeFin]);
+
+  // ── Totaux globaux (hors période) ──
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
-  const totalAll     = depenses.reduce((s, d) => s + d.montant, 0);
   const totalMensuel = depenses.filter(d => d.type === "mensuel").reduce((s, d) => s + d.montant, 0);
-  const totalMois    = depenses
-    .filter(d => d.date?.startsWith(currentMonth))
-    .reduce((s, d) => s + d.montant, 0);
+  const totalMois    = depenses.filter(d => d.date?.startsWith(currentMonth)).reduce((s, d) => s + d.montant, 0);
 
   async function handleDelete(id: string) {
     if (!confirm("Supprimer cette dépense ?")) return;
@@ -293,6 +373,14 @@ export default function DepensesPage() {
   }
 
   const cats = ["tous", ...Array.from(new Set(depenses.map(d => d.categorie)))];
+
+  const PRESETS: { key: Preset; label: string }[] = [
+    { key: "mois",      label: "Ce mois"     },
+    { key: "trimestre", label: "Ce trimestre" },
+    { key: "annee",     label: "Cette année"  },
+    { key: "tout",      label: "Tout"         },
+    { key: "custom",    label: "Personnalisé" },
+  ];
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -327,30 +415,114 @@ export default function DepensesPage() {
           <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{error}</div>
         )}
 
-        {/* KPIs */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {[
-            { label: "Total dépenses",       value: totalAll,     icon: TrendingDown, color: "red"    },
-            { label: `Charges du mois (${monthLabel(currentMonth + "-01")})`, value: totalMois, icon: Calendar, color: "orange" },
-            { label: "Charges mensuelles fixes", value: totalMensuel, icon: RefreshCw, color: "purple" },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className={`rounded-2xl p-5 flex items-center gap-4 border border-white shadow-sm
-              ${color === "red" ? "bg-red-50" : color === "orange" ? "bg-orange-50" : "bg-purple-50"}`}>
-              <div className={`rounded-xl p-3 flex-shrink-0
-                ${color === "red" ? "bg-red-100 text-red-600" : color === "orange" ? "bg-orange-100 text-orange-600" : "bg-purple-100 text-purple-600"}`}>
-                <Icon size={20} />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 font-medium">{label}</p>
-                <p className={`text-2xl font-bold ${color === "red" ? "text-red-700" : color === "orange" ? "text-orange-700" : "text-purple-700"}`}>
-                  {value.toFixed(2)} €
-                </p>
-              </div>
+        {/* ── Sélecteur de période ── */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 text-sm font-medium text-gray-600">
+              <Calendar size={15} className="text-blue-500" />
+              Période :
             </div>
-          ))}
+
+            {/* Presets */}
+            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+              {PRESETS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => applyPreset(key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all
+                    ${preset === key ? "bg-white shadow text-blue-600 font-semibold" : "text-gray-500 hover:text-gray-700"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Dates custom */}
+            {preset === "custom" && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date" value={periodeDebut}
+                  onChange={e => setPeriodeDebut(e.target.value)}
+                  className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-gray-400 text-sm">→</span>
+                <input
+                  type="date" value={periodeFin}
+                  onChange={e => setPeriodeFin(e.target.value)}
+                  className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
+
+            <span className="ml-auto text-xs text-gray-400 italic">{periodeLabel}</span>
+          </div>
         </div>
 
-        {/* Filtres */}
+        {/* ── KPIs période ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="rounded-2xl p-5 flex items-center gap-4 border border-white shadow-sm bg-red-50">
+            <div className="rounded-xl p-3 flex-shrink-0 bg-red-100 text-red-600">
+              <TrendingDown size={20} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 font-medium">Dépenses (période)</p>
+              <p className="text-2xl font-bold text-red-700">{totalDepensesPeriode.toFixed(2)} €</p>
+              <p className="text-xs text-gray-400 mt-0.5">{depensesPeriode.length} dépense{depensesPeriode.length > 1 ? "s" : ""}</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl p-5 flex items-center gap-4 border border-white shadow-sm bg-emerald-50">
+            <div className="rounded-xl p-3 flex-shrink-0 bg-emerald-100 text-emerald-600">
+              <TrendingUp size={20} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 font-medium">Revenus (période)</p>
+              <p className="text-2xl font-bold text-emerald-700">{revenusPeriode.toFixed(2)} €</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {prestations.filter(p => { const iso = frToIso(p.date); return iso >= periodeDebut && iso <= periodeFin; }).length} prestation{prestations.filter(p => { const iso = frToIso(p.date); return iso >= periodeDebut && iso <= periodeFin; }).length > 1 ? "s" : ""}
+              </p>
+            </div>
+          </div>
+
+          <div className={`rounded-2xl p-5 flex items-center gap-4 border border-white shadow-sm ${beneficeNet >= 0 ? "bg-blue-50" : "bg-orange-50"}`}>
+            <div className={`rounded-xl p-3 flex-shrink-0 ${beneficeNet >= 0 ? "bg-blue-100 text-blue-600" : "bg-orange-100 text-orange-600"}`}>
+              <BadgeEuro size={20} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 font-medium">Bénéfice net (période)</p>
+              <p className={`text-2xl font-bold ${beneficeNet >= 0 ? "text-blue-700" : "text-orange-700"}`}>
+                {beneficeNet >= 0 ? "+" : ""}{beneficeNet.toFixed(2)} €
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {revenusPeriode > 0 ? `Marge : ${((beneficeNet / revenusPeriode) * 100).toFixed(0)}%` : "Pas de revenus"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── KPIs globaux secondaires ── */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl p-4 flex items-center gap-3 border border-gray-100 bg-white shadow-sm">
+            <div className="rounded-lg p-2 bg-orange-100 text-orange-600 flex-shrink-0">
+              <Calendar size={16} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Charges ce mois ({monthLabel(currentMonth + "-01")})</p>
+              <p className="text-lg font-bold text-orange-700">{totalMois.toFixed(2)} €</p>
+            </div>
+          </div>
+          <div className="rounded-xl p-4 flex items-center gap-3 border border-gray-100 bg-white shadow-sm">
+            <div className="rounded-lg p-2 bg-purple-100 text-purple-600 flex-shrink-0">
+              <RefreshCw size={16} />
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Charges mensuelles fixes</p>
+              <p className="text-lg font-bold text-purple-700">{totalMensuel.toFixed(2)} €</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Filtres liste */}
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
             {(["tous", "ponctuel", "mensuel"] as const).map(t => (
@@ -475,6 +647,7 @@ export default function DepensesPage() {
               {CATEGORIES_DEPENSES.map(cat => {
                 const total = depenses.filter(d => d.categorie === cat).reduce((s, d) => s + d.montant, 0);
                 if (total === 0) return null;
+                const totalAll = depenses.reduce((s, d) => s + d.montant, 0);
                 const pct = totalAll > 0 ? (total / totalAll) * 100 : 0;
                 return (
                   <div key={cat}>
