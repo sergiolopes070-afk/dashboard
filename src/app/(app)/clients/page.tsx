@@ -494,11 +494,40 @@ export default function ClientsPage() {
                           <Phone size={13} className="text-gray-400" />{c.tel}
                         </a>
                       )}
-                      {c.email && (
-                        <a href={`mailto:${c.email}`} className="flex items-center gap-2 text-sm text-blue-600 hover:underline truncate">
-                          <Mail size={13} />{c.email}
-                        </a>
-                      )}
+                      {c.email && (() => {
+                        const last = c.prestations[0];
+                        const lignes = [
+                          `Bonjour ${c.prenom},`,
+                          ``,
+                          `Suite à votre demande, voici le récapitulatif de votre prestation :`,
+                          ``,
+                          last?.typePresta ? `• Prestation : ${last.typePresta}${last.quantite ? ` (x${last.quantite})` : ""}` : "",
+                          last?.adresse    ? `• Adresse    : ${last.adresse}` : "",
+                          last?.date       ? `• Date       : ${last.date}${last.heure ? ` à ${last.heure}` : ""}` : "",
+                          last?.prix       ? `• Prix       : ${last.prix} €` : "",
+                          ``,
+                          `N'hésitez pas à nous contacter pour toute question.`,
+                          ``,
+                          `Cordialement,`,
+                          `KinouClean`,
+                        ].filter(l => l !== undefined && !(l === "" && false)).join("\n");
+                        const subject = encodeURIComponent("Confirmation de votre prestation – KinouClean");
+                        const body    = encodeURIComponent(lignes);
+                        return (
+                          <div className="flex items-center gap-2">
+                            <Mail size={13} className="text-gray-400 flex-shrink-0" />
+                            <span className="text-sm text-gray-500 truncate flex-1">{c.email}</span>
+                            <a
+                              href={`mailto:${c.email}?subject=${subject}&body=${body}`}
+                              className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors whitespace-nowrap"
+                              title="Ouvrir dans votre application mail"
+                            >
+                              <Send size={11} />
+                              Envoyer un mail
+                            </a>
+                          </div>
+                        );
+                      })()}
                       {c.adresse && (
                         <p className="flex items-center gap-2 text-sm text-gray-500">
                           <MapPin size={13} className="text-gray-400 flex-shrink-0" />
