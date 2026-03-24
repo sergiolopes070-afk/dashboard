@@ -27,6 +27,7 @@ const TYPES_PRESTA = [
   "Après travaux",
   "Bureaux",
   "Lavage Canapé",
+  "Lavage véhicule",
   "Autre",
 ];
 
@@ -200,6 +201,8 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
   const [error, setError]                 = useState<string | null>(null);
   const [savedPrestataire, setSavedPrestataire] = useState<Prestataire | null>(null);
   const [savedPrestationId, setSavedPrestationId] = useState<string>("");
+  const [showSuccess, setShowSuccess]     = useState(false);
+  const [savedFormData, setSavedFormData] = useState<typeof EMPTY | null>(null);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -251,10 +254,14 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
 
       onSaved();
 
-      // Si un prestataire avec un téléphone est assigné → écran de notification WA
-      if (hasPrestataire && assignedPrestataire?.tel) {
+      const clientHasTel = !!form.tel;
+      const prestataireHasTel = hasPrestataire && !!assignedPrestataire?.tel;
+
+      if (clientHasTel || prestataireHasTel) {
         setSavedPrestationId(prestationId);
-        setSavedPrestataire(assignedPrestataire);
+        setSavedFormData({ ...form });
+        if (prestataireHasTel) setSavedPrestataire(assignedPrestataire!);
+        setShowSuccess(true);
       } else {
         onClose();
       }
@@ -265,24 +272,62 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
     }
   };
 
-  // ── Écran de succès + notification WhatsApp ───────────────────────────────
-  if (savedPrestataire) {
-    const tel = savedPrestataire.tel.replace(/\s/g, "").replace(/^0/, "33");
+  // ── Écran de succès + notifications WhatsApp ─────────────────────────────
+  if (showSuccess && savedFormData) {
+    const f = savedFormData;
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (typeof window !== "undefined" ? window.location.origin : "");
-    const fullAdresseWA = [form.adresse, [form.codePostal, form.ville].filter(Boolean).join(" ")].filter(Boolean).join(", ");
-    const acceptUrl = savedPrestationId ? `${baseUrl}/api/mission/reponse?id=${savedPrestationId}&action=accepter` : "";
-    const refusUrl  = savedPrestationId ? `${baseUrl}/api/mission/reponse?id=${savedPrestationId}&action=refuser`  : "";
-    const msg = encodeURIComponent(
-      `Bonjour ${savedPrestataire.nom} 👋,\n\nUne nouvelle mission vous a été proposée chez KinouClean :\n\n` +
-      `👤 Client : ${form.prenom} ${form.nom}\n` +
-      `🧹 Prestation : ${form.typePresta}${form.quantite ? ` (x${form.quantite})` : ""}\n` +
+    const fullAdresseWA = [f.adresse, [f.codePostal, f.ville].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+
+    // Message WhatsApp client
+    const clientTelFormatted = f.tel.replace(/\s/g, "").replace(/^0/, "33");
+    const clientMsg = encodeURIComponent(
+      `Bonjour ${f.prenom} 👋,\n\nVotre demande a bien été enregistrée chez KinouClean ✅\n\n` +
+      `📋 Récapitulatif de votre demande :\n` +
+      `🧹 Prestation : ${f.typePresta}${f.quantite ? ` (${f.quantite})` : ""}\n` +
       `📍 Adresse : ${fullAdresseWA || "—"}\n` +
-      `📅 Date : ${form.date || "—"}${form.heure ? ` à ${form.heure}` : ""}\n` +
-      `💶 Prix : ${form.prix || "—"} €\n\n` +
-      (acceptUrl
-        ? `Merci de répondre directement via ces liens :\n\n✅ ACCEPTER la mission :\n${acceptUrl}\n\n❌ REFUSER la mission :\n${refusUrl}\n\nVotre réponse mettra à jour la fiche client automatiquement 🙏`
-        : `Merci de confirmer votre disponibilité en répondant à ce message 🙏`)
+      `📅 Date : ${f.date || "—"}${f.heure ? ` à ${f.heure}` : ""}\n` +
+      `💶 Montant : ${f.prix || "—"} €\n\n` +
+      `Nous revenons vers vous très prochainement pour confirmer votre rendez-vous 🙏\n\nL'équipe KinouClean`
     );
+
+    // Message WhatsApp prestataire
+    let prestataireBlock = null;
+    if (savedPrestataire) {
+      const prestaTel = savedPrestataire.tel.replace(/\s/g, "").replace(/^0/, "33");
+      const acceptUrl = savedPrestationId ? `${baseUrl}/api/mission/reponse?id=${savedPrestationId}&action=accepter` : "";
+      const refusUrl  = savedPrestationId ? `${baseUrl}/api/mission/reponse?id=${savedPrestationId}&action=refuser`  : "";
+      const prestaMsg = encodeURIComponent(
+        `Bonjour ${savedPrestataire.nom} 👋,\n\nUne nouvelle mission vous a été proposée chez KinouClean :\n\n` +
+        `👤 Client : ${f.prenom} ${f.nom}\n` +
+        `🧹 Prestation : ${f.typePresta}${f.quantite ? ` (x${f.quantite})` : ""}\n` +
+        `📍 Adresse : ${fullAdresseWA || "—"}\n` +
+        `📅 Date : ${f.date || "—"}${f.heure ? ` à ${f.heure}` : ""}\n` +
+        `💶 Prix : ${f.prix || "—"} €\n\n` +
+        (acceptUrl
+          ? `Merci de répondre directement via ces liens :\n\n✅ ACCEPTER la mission :\n${acceptUrl}\n\n❌ REFUSER la mission :\n${refusUrl}\n\nVotre réponse mettra à jour la fiche client automatiquement 🙏`
+          : `Merci de confirmer votre disponibilité en répondant à ce message 🙏`)
+      );
+      prestataireBlock = (
+        <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 text-left">
+          <p className="text-xs font-semibold text-orange-700 uppercase tracking-wider mb-2">
+            Notifier le prestataire
+          </p>
+          <p className="text-sm text-gray-600 mb-3">
+            Envoyez la mission à <strong>{savedPrestataire.nom}</strong> pour qu&apos;il confirme sa disponibilité.
+          </p>
+          <a
+            href={`https://wa.me/${prestaTel}?text=${prestaMsg}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition-colors"
+          >
+            <MessageCircle size={16} />
+            Envoyer la mission à {savedPrestataire.nom}
+          </a>
+        </div>
+      );
+    }
+
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
@@ -291,33 +336,42 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
           </div>
           <h2 className="text-lg font-bold text-gray-900 mb-1">Client créé avec succès !</h2>
           <p className="text-sm text-gray-500 mb-6">
-            La prestation a été assignée à{" "}
-            <span className="font-semibold text-gray-800">{savedPrestataire.nom}</span>{" "}
-            avec le statut <span className="text-orange-600 font-medium">En attente de confirmation</span>.
+            La prestation a été enregistrée.{savedPrestataire && (
+              <> Assignée à <span className="font-semibold text-gray-800">{savedPrestataire.nom}</span> — <span className="text-orange-600 font-medium">En attente de confirmation</span>.</>
+            )}
           </p>
-          <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 mb-6 text-left">
-            <p className="text-xs font-semibold text-orange-700 uppercase tracking-wider mb-2">
-              Notifier le prestataire
-            </p>
-            <p className="text-sm text-gray-600 mb-3">
-              Envoyez un message WhatsApp à <strong>{savedPrestataire.nom}</strong> pour
-              lui proposer cette mission et attendre sa confirmation.
-            </p>
-            <a
-              href={`https://wa.me/${tel}?text=${msg}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors"
-            >
-              <MessageCircle size={16} />
-              Envoyer la mission via WhatsApp
-            </a>
+
+          <div className="space-y-3 mb-6">
+            {/* Bouton WhatsApp client */}
+            {f.tel && (
+              <div className="bg-green-50 border border-green-100 rounded-xl p-4 text-left">
+                <p className="text-xs font-semibold text-green-700 uppercase tracking-wider mb-2">
+                  Confirmer au client
+                </p>
+                <p className="text-sm text-gray-600 mb-3">
+                  Envoyez un récap de la demande à <strong>{f.prenom} {f.nom}</strong> par WhatsApp.
+                </p>
+                <a
+                  href={`https://wa.me/${clientTelFormatted}?text=${clientMsg}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors"
+                >
+                  <MessageCircle size={16} />
+                  Envoyer le récap au client
+                </a>
+              </div>
+            )}
+
+            {/* Bouton WhatsApp prestataire */}
+            {prestataireBlock}
           </div>
+
           <button
             onClick={onClose}
             className="w-full px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
           >
-            Fermer sans notifier
+            Fermer
           </button>
         </div>
       </div>
