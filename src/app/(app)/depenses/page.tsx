@@ -40,6 +40,14 @@ function firstDayOfMonth(): string {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
+/** Lundi de la semaine courante */
+function firstDayOfWeek(): string {
+  const n = new Date();
+  const day = n.getDay() === 0 ? 6 : n.getDay() - 1; // lundi = 0
+  n.setDate(n.getDate() - day);
+  return n.toISOString().slice(0, 10);
+}
+
 /** Premier jour du trimestre courant */
 function firstDayOfQuarter(): string {
   const n = new Date();
@@ -256,7 +264,7 @@ function DepenseModal({ initial, onClose, onSave }: ModalProps) {
 
 // ─── Page principale ──────────────────────────────────────────────────────────
 
-type Preset = "mois" | "trimestre" | "annee" | "tout" | "custom";
+type Preset = "semaine" | "mois" | "trimestre" | "annee" | "tout" | "custom";
 
 export default function DepensesPage() {
   const [depenses,    setDepenses]    = useState<Depense[]>([]);
@@ -269,13 +277,14 @@ export default function DepensesPage() {
   const [deleting,    setDeleting]    = useState<string | null>(null);
 
   // ── Période ──
-  const [preset,      setPreset]      = useState<Preset>("mois");
+  const [preset,       setPreset]       = useState<Preset>("mois");
   const [periodeDebut, setPeriodeDebut] = useState(firstDayOfMonth());
   const [periodeFin,   setPeriodeFin]   = useState(todayIso());
 
   function applyPreset(p: Preset) {
     setPreset(p);
     const today = todayIso();
+    if (p === "semaine")   { setPeriodeDebut(firstDayOfWeek());    setPeriodeFin(today); }
     if (p === "mois")      { setPeriodeDebut(firstDayOfMonth());   setPeriodeFin(today); }
     if (p === "trimestre") { setPeriodeDebut(firstDayOfQuarter()); setPeriodeFin(today); }
     if (p === "annee")     { setPeriodeDebut(firstDayOfYear());    setPeriodeFin(today); }
@@ -346,9 +355,34 @@ export default function DepensesPage() {
 
   const beneficeNet = revenusPeriode - totalDepensesPeriode;
 
+  // ── Répartition par semaine (12 dernières semaines) ──
+  const parSemaine = useMemo(() => {
+    const semaines: { label: string; debut: string; fin: string; total: number }[] = [];
+    const today = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const lundi = new Date(today);
+      const day = lundi.getDay() === 0 ? 6 : lundi.getDay() - 1;
+      lundi.setDate(today.getDate() - day - i * 7);
+      lundi.setHours(0, 0, 0, 0);
+      const dimanche = new Date(lundi);
+      dimanche.setDate(lundi.getDate() + 6);
+      const debut = lundi.toISOString().slice(0, 10);
+      const fin   = dimanche.toISOString().slice(0, 10);
+      const total = depenses
+        .filter(d => d.date >= debut && d.date <= fin)
+        .reduce((s, d) => s + d.montant, 0);
+      const label = lundi.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+      semaines.push({ label, debut, fin, total });
+    }
+    return semaines;
+  }, [depenses]);
+
+  const maxSemaine = useMemo(() => Math.max(...parSemaine.map(s => s.total), 1), [parSemaine]);
+
   // ── Labels période ──
   const periodeLabel = useMemo(() => {
     if (preset === "tout") return "Toutes périodes";
+    if (preset === "semaine") return "Semaine en cours";
     if (preset === "mois") return `Mois en cours (${monthLabel(periodeDebut)})`;
     if (preset === "trimestre") return "Trimestre en cours";
     if (preset === "annee") return `Année ${new Date().getFullYear()}`;
@@ -375,11 +409,12 @@ export default function DepensesPage() {
   const cats = ["tous", ...Array.from(new Set(depenses.map(d => d.categorie)))];
 
   const PRESETS: { key: Preset; label: string }[] = [
-    { key: "mois",      label: "Ce mois"     },
-    { key: "trimestre", label: "Ce trimestre" },
-    { key: "annee",     label: "Cette année"  },
-    { key: "tout",      label: "Tout"         },
-    { key: "custom",    label: "Personnalisé" },
+    { key: "semaine",   label: "Cette semaine" },
+    { key: "mois",      label: "Ce mois"       },
+    { key: "trimestre", label: "Ce trimestre"  },
+    { key: "annee",     label: "Cette année"   },
+    { key: "tout",      label: "Tout"          },
+    { key: "custom",    label: "Personnalisé"  },
   ];
 
   return (
@@ -633,6 +668,47 @@ export default function DepensesPage() {
                 </tr>
               </tfoot>
             </table>
+          </div>
+        )}
+
+        {/* Répartition par semaine */}
+        {depenses.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <h2 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+              <Calendar size={16} className="text-gray-400" />
+              Dépenses par semaine <span className="text-xs font-normal text-gray-400 ml-1">(12 dernières semaines)</span>
+            </h2>
+            <div className="flex items-end gap-1.5 h-28">
+              {parSemaine.map((s, i) => {
+                const isCurrentWeek = i === parSemaine.length - 1;
+                const pct = maxSemaine > 0 ? (s.total / maxSemaine) * 100 : 0;
+                return (
+                  <div key={s.debut} className="flex-1 flex flex-col items-center gap-1 group relative">
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs rounded-lg px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                      Sem. du {s.label}<br />{s.total.toFixed(2)} €
+                    </div>
+                    {/* Barre */}
+                    <div className="w-full flex-1 flex items-end">
+                      <div
+                        className={`w-full rounded-t-lg transition-all ${isCurrentWeek ? "bg-blue-500" : "bg-blue-200 group-hover:bg-blue-300"}`}
+                        style={{ height: pct > 0 ? `${Math.max(pct, 4)}%` : "2px" }}
+                      />
+                    </div>
+                    {/* Label */}
+                    <span className={`text-xs truncate w-full text-center ${isCurrentWeek ? "text-blue-600 font-semibold" : "text-gray-400"}`}>
+                      {s.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Légende */}
+            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-50 text-xs text-gray-500">
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-500 inline-block" />Semaine en cours</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-200 inline-block" />Semaines précédentes</span>
+              <span className="ml-auto">Total 12 sem. : <strong className="text-gray-700">{parSemaine.reduce((s, w) => s + w.total, 0).toFixed(2)} €</strong></span>
+            </div>
           </div>
         )}
 
