@@ -61,6 +61,28 @@ function firstDayOfYear(): string {
   return `${new Date().getFullYear()}-01-01`;
 }
 
+/**
+ * Pour une dépense mensuelle, calcule combien de fois elle tombe dans [debut, fin].
+ * Ex: dépense créée le 15 jan, période fév→mars → 2 occurrences (15 fév + 15 mar).
+ */
+function countMonthlyOccurrences(expenseIso: string, debut: string, fin: string): number {
+  if (!expenseIso) return 0;
+  const expDay = parseInt(expenseIso.slice(8, 10), 10);
+  const start  = new Date(debut + "T00:00:00");
+  const end    = new Date(fin   + "T00:00:00");
+  let count = 0;
+  const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+  const endM = new Date(end.getFullYear(), end.getMonth(), 1);
+  while (cur <= endM) {
+    const lastDay = new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate();
+    const day     = Math.min(expDay, lastDay);
+    const occIso  = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    if (occIso >= debut && occIso <= fin) count++;
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return count;
+}
+
 const TYPE_COLORS = {
   ponctuel: "bg-blue-100 text-blue-700",
   mensuel : "bg-purple-100 text-purple-700",
@@ -333,14 +355,31 @@ export default function DepensesPage() {
   }), [depenses, filterType, filterCat]);
 
   // ── Calculs période ──
+  // Les dépenses mensuelles se répètent chaque mois → on multiplie par le nb d'occurrences
   const depensesPeriode = useMemo(() =>
-    depenses.filter(d => d.date >= periodeDebut && d.date <= periodeFin),
+    depenses.filter(d => {
+      if (d.type === "mensuel") return countMonthlyOccurrences(d.date, periodeDebut, periodeFin) > 0;
+      return d.date >= periodeDebut && d.date <= periodeFin;
+    }),
     [depenses, periodeDebut, periodeFin]
   );
 
   const totalDepensesPeriode = useMemo(() =>
-    depensesPeriode.reduce((s, d) => s + d.montant, 0),
-    [depensesPeriode]
+    depenses.reduce((s, d) => {
+      if (d.type === "mensuel") {
+        return s + d.montant * countMonthlyOccurrences(d.date, periodeDebut, periodeFin);
+      }
+      return d.date >= periodeDebut && d.date <= periodeFin ? s + d.montant : s;
+    }, 0),
+    [depenses, periodeDebut, periodeFin]
+  );
+
+  // Détail pour l'affichage : nb d'occurrences mensuel dans la période
+  const mensuelOccurrences = useMemo(() =>
+    depenses
+      .filter(d => d.type === "mensuel")
+      .reduce((s, d) => s + countMonthlyOccurrences(d.date, periodeDebut, periodeFin), 0),
+    [depenses, periodeDebut, periodeFin]
   );
 
   const revenusPeriode = useMemo(() =>
@@ -502,7 +541,12 @@ export default function DepensesPage() {
             <div>
               <p className="text-xs text-gray-500 font-medium">Dépenses (période)</p>
               <p className="text-2xl font-bold text-red-700">{totalDepensesPeriode.toFixed(2)} €</p>
-              <p className="text-xs text-gray-400 mt-0.5">{depensesPeriode.length} dépense{depensesPeriode.length > 1 ? "s" : ""}</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {depensesPeriode.length} charge{depensesPeriode.length > 1 ? "s" : ""}
+                {mensuelOccurrences > 0 && (
+                  <span className="text-purple-500 ml-1">· dont {mensuelOccurrences} récurrente{mensuelOccurrences > 1 ? "s" : ""}</span>
+                )}
+              </p>
             </div>
           </div>
 
