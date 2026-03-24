@@ -95,6 +95,28 @@ export default function EditPrestationModal({
         const j = await res.json();
         throw new Error(j.error || "Erreur serveur");
       }
+
+      // Auto-génération du lien Stripe si mode = "Lien de paiement" et pas encore généré
+      const prix = parseFloat(form.prix) || 0;
+      if (form.modePaiement === "Lien de paiement" && prix > 0 && !prestation.stripePaymentUrl) {
+        try {
+          await fetch("/api/stripe/checkout", {
+            method : "POST",
+            headers: { "Content-Type": "application/json" },
+            body   : JSON.stringify({
+              prestationId: prestation.row,
+              amount      : prix,
+              description : `${prestation.typePresta}${prestation.quantite ? ` x${prestation.quantite}` : ""}`,
+              clientName  : `${prestation.prenom} ${prestation.nom}`.trim(),
+              clientEmail : prestation.email || undefined,
+            }),
+          });
+          // Pas bloquant : si Stripe échoue, la sauvegarde est déjà faite
+        } catch {
+          // Stripe non configuré ou erreur réseau → on ignore silencieusement
+        }
+      }
+
       onSaved(prestation.row, updates);
       onClose();
     } catch (e: unknown) {
@@ -337,6 +359,29 @@ export default function EditPrestationModal({
                 </button>
               ))}
             </div>
+            {/* Info lien Stripe */}
+            {form.modePaiement === "Lien de paiement" && (
+              prestation.stripePaymentUrl ? (
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-xs text-emerald-700">
+                  <span>✅</span>
+                  <span className="font-medium">Lien Stripe déjà généré</span>
+                  <a
+                    href={prestation.stripePaymentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-auto underline text-emerald-600 hover:text-emerald-800"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    Voir
+                  </a>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 bg-violet-50 border border-violet-200 rounded-xl px-3 py-2 text-xs text-violet-700">
+                  <span>🔗</span>
+                  <span>Le lien Stripe sera généré automatiquement à l&apos;enregistrement</span>
+                </div>
+              )
+            )}
           </fieldset>
 
           {/* Actions */}
