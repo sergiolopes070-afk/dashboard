@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const url  = searchParams.get("url");
-  const name = searchParams.get("name") || "devis.pdf";
+  const { searchParams, origin } = new URL(req.url);
+  const rawUrl = searchParams.get("url");
+  const name   = searchParams.get("name") || "devis.pdf";
 
-  if (!url) {
+  if (!rawUrl) {
     return NextResponse.json({ error: "Paramètre url manquant" }, { status: 400 });
   }
+
+  // Si l'URL est relative (ex: /api/devis/UUID), on la transforme en URL absolue
+  const url = rawUrl.startsWith("http") ? rawUrl : `${origin}${rawUrl}`;
 
   let res: Response;
   try {
