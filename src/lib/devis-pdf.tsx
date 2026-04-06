@@ -5,342 +5,251 @@ import {
 } from "@react-pdf/renderer";
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
-
-const BRAND   = "#1C3557";   // bleu marine profond
-const ACCENT  = "#F97316";   // orange vif (couleur KinouClean)
-const GRAY1   = "#374151";   // texte principal
-const GRAY2   = "#6B7280";   // texte secondaire
-const GRAY3   = "#9CA3AF";   // labels discrets
-const BORDER  = "#E5E7EB";
-const LIGHT   = "#F8FAFC";
+const BRAND  = "#1C3557";
+const ACCENT = "#F97316";
+const GRAY1  = "#1F2937";
+const GRAY2  = "#6B7280";
+const GRAY3  = "#9CA3AF";
+const BORDER = "#E5E7EB";
+const LIGHT  = "#F9FAFB";
+const WHITE  = "#FFFFFF";
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   page: {
     fontFamily: "Helvetica",
-    fontSize: 10,
+    fontSize: 9,
     color: GRAY1,
-    backgroundColor: "#ffffff",
-    paddingBottom: 60,
+    backgroundColor: WHITE,
+    paddingBottom: 48,
   },
 
-  // ── Bandeau header ──────────────────────────────────────────────────────
-  headerBand: {
+  // Header
+  header: {
     backgroundColor: BRAND,
-    paddingTop: 32,
-    paddingBottom: 28,
-    paddingHorizontal: 44,
+    paddingHorizontal: 40,
+    paddingTop: 24,
+    paddingBottom: 20,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  headerLeft: {
-    flexDirection: "column",
-    gap: 6,
-  },
-  headerRight: {
-    alignItems: "flex-end",
-  },
-  devisLabel: {
-    fontSize: 32,
+  devisTitle: {
+    fontSize: 28,
     fontFamily: "Helvetica-Bold",
-    color: "#ffffff",
-    letterSpacing: 4,
+    color: WHITE,
+    letterSpacing: 5,
   },
-  accentLine: {
+  accentBar: {
+    width: 36,
     height: 3,
-    width: 44,
     backgroundColor: ACCENT,
     borderRadius: 2,
-    marginTop: 6,
+    marginTop: 5,
     marginLeft: "auto" as const,
   },
-  devisRef: {
-    fontSize: 9,
-    color: "rgba(255,255,255,0.6)",
-    marginTop: 8,
-    letterSpacing: 0.3,
-  },
-  devisDate: {
-    fontSize: 9,
-    color: "rgba(255,255,255,0.6)",
-    marginTop: 2,
+  devisMeta: { fontSize: 8, color: "rgba(255,255,255,0.55)", marginTop: 3 },
+
+  // Accent strip
+  strip: {
+    backgroundColor: ACCENT,
+    height: 4,
   },
 
-  // ── Corps page ──────────────────────────────────────────────────────────
-  body: {
-    paddingHorizontal: 44,
-    paddingTop: 32,
-  },
+  // Body
+  body: { paddingHorizontal: 40, paddingTop: 22 },
 
-  // ── Parties (émetteur / client) ─────────────────────────────────────────
-  parties: {
-    flexDirection: "row",
-    gap: 16,
-    marginBottom: 32,
-  },
+  // Parties
+  parties: { flexDirection: "row", gap: 14, marginBottom: 20 },
   partyBox: {
     flex: 1,
     backgroundColor: LIGHT,
-    borderRadius: 8,
-    padding: 14,
-    borderTopWidth: 3,
-    borderTopColor: ACCENT,
+    borderRadius: 6,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: ACCENT,
   },
-  partyBoxBlue: {
-    borderTopColor: BRAND,
-  },
+  partyBoxRight: { borderLeftColor: BRAND },
   partyLabel: {
-    fontSize: 8,
+    fontSize: 7,
     fontFamily: "Helvetica-Bold",
     color: GRAY3,
     textTransform: "uppercase" as const,
     letterSpacing: 1.2,
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  partyName: {
-    fontSize: 13,
-    fontFamily: "Helvetica-Bold",
-    color: GRAY1,
-    marginBottom: 4,
-  },
-  partyLine: {
-    fontSize: 9,
-    color: GRAY2,
-    marginBottom: 2,
-    lineHeight: 1.5,
-  },
+  partyName: { fontSize: 12, fontFamily: "Helvetica-Bold", color: GRAY1, marginBottom: 3 },
+  partyLine: { fontSize: 8.5, color: GRAY2, marginBottom: 1.5, lineHeight: 1.4 },
 
-  // ── Section titre ───────────────────────────────────────────────────────
-  sectionTitle: {
+  // Intervention info box
+  infoBox: {
+    backgroundColor: BRAND,
+    borderRadius: 6,
+    padding: 12,
+    marginBottom: 20,
     flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-    gap: 8,
+    gap: 0,
   },
-  sectionTitleDot: {
-    width: 4,
-    height: 16,
-    backgroundColor: ACCENT,
-    borderRadius: 2,
-  },
-  sectionTitleText: {
-    fontSize: 10,
+  infoItem: { flex: 1, paddingHorizontal: 10, borderRightWidth: 1, borderRightColor: "rgba(255,255,255,0.15)" },
+  infoItemLast: { flex: 1, paddingHorizontal: 10 },
+  infoKey: { fontSize: 7, color: "rgba(255,255,255,0.5)", textTransform: "uppercase" as const, letterSpacing: 0.8, marginBottom: 3 },
+  infoVal: { fontSize: 9.5, fontFamily: "Helvetica-Bold", color: WHITE },
+
+  // Section title
+  sectionHead: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 8 },
+  sectionDot: { width: 3, height: 14, backgroundColor: ACCENT, borderRadius: 2 },
+  sectionText: {
+    fontSize: 8,
     fontFamily: "Helvetica-Bold",
     color: BRAND,
     textTransform: "uppercase" as const,
     letterSpacing: 0.8,
   },
 
-  // ── Table ───────────────────────────────────────────────────────────────
-  tableHeader: {
+  // Table
+  tableHead: {
     flexDirection: "row",
     backgroundColor: BRAND,
-    borderRadius: 6,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
+    borderRadius: 5,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
     marginBottom: 1,
   },
-  tableHeaderText: {
-    color: "#ffffff",
-    fontSize: 8,
-    fontFamily: "Helvetica-Bold",
-    textTransform: "uppercase" as const,
-    letterSpacing: 0.6,
-  },
+  thText: { color: WHITE, fontSize: 7.5, fontFamily: "Helvetica-Bold", textTransform: "uppercase" as const, letterSpacing: 0.5 },
   tableRow: {
     flexDirection: "row",
-    paddingVertical: 11,
-    paddingHorizontal: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
   },
-  tableRowAlt: {
-    backgroundColor: LIGHT,
-  },
-  tableCell: {
-    fontSize: 10,
-    color: GRAY1,
-    lineHeight: 1.5,
-  },
-  colDesc:  { flex: 5 },
-  colQty:   { flex: 1, textAlign: "center" as const },
-  colPU:    { flex: 2, textAlign: "right" as const },
-  colTotal: { flex: 2, textAlign: "right" as const },
+  tableRowAlt: { backgroundColor: LIGHT },
+  tdText: { fontSize: 9, color: GRAY1, lineHeight: 1.5 },
+  tdSub: { fontSize: 7.5, color: GRAY2, marginTop: 2, lineHeight: 1.4 },
+  cDesc:  { flex: 5 },
+  cQty:   { flex: 1, textAlign: "center" as const },
+  cPU:    { flex: 2, textAlign: "right" as const },
+  cTotal: { flex: 2, textAlign: "right" as const },
 
-  // ── Totaux ──────────────────────────────────────────────────────────────
-  totauxSection: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    marginTop: 20,
-    marginBottom: 28,
-  },
-  totauxBox: {
-    width: 230,
-  },
-  totauxRow: {
+  // Totaux
+  totauxWrap: { flexDirection: "row", justifyContent: "flex-end", marginTop: 14, marginBottom: 20 },
+  totauxBox: { width: 210 },
+  totRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
     borderBottomWidth: 1,
     borderBottomColor: BORDER,
   },
-  totauxLabel: {
-    fontSize: 9,
-    color: GRAY2,
-  },
-  totauxValue: {
-    fontSize: 9,
-    color: GRAY1,
-    fontFamily: "Helvetica-Bold",
-  },
-  totalTTCRow: {
+  totLabel: { fontSize: 8, color: GRAY2 },
+  totVal:   { fontSize: 8, color: GRAY1, fontFamily: "Helvetica-Bold" },
+  totTTCRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     backgroundColor: ACCENT,
-    borderRadius: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginTop: 6,
+    borderRadius: 5,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    marginTop: 5,
   },
-  totalTTCLabel: {
-    fontSize: 12,
-    fontFamily: "Helvetica-Bold",
-    color: "#ffffff",
-  },
-  totalTTCValue: {
-    fontSize: 12,
-    fontFamily: "Helvetica-Bold",
-    color: "#ffffff",
-  },
+  totTTCLabel: { fontSize: 11, fontFamily: "Helvetica-Bold", color: WHITE },
+  totTTCVal:   { fontSize: 11, fontFamily: "Helvetica-Bold", color: WHITE },
 
-  // ── Conditions ──────────────────────────────────────────────────────────
-  conditionsBox: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 28,
-  },
-  condBlock: {
-    flex: 1,
+  // Bottom row: conditions + signatures côte à côte
+  bottomRow: { flexDirection: "row", gap: 14, marginBottom: 0 },
+
+  // Conditions
+  condWrap: { flex: 1 },
+  condBox: {
     backgroundColor: LIGHT,
     borderRadius: 6,
-    padding: 12,
+    padding: 10,
+    marginBottom: 6,
   },
   condTitle: {
-    fontSize: 8,
+    fontSize: 7,
     fontFamily: "Helvetica-Bold",
     color: GRAY2,
     textTransform: "uppercase" as const,
-    letterSpacing: 0.8,
-    marginBottom: 5,
+    letterSpacing: 0.7,
+    marginBottom: 3,
   },
-  condText: {
-    fontSize: 8.5,
-    color: GRAY2,
-    lineHeight: 1.6,
-  },
+  condText: { fontSize: 7.5, color: GRAY2, lineHeight: 1.5 },
 
-  // ── Signatures ──────────────────────────────────────────────────────────
-  signRow: {
-    flexDirection: "row",
-    gap: 20,
-    marginBottom: 32,
-  },
+  // Signatures
+  signWrap: { flex: 1 },
   signBox: {
     flex: 1,
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 6,
-    padding: 12,
-    minHeight: 70,
+    padding: 10,
+    minHeight: 80,
+    marginBottom: 6,
   },
-  signLabel: {
-    fontSize: 8,
-    color: GRAY3,
-    marginBottom: 4,
-    textTransform: "uppercase" as const,
-    letterSpacing: 0.5,
-  },
-  signName: {
-    fontSize: 9,
-    fontFamily: "Helvetica-Bold",
-    color: GRAY1,
-    marginBottom: 20,
-  },
-  signLine: {
-    borderTopWidth: 1,
-    borderTopColor: BORDER,
-    marginTop: "auto" as const,
-  },
-  signSub: {
-    fontSize: 7.5,
-    color: GRAY3,
-    marginTop: 4,
-    textAlign: "center" as const,
-  },
+  signLabel: { fontSize: 7, color: GRAY3, textTransform: "uppercase" as const, letterSpacing: 0.5, marginBottom: 3 },
+  signName:  { fontSize: 8.5, fontFamily: "Helvetica-Bold", color: GRAY1, marginBottom: 14 },
+  signLine:  { borderTopWidth: 1, borderTopColor: BORDER, marginTop: "auto" as const },
+  signSub:   { fontSize: 7, color: GRAY3, marginTop: 3, textAlign: "center" as const },
 
-  // ── Footer ──────────────────────────────────────────────────────────────
+  // Note client
+  noteBox: {
+    backgroundColor: "#FFF7ED",
+    borderLeftWidth: 3,
+    borderLeftColor: ACCENT,
+    borderRadius: 4,
+    padding: 10,
+    marginBottom: 14,
+  },
+  noteTitle: { fontSize: 7, fontFamily: "Helvetica-Bold", color: ACCENT, textTransform: "uppercase" as const, letterSpacing: 0.7, marginBottom: 3 },
+  noteText:  { fontSize: 8.5, color: GRAY1, lineHeight: 1.5 },
+
+  // Footer
   footer: {
     position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
+    bottom: 0, left: 0, right: 0,
     backgroundColor: BRAND,
-    paddingVertical: 12,
-    paddingHorizontal: 44,
+    paddingVertical: 10,
+    paddingHorizontal: 40,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  footerText: {
-    fontSize: 8,
-    color: "rgba(255,255,255,0.55)",
-  },
-  footerBrand: {
-    fontSize: 9,
-    fontFamily: "Helvetica-Bold",
-    color: "#ffffff",
-  },
+  footerBrand: { fontSize: 8.5, fontFamily: "Helvetica-Bold", color: WHITE },
+  footerText:  { fontSize: 7.5, color: "rgba(255,255,255,0.5)" },
 });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
 export interface DevisData {
-  refNumber  : string;
-  date       : string;
-  validite   : string;
+  refNumber    : string;
+  date         : string;
+  validite     : string;
   clientNom    : string;
   clientPrenom : string;
   clientEmail  : string;
   clientTel    : string;
   clientAdresse: string;
-  typePresta : string;
-  quantite   : string;
-  adresse    : string;
-  dateInter  : string;
-  heureInter : string;
-  prix       : string;
-  message    : string;
+  typePresta   : string;
+  quantite     : string;
+  adresse      : string;
+  dateInter    : string;
+  heureInter   : string;
+  prix         : string;
+  message      : string;
 }
 
 // ─── Logo SVG ─────────────────────────────────────────────────────────────────
-
-const LOGO_COLOR = "#ffffff";
-
 function KinoucleanLogo() {
-  const c  = LOGO_COLOR;
+  const c = "#ffffff";
   const sw = 2.2;
   return (
-    <Svg width={160} height={38} viewBox="0 0 390 80">
-      {/* Canapé */}
+    <Svg width={150} height={34} viewBox="0 0 390 80">
       <Rect x="2" y="42" width="38" height="22" rx="4" stroke={c} strokeWidth={sw} fill="none" />
       <Rect x="0" y="36" width="8" height="12" rx="3" stroke={c} strokeWidth={sw} fill="none" />
       <Rect x="32" y="36" width="8" height="12" rx="3" stroke={c} strokeWidth={sw} fill="none" />
       <Line x1="8" y1="64" x2="8" y2="70" stroke={c} strokeWidth={sw} />
       <Line x1="32" y1="64" x2="32" y2="70" stroke={c} strokeWidth={sw} />
-      {/* Personnage */}
       <Circle cx="52" cy="14" r="9" stroke={c} strokeWidth={sw} fill="none" />
       <Line x1="52" y1="23" x2="49" y2="46" stroke={c} strokeWidth={sw} />
       <Line x1="50" y1="33" x2="30" y2="42" stroke={c} strokeWidth={sw} />
@@ -351,10 +260,8 @@ function KinoucleanLogo() {
       <Line x1="33" y1="66" x2="46" y2="68" stroke={c} strokeWidth={sw} />
       <Line x1="49" y1="46" x2="58" y2="58" stroke={c} strokeWidth={sw} />
       <Line x1="58" y1="58" x2="66" y2="56" stroke={c} strokeWidth={sw} />
-      {/* Étoiles */}
       <Path d="M68 10 L69.5 6 L71 10 L75 11.5 L71 13 L69.5 17 L68 13 L64 11.5 Z" fill={ACCENT} />
       <Path d="M14 28 L15.5 24 L17 28 L21 29.5 L17 31 L15.5 35 L14 31 L10 29.5 Z" fill={ACCENT} />
-      {/* Nom */}
       <SvgText x="85" y="56" style={{ fontSize: 46, fontFamily: "Helvetica-Bold", fill: c } as object}>
         Kinouclean
       </SvgText>
@@ -368,148 +275,180 @@ function fmt(n: string | number) {
 }
 
 // ─── Document ────────────────────────────────────────────────────────────────
-
 export function DevisPDF({ d }: { d: DevisData }) {
   const ht  = parseFloat(d.prix) || 0;
-  const ttc = ht; // auto-entrepreneur, TVA 0%
-
-  const descLines = [
-    d.typePresta,
-    d.adresse   ? `Adresse d'intervention : ${d.adresse}` : "",
-    d.dateInter ? `Date : ${d.dateInter}${d.heureInter ? " à " + d.heureInter : ""}` : "",
-    d.message   ? `Note : ${d.message}` : "",
-  ].filter(Boolean).join("\n");
+  const qty = parseInt(d.quantite) || 1;
+  const pu  = qty > 1 ? ht / qty : ht;
 
   return (
     <Document>
-      <Page size="A4" style={styles.page}>
+      <Page size="A4" style={s.page}>
 
-        {/* ── Bandeau header ──────────────────────────────────────────────── */}
-        <View style={styles.headerBand}>
-          <View style={styles.headerLeft}>
-            <KinoucleanLogo />
-          </View>
-          <View style={styles.headerRight}>
-            <Text style={styles.devisLabel}>DEVIS</Text>
-            <View style={styles.accentLine} />
-            <Text style={styles.devisRef}>N° {d.refNumber}</Text>
-            <Text style={styles.devisDate}>Émis le {d.date}</Text>
-            <Text style={styles.devisDate}>{"Valable jusqu'au "}{d.validite}</Text>
+        {/* ── Header ─────────────────────────────────────────────────────── */}
+        <View style={s.header}>
+          <KinoucleanLogo />
+          <View style={{ alignItems: "flex-end" }}>
+            <Text style={s.devisTitle}>DEVIS</Text>
+            <View style={s.accentBar} />
+            <Text style={s.devisMeta}>N° {d.refNumber}</Text>
+            <Text style={s.devisMeta}>Émis le {d.date} · Valable jusqu&apos;au {d.validite}</Text>
           </View>
         </View>
+        <View style={s.strip} />
 
-        <View style={styles.body}>
+        <View style={s.body}>
 
-          {/* ── Émetteur / Client ────────────────────────────────────────── */}
-          <View style={styles.parties}>
-            <View style={styles.partyBox}>
-              <Text style={styles.partyLabel}>Prestataire</Text>
-              <Text style={styles.partyName}>KinouClean</Text>
-              <Text style={styles.partyLine}>Service de nettoyage professionnel</Text>
-              <Text style={styles.partyLine}>contact@kinouclean.fr</Text>
-              <Text style={styles.partyLine}>Île-de-France</Text>
+          {/* ── Émetteur / Client ───────────────────────────────────────── */}
+          <View style={s.parties}>
+            <View style={s.partyBox}>
+              <Text style={s.partyLabel}>Prestataire</Text>
+              <Text style={s.partyName}>KinouClean</Text>
+              <Text style={s.partyLine}>Service de nettoyage professionnel</Text>
+              <Text style={s.partyLine}>contact@kinouclean.fr</Text>
+              <Text style={s.partyLine}>Île-de-France</Text>
             </View>
-            <View style={[styles.partyBox, styles.partyBoxBlue]}>
-              <Text style={styles.partyLabel}>Client</Text>
-              <Text style={styles.partyName}>{d.clientPrenom} {d.clientNom}</Text>
-              {d.clientAdresse ? <Text style={styles.partyLine}>{d.clientAdresse}</Text> : null}
-              {d.clientTel     ? <Text style={styles.partyLine}>{d.clientTel}</Text> : null}
-              {d.clientEmail   ? <Text style={styles.partyLine}>{d.clientEmail}</Text> : null}
+            <View style={[s.partyBox, s.partyBoxRight]}>
+              <Text style={s.partyLabel}>Client</Text>
+              <Text style={s.partyName}>{d.clientPrenom} {d.clientNom}</Text>
+              {d.clientAdresse ? <Text style={s.partyLine}>{d.clientAdresse}</Text> : null}
+              {d.clientTel     ? <Text style={s.partyLine}>{d.clientTel}</Text> : null}
+              {d.clientEmail   ? <Text style={s.partyLine}>{d.clientEmail}</Text> : null}
             </View>
           </View>
 
-          {/* ── Table prestations ────────────────────────────────────────── */}
-          <View style={styles.sectionTitle}>
-            <View style={styles.sectionTitleDot} />
-            <Text style={styles.sectionTitleText}>Détail de la prestation</Text>
-          </View>
-
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderText, styles.colDesc]}>Description</Text>
-            <Text style={[styles.tableHeaderText, styles.colQty]}>Qté</Text>
-            <Text style={[styles.tableHeaderText, styles.colPU]}>Prix unit.</Text>
-            <Text style={[styles.tableHeaderText, styles.colTotal]}>Total</Text>
-          </View>
-          <View style={styles.tableRow}>
-            <Text style={[styles.tableCell, styles.colDesc]}>{descLines}</Text>
-            <Text style={[styles.tableCell, styles.colQty]}>{d.quantite || "1"}</Text>
-            <Text style={[styles.tableCell, styles.colPU]}>{fmt(ht)}</Text>
-            <Text style={[styles.tableCell, styles.colTotal]}>{fmt(ht)}</Text>
-          </View>
-
-          {/* ── Totaux ───────────────────────────────────────────────────── */}
-          <View style={styles.totauxSection}>
-            <View style={styles.totauxBox}>
-              <View style={styles.totauxRow}>
-                <Text style={styles.totauxLabel}>Sous-total HT</Text>
-                <Text style={styles.totauxValue}>{fmt(ht)}</Text>
+          {/* ── Infos intervention ─────────────────────────────────────── */}
+          {(d.dateInter || d.heureInter || d.adresse) && (
+            <View style={s.infoBox}>
+              <View style={s.infoItem}>
+                <Text style={s.infoKey}>Type de prestation</Text>
+                <Text style={s.infoVal}>{d.typePresta}</Text>
               </View>
-              <View style={styles.totauxRow}>
-                <Text style={styles.totauxLabel}>TVA (0 % — auto-entrepreneur)</Text>
-                <Text style={styles.totauxValue}>0,00 €</Text>
+              {d.dateInter ? (
+                <View style={s.infoItem}>
+                  <Text style={s.infoKey}>Date d&apos;intervention</Text>
+                  <Text style={s.infoVal}>{d.dateInter}{d.heureInter ? ` à ${d.heureInter}` : ""}</Text>
+                </View>
+              ) : null}
+              {d.adresse ? (
+                <View style={s.infoItemLast}>
+                  <Text style={s.infoKey}>Adresse</Text>
+                  <Text style={s.infoVal}>{d.adresse}</Text>
+                </View>
+              ) : null}
+            </View>
+          )}
+
+          {/* ── Note client ─────────────────────────────────────────────── */}
+          {d.message ? (
+            <View style={s.noteBox}>
+              <Text style={s.noteTitle}>Note / Demande spécifique</Text>
+              <Text style={s.noteText}>{d.message}</Text>
+            </View>
+          ) : null}
+
+          {/* ── Détail prestation ───────────────────────────────────────── */}
+          <View style={s.sectionHead}>
+            <View style={s.sectionDot} />
+            <Text style={s.sectionText}>Détail de la prestation</Text>
+          </View>
+
+          <View style={s.tableHead}>
+            <Text style={[s.thText, s.cDesc]}>Description</Text>
+            <Text style={[s.thText, s.cQty]}>Qté</Text>
+            <Text style={[s.thText, s.cPU]}>Prix unit.</Text>
+            <Text style={[s.thText, s.cTotal]}>Total</Text>
+          </View>
+
+          <View style={s.tableRow}>
+            <View style={s.cDesc}>
+              <Text style={s.tdText}>{d.typePresta}</Text>
+              {d.adresse && <Text style={s.tdSub}>Adresse : {d.adresse}</Text>}
+              {d.dateInter && (
+                <Text style={s.tdSub}>
+                  Intervention : {d.dateInter}{d.heureInter ? ` à ${d.heureInter}` : ""}
+                </Text>
+              )}
+            </View>
+            <Text style={[s.tdText, s.cQty]}>{qty}</Text>
+            <Text style={[s.tdText, s.cPU]}>{fmt(pu)}</Text>
+            <Text style={[s.tdText, s.cTotal]}>{fmt(ht)}</Text>
+          </View>
+
+          {/* ── Totaux ──────────────────────────────────────────────────── */}
+          <View style={s.totauxWrap}>
+            <View style={s.totauxBox}>
+              <View style={s.totRow}>
+                <Text style={s.totLabel}>Sous-total HT</Text>
+                <Text style={s.totVal}>{fmt(ht)}</Text>
               </View>
-              <View style={styles.totalTTCRow}>
-                <Text style={styles.totalTTCLabel}>TOTAL À PAYER</Text>
-                <Text style={styles.totalTTCValue}>{fmt(ttc)}</Text>
+              <View style={s.totRow}>
+                <Text style={s.totLabel}>TVA (0 % — auto-entrepreneur)</Text>
+                <Text style={s.totVal}>0,00 €</Text>
+              </View>
+              <View style={s.totTTCRow}>
+                <Text style={s.totTTCLabel}>TOTAL À PAYER</Text>
+                <Text style={s.totTTCVal}>{fmt(ht)}</Text>
               </View>
             </View>
           </View>
 
-          {/* ── Conditions ───────────────────────────────────────────────── */}
-          <View style={styles.sectionTitle}>
-            <View style={styles.sectionTitleDot} />
-            <Text style={styles.sectionTitleText}>Conditions & modalités</Text>
-          </View>
-          <View style={styles.conditionsBox}>
-            <View style={styles.condBlock}>
-              <Text style={styles.condTitle}>Validité</Text>
-              <Text style={styles.condText}>
-                {"Ce devis est valable 30 jours à compter de sa date d'émission. Passé ce délai, les tarifs pourront être révisés."}
-              </Text>
-            </View>
-            <View style={styles.condBlock}>
-              <Text style={styles.condTitle}>Paiement</Text>
-              <Text style={styles.condText}>
-                Paiement à réception de la facture.{"\n"}
-                Modes acceptés : virement bancaire ou espèces.
-              </Text>
-            </View>
-            <View style={styles.condBlock}>
-              <Text style={styles.condTitle}>Régime fiscal</Text>
-              <Text style={styles.condText}>
-                TVA non applicable — article 293 B du CGI.{"\n"}
-                Micro-entrepreneur.
-              </Text>
-            </View>
-          </View>
+          {/* ── Conditions + Signatures côte à côte ─────────────────────── */}
+          <View style={s.bottomRow}>
 
-          {/* ── Signatures ───────────────────────────────────────────────── */}
-          <View style={styles.sectionTitle}>
-            <View style={styles.sectionTitleDot} />
-            <Text style={styles.sectionTitleText}>Bon pour accord</Text>
-          </View>
-          <View style={styles.signRow}>
-            <View style={styles.signBox}>
-              <Text style={styles.signLabel}>Prestataire</Text>
-              <Text style={styles.signName}>KinouClean</Text>
-              <View style={styles.signLine} />
-              <Text style={styles.signSub}>Signature &amp; cachet</Text>
+            {/* Conditions */}
+            <View style={s.condWrap}>
+              <View style={s.sectionHead}>
+                <View style={s.sectionDot} />
+                <Text style={s.sectionText}>Conditions</Text>
+              </View>
+              <View style={s.condBox}>
+                <Text style={s.condTitle}>Validité</Text>
+                <Text style={s.condText}>
+                  {"Devis valable 30 jours à compter du "}{d.date}{"."}
+                </Text>
+              </View>
+              <View style={s.condBox}>
+                <Text style={s.condTitle}>Paiement</Text>
+                <Text style={s.condText}>
+                  À réception de la facture.{"\n"}Virement bancaire ou espèces acceptés.
+                </Text>
+              </View>
+              <View style={s.condBox}>
+                <Text style={s.condTitle}>Régime fiscal</Text>
+                <Text style={s.condText}>
+                  TVA non applicable — art. 293 B du CGI.{"\n"}Micro-entrepreneur.
+                </Text>
+              </View>
             </View>
-            <View style={styles.signBox}>
-              <Text style={styles.signLabel}>Client</Text>
-              <Text style={styles.signName}>{d.clientPrenom} {d.clientNom}</Text>
-              <View style={styles.signLine} />
-              <Text style={styles.signSub}>Lu et approuvé — Date : ___________</Text>
-            </View>
-          </View>
 
+            {/* Signatures */}
+            <View style={s.signWrap}>
+              <View style={s.sectionHead}>
+                <View style={s.sectionDot} />
+                <Text style={s.sectionText}>Bon pour accord</Text>
+              </View>
+              <View style={s.signBox}>
+                <Text style={s.signLabel}>Prestataire</Text>
+                <Text style={s.signName}>KinouClean</Text>
+                <View style={s.signLine} />
+                <Text style={s.signSub}>Signature &amp; cachet</Text>
+              </View>
+              <View style={s.signBox}>
+                <Text style={s.signLabel}>Client</Text>
+                <Text style={s.signName}>{d.clientPrenom} {d.clientNom}</Text>
+                <View style={s.signLine} />
+                <Text style={s.signSub}>Lu et approuvé — Date : ___________</Text>
+              </View>
+            </View>
+
+          </View>
         </View>
 
         {/* ── Footer ──────────────────────────────────────────────────────── */}
-        <View style={styles.footer} fixed>
-          <Text style={styles.footerBrand}>KinouClean</Text>
-          <Text style={styles.footerText}>Service de nettoyage professionnel · Île-de-France</Text>
-          <Text style={styles.footerText}>contact@kinouclean.fr</Text>
+        <View style={s.footer} fixed>
+          <Text style={s.footerBrand}>KinouClean</Text>
+          <Text style={s.footerText}>Service de nettoyage professionnel · Île-de-France</Text>
+          <Text style={s.footerText}>contact@kinouclean.fr</Text>
         </View>
 
       </Page>
