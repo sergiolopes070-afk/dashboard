@@ -115,7 +115,7 @@ export default function DevisPage() {
                             <ExternalLink size={10} />
                           </a>
                           <a
-                            href={`/api/devis/download?url=${encodeURIComponent(pdfUrl)}&name=${encodeURIComponent(`devis-${p.prenom}-${p.nom}`)}`}
+                            href={`/api/devis/${p.row}?download=1`}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors"
                             title="Télécharger le devis"
                           >
