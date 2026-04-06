@@ -3,7 +3,7 @@ import { Prestation } from "@/lib/constants";
 import StatusBadge from "./StatusBadge";
 import {
   ExternalLink, MessageCircle, FileText, Pencil, Archive, Trash2,
-  CreditCard, Copy, Check, X, Loader2, Send,
+  CreditCard, Copy, Check, X, Loader2, Send, Download,
 } from "lucide-react";
 import { MODE_PAIEMENT_ICONS } from "@/lib/constants";
 import { useState } from "react";
@@ -374,15 +374,25 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                       </a>
                     )}
                     {p.devisPDF && (
-                      <a
-                        href={p.devisPDF}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Devis PDF"
-                        className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                      >
-                        <FileText size={14} />
-                      </a>
+                      <>
+                        <a
+                          href={p.devisPDF}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Voir devis PDF"
+                          className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                        >
+                          <FileText size={14} />
+                        </a>
+                        <a
+                          href={`/api/devis/download?url=${encodeURIComponent(p.devisPDF)}&name=${encodeURIComponent(`devis-${p.prenom}-${p.nom}`)}`}
+                          title="Télécharger le devis"
+                          className="p-1.5 rounded-lg bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <Download size={14} />
+                        </a>
+                      </>
                     )}
                     {p.email && (() => {
                       const details = [

@@ -114,12 +114,19 @@ export default function DevisPage() {
                             Voir PDF
                             <ExternalLink size={10} />
                           </a>
-                          <button
-                            onClick={() => handleGenerate(p)}
+                          <a
+                            href={`/api/devis/download?url=${encodeURIComponent(pdfUrl)}&name=${encodeURIComponent(`devis-${p.prenom}-${p.nom}`)}`}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors"
-                            title="Re-générer le devis"
+                            title="Télécharger le devis"
                           >
                             <Download size={12} />
+                            Télécharger
+                          </a>
+                          <button
+                            onClick={() => handleGenerate(p)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-medium hover:bg-indigo-100 transition-colors"
+                            title="Re-générer le devis"
+                          >
                             Re-générer
                           </button>
                         </div>
