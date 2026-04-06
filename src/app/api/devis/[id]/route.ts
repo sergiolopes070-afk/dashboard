@@ -23,7 +23,8 @@ function isoToFr(s: string | null): string {
   return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : s;
 }
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, { params }: { params: { id: string } }) {
+  const download = new URL(req.url).searchParams.get("download") === "1";
   try {
     if (!supabase) {
       return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
@@ -73,7 +74,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       status: 200,
       headers: {
         "Content-Type"       : "application/pdf",
-        "Content-Disposition": `inline; filename="devis-${devisData.refNumber}.pdf"`,
+        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="devis-${devisData.refNumber}.pdf"`,
         "Cache-Control"      : "no-store",
       },
     });

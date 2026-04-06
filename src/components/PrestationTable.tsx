@@ -385,7 +385,7 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                           <FileText size={14} />
                         </a>
                         <a
-                          href={`/api/devis/download?url=${encodeURIComponent(p.devisPDF)}&name=${encodeURIComponent(`devis-${p.prenom}-${p.nom}`)}`}
+                          href={`/api/devis/${p.row}?download=1`}
                           title="Télécharger le devis"
                           className="p-1.5 rounded-lg bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors"
                           onClick={e => e.stopPropagation()}
