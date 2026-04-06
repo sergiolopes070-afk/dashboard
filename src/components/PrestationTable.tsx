@@ -1,7 +1,7 @@
 "use client";
 import { Prestation } from "@/lib/constants";
 import StatusBadge from "./StatusBadge";
-import { ExternalLink, MessageCircle, FileText, Pencil, Archive } from "lucide-react";
+import { ExternalLink, MessageCircle, FileText, Pencil, Archive, Download } from "lucide-react";
 
 interface PrestationTableProps {
   prestations: Prestation[];
@@ -101,15 +101,24 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                       </a>
                     )}
                     {p.devisPDF && (
-                      <a
-                        href={p.devisPDF}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Devis PDF"
-                        className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                      >
-                        <FileText size={14} />
-                      </a>
+                      <>
+                        <a
+                          href={p.devisPDF}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Voir devis PDF"
+                          className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                        >
+                          <FileText size={14} />
+                        </a>
+                        <a
+                          href={`/api/devis/download?url=${encodeURIComponent(p.devisPDF)}&name=${encodeURIComponent(`devis-${p.prenom}-${p.nom}`)}`}
+                          title="Télécharger le devis"
+                          className="p-1.5 rounded-lg bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors"
+                        >
+                          <Download size={14} />
+                        </a>
+                      </>
                     )}
                     {p.email && (
                       <a
