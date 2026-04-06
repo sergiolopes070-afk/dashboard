@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { FileText, ExternalLink, Search } from "lucide-react";
+import { FileText, ExternalLink, Search, Download } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { Prestation } from "@/lib/constants";
 
@@ -31,6 +31,11 @@ export default function DevisPage() {
     const q = search.toLowerCase();
     return devis.filter((p) => [p.nom, p.prenom, p.typePresta].join(" ").toLowerCase().includes(q));
   }, [devis, search]);
+
+  const downloadUrl = (pdfUrl: string, clientName: string) => {
+    const name = `devis-${clientName.toLowerCase().replace(/\s+/g, "-")}`;
+    return `/api/devis/download?url=${encodeURIComponent(pdfUrl)}&name=${encodeURIComponent(name)}`;
+  };
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -93,16 +98,25 @@ export default function DevisPage() {
                     </td>
                     <td className="py-3 px-4">
                       {p.devisPDF ? (
-                        <a
-                          href={p.devisPDF}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors"
-                        >
-                          <FileText size={12} />
-                          Voir PDF
-                          <ExternalLink size={10} />
-                        </a>
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={p.devisPDF}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors"
+                          >
+                            <FileText size={12} />
+                            Voir
+                            <ExternalLink size={10} />
+                          </a>
+                          <a
+                            href={downloadUrl(p.devisPDF, `${p.prenom}-${p.nom}`)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-100 transition-colors"
+                          >
+                            <Download size={12} />
+                            Télécharger
+                          </a>
+                        </div>
                       ) : (
                         <span className="text-xs text-gray-400">Généré (lien manquant)</span>
                       )}

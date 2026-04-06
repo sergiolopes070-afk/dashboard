@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X, Save, Loader2, Archive } from "lucide-react";
+import { X, Save, Loader2, Archive, Download, FileText } from "lucide-react";
 import { Prestation, Prestataire, StatutClient, StatutPresta } from "@/lib/constants";
 
 interface EditPrestationModalProps {
@@ -327,6 +327,32 @@ export default function EditPrestationModal({
               )}
             </div>
           </fieldset>
+
+          {/* Devis PDF */}
+          {prestation.devisPDF && (
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Devis</legend>
+              <div className="flex items-center gap-2 p-3 rounded-xl border border-gray-100 bg-gray-50">
+                <FileText size={15} className="text-gray-400 flex-shrink-0" />
+                <span className="text-sm text-gray-600 flex-1">Devis généré</span>
+                <a
+                  href={prestation.devisPDF}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors"
+                >
+                  Voir
+                </a>
+                <a
+                  href={`/api/devis/download?url=${encodeURIComponent(prestation.devisPDF)}&name=${encodeURIComponent(`devis-${prestation.prenom}-${prestation.nom}`)}`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-300 transition-colors"
+                >
+                  <Download size={12} />
+                  Télécharger
+                </a>
+              </div>
+            </fieldset>
+          )}
 
           {/* Actions */}
           <fieldset className="space-y-2">
