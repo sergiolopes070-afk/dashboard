@@ -225,11 +225,13 @@ export default function EditPrestationModal({
               const commMontant = commType === "%" ? prixVal * commVal / 100 : commVal;
               const netPresta   = prixVal - commMontant;
               const commLine = prixVal > 0 && commMontant > 0
-                ? `💶 Prix total : ${prixVal} €\n💰 Votre rémunération : ${netPresta.toFixed(0)} € (commission KinouClean : ${commMontant.toFixed(0)} €)\n\n`
-                : `💶 Prix : ${form.prix || prestation.prix || "—"} €\n\n`;
+                ? `💶 Prix total : ${prixVal} €\n💰 Votre rémunération : ${netPresta.toFixed(0)} €\n\n`
+                : prixVal > 0
+                  ? `💶 Prix : ${prixVal} €\n\n`
+                  : "";
               const msg = encodeURIComponent(
                 `Bonjour ${p.nom} 👋,\n\nVous avez été assigné(e) à une prestation KinouClean :\n\n` +
-                `👤 Client : ${prestation.prenom} ${prestation.nom}\n` +
+                `👤 Client : ${prestation.prenom} ${prestation.nom}${prestation.tel ? ` — ${prestation.tel}` : ""}\n` +
                 `🧹 Prestation : ${prestation.typePresta}${prestation.quantite ? ` (x${prestation.quantite})` : ""}\n` +
                 `📍 Adresse : ${prestation.adresse || "—"}\n` +
                 `📅 Date : ${form.date || prestation.date || "—"}${form.heure || prestation.heure ? ` à ${form.heure || prestation.heure}` : ""}\n` +
