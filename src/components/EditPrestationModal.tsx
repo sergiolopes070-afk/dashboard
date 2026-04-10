@@ -236,6 +236,7 @@ export default function EditPrestationModal({
                 `📍 Adresse : ${prestation.adresse || "—"}\n` +
                 `📅 Date : ${form.date || prestation.date || "—"}${form.heure || prestation.heure ? ` à ${form.heure || prestation.heure}` : ""}\n` +
                 commLine +
+                (form.commentaire ? `📝 Note : ${form.commentaire}\n\n` : "") +
                 `Merci de confirmer votre disponibilité 🙏`
               );
               return (
