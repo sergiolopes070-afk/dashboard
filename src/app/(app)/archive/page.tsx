@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Archive, Phone, Mail, MapPin, User, Wrench, Calendar,
   Clock, Euro, FileText, MessageSquare, Search, Tag, RefreshCw,
-  Star, X, CheckCircle2, ExternalLink, Trash2,
+  Star, X, CheckCircle2, ExternalLink, Trash2, CreditCard, Filter,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import NewClientModal from "@/components/NewClientModal";
@@ -121,6 +121,11 @@ function CompteRenduModal({
           {!isNaN(prix) && prix > 0 && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-sm font-bold">
               <Euro size={13} />{prix.toFixed(2)} €
+            </span>
+          )}
+          {p.modePaiement && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">
+              <CreditCard size={11} />{p.modePaiement}
             </span>
           )}
           {p.archiveReason ? (
@@ -449,10 +454,15 @@ function CarteArchive({ p, onClick, onDelete }: { p: Prestation; onClick: () => 
           ))}
         </div>
 
-        {/* Prix + badge */}
+        {/* Prix + badges */}
         <div className="flex items-center gap-2 shrink-0">
           {!isNaN(prix) && prix > 0 && (
             <span className="font-bold text-emerald-700 text-sm">{prix.toFixed(0)} €</span>
+          )}
+          {p.modePaiement && (
+            <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+              <CreditCard size={10} />{p.modePaiement}
+            </span>
           )}
           {p.archiveReason ? (
             <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium">
@@ -482,6 +492,8 @@ export default function ArchivePage() {
   const [prestataires, setPrestataires] = useState<Prestataire[]>([]);
   const [loading, setLoading]           = useState(true);
   const [search, setSearch]             = useState("");
+  const [filterPaiement, setFilterPaiement] = useState("");
+  const [filterPeriode, setFilterPeriode]   = useState("");
   const [error, setError]               = useState<string | null>(null);
   const [selected, setSelected]         = useState<Prestation | null>(null);
   const [reprogrammer, setReprogrammer] = useState<Prestation | null>(null);
@@ -521,14 +533,48 @@ export default function ArchivePage() {
     [data]
   );
 
+  // Périodes disponibles (ex: "04/2026")
+  const periodes = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach(p => {
+      if (!p.date) return;
+      const parts = p.date.split("/");
+      if (parts.length === 3) set.add(`${parts[1]}/${parts[2]}`);
+    });
+    return Array.from(set).sort().reverse();
+  }, [data]);
+
+  // CA par mode de paiement
+  const caParPaiement = useMemo(() => {
+    const map: Record<string, number> = {};
+    data.forEach(p => {
+      const mode = p.modePaiement || "Non renseigné";
+      map[mode] = (map[mode] || 0) + (parseFloat(p.prix) || 0);
+    });
+    return map;
+  }, [data]);
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return data;
-    const q = search.toLowerCase();
-    return data.filter((p) =>
-      [p.nom, p.prenom, p.tel, p.email, p.typePresta, p.prestataire]
-        .join(" ").toLowerCase().includes(q)
-    );
-  }, [data, search]);
+    let list = data;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((p) =>
+        [p.nom, p.prenom, p.tel, p.email, p.typePresta, p.prestataire]
+          .join(" ").toLowerCase().includes(q)
+      );
+    }
+    if (filterPaiement) {
+      list = list.filter(p => (p.modePaiement || "Non renseigné") === filterPaiement);
+    }
+    if (filterPeriode) {
+      list = list.filter(p => {
+        if (!p.date) return false;
+        const parts = p.date.split("/");
+        return parts.length === 3 && `${parts[1]}/${parts[2]}` === filterPeriode;
+      });
+    }
+    return list;
+  }, [data, search, filterPaiement, filterPeriode]);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -543,40 +589,102 @@ export default function ArchivePage() {
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">{error}</div>
         )}
 
-        {/* Barre de recherche */}
+        {/* Barre de recherche + filtres */}
         {data.length > 0 && (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-            <div className="relative">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-3 items-center">
+            <div className="relative flex-1 min-w-[180px]">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="Rechercher un client, prestation, prestataire…"
+                placeholder="Rechercher un client, prestation…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
               />
             </div>
+            <div className="flex items-center gap-2">
+              <CreditCard size={14} className="text-gray-400" />
+              <select
+                value={filterPaiement}
+                onChange={(e) => setFilterPaiement(e.target.value)}
+                className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+              >
+                <option value="">Tous les paiements</option>
+                {["Espèces", "Virement bancaire", "Lien de paiement", "Chèque", "Carte sur place", "Non renseigné"].map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Filter size={14} className="text-gray-400" />
+              <select
+                value={filterPeriode}
+                onChange={(e) => setFilterPeriode(e.target.value)}
+                className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+              >
+                <option value="">Toutes les périodes</option>
+                {periodes.map(p => (
+                  <option key={p} value={p}>{p.replace("/", " / ")}</option>
+                ))}
+              </select>
+            </div>
+            {(filterPaiement || filterPeriode || search) && (
+              <button
+                onClick={() => { setSearch(""); setFilterPaiement(""); setFilterPeriode(""); }}
+                className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+              >
+                <X size={12} /> Réinitialiser
+              </button>
+            )}
           </div>
         )}
 
         {/* Stats rapides */}
         {data.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
-              <p className="text-2xl font-bold text-emerald-700">{data.length}</p>
-              <p className="text-xs text-gray-400 mt-1">Prestations terminées</p>
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
+                <p className="text-2xl font-bold text-emerald-700">{filtered.length}</p>
+                <p className="text-xs text-gray-400 mt-1">Prestations</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
+                <p className="text-2xl font-bold text-emerald-700">
+                  {filtered.reduce((s, p) => s + (parseFloat(p.prix) || 0), 0).toFixed(0)} €
+                </p>
+                <p className="text-xs text-gray-400 mt-1">CA {filterPeriode ? filterPeriode.replace("/", " / ") : "total"}</p>
+              </div>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center col-span-2 sm:col-span-1">
+                <p className="text-2xl font-bold text-emerald-700">
+                  {new Set(filtered.map((p) => p.email || `${p.nom}-${p.prenom}`).filter(Boolean)).size}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">Clients uniques</p>
+              </div>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
-              <p className="text-2xl font-bold text-emerald-700">{totalCA.toFixed(0)} €</p>
-              <p className="text-xs text-gray-400 mt-1">CA généré</p>
-            </div>
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center col-span-2 sm:col-span-1">
-              <p className="text-2xl font-bold text-emerald-700">
-                {new Set(data.map((p) => p.email || `${p.nom}-${p.prenom}`).filter(Boolean)).size}
+            {/* CA par mode de paiement */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <CreditCard size={12} /> Répartition par mode de paiement
               </p>
-              <p className="text-xs text-gray-400 mt-1">Clients uniques</p>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(caParPaiement).sort((a, b) => b[1] - a[1]).map(([mode, ca]) => (
+                  <button
+                    key={mode}
+                    onClick={() => setFilterPaiement(filterPaiement === mode ? "" : mode)}
+                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm border transition-colors ${
+                      filterPaiement === mode
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : "bg-gray-50 text-gray-700 border-gray-200 hover:border-emerald-300"
+                    }`}
+                  >
+                    <span className="font-medium">{mode}</span>
+                    <span className={`font-bold ${filterPaiement === mode ? "text-white" : "text-emerald-700"}`}>
+                      {ca.toFixed(0)} €
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          </>
         )}
 
         {/* Liste fiches */}

@@ -27,9 +27,9 @@ export async function DELETE(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const { id, reason } = await req.json();
+    const { id, reason, modePaiement } = await req.json();
     if (!id) return NextResponse.json({ error: "id manquant" }, { status: 400 });
-    await archivePrestation(id, reason || "");
+    await archivePrestation(id, reason || "", modePaiement || "");
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";
