@@ -16,10 +16,11 @@ export default function PrestationsPage() {
   const [search, setSearch]               = useState("");
   const [statut, setStatut]               = useState("Tous");
   const [editing, setEditing]             = useState<Prestation | null>(null);
-  const [archiveModal, setArchiveModal]   = useState<{ id: string; label: string } | null>(null);
-  const [archiveReason, setArchiveReason] = useState("");
-  const [archiveComment, setArchiveComment] = useState("");
-  const [archiving, setArchiving]         = useState(false);
+  const [archiveModal, setArchiveModal]       = useState<{ id: string; label: string } | null>(null);
+  const [archiveReason, setArchiveReason]     = useState("");
+  const [archivePayment, setArchivePayment]   = useState("");
+  const [archiveComment, setArchiveComment]   = useState("");
+  const [archiving, setArchiving]             = useState(false);
   const [deleteModal, setDeleteModal]     = useState<{ id: string; label: string } | null>(null);
   const [deleting, setDeleting]           = useState(false);
 
@@ -71,10 +72,11 @@ export default function PrestationsPage() {
       await fetch("/api/archive", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: archiveModal.id, reason: fullReason }),
+        body: JSON.stringify({ id: archiveModal.id, reason: fullReason, modePaiement: archivePayment }),
       });
       setArchiveModal(null);
       setArchiveReason("");
+      setArchivePayment("");
       setArchiveComment("");
       load();
     } finally {
@@ -171,7 +173,7 @@ export default function PrestationsPage() {
             <PrestationTable
               prestations={filtered}
               onEdit={setEditing}
-              onArchive={(id, label) => { setArchiveModal({ id, label }); setArchiveReason(""); }}
+              onArchive={(id, label) => { setArchiveModal({ id, label }); setArchiveReason(""); setArchivePayment(""); }}
               onDelete={(id, label) => setDeleteModal({ id, label })}
             />
           )}
@@ -264,6 +266,28 @@ export default function PrestationsPage() {
                 className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
               />
             </div>
+            {/* Mode de paiement — obligatoire */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-gray-600">
+                Mode de paiement <span className="text-red-400">*</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {["Espèces", "Virement bancaire", "Lien de paiement", "Chèque", "Carte sur place"].map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setArchivePayment(m)}
+                    className={`text-xs px-3 py-2 rounded-xl border transition-colors text-left ${
+                      archivePayment === m
+                        ? "border-blue-400 bg-blue-50 text-blue-700 font-medium"
+                        : "border-gray-200 hover:border-gray-300 text-gray-600"
+                    }`}
+                  >
+                    {m === "Espèces" ? "💵 " : m === "Virement bancaire" ? "🏦 " : m === "Lien de paiement" ? "🔗 " : m === "Chèque" ? "📄 " : "💳 "}
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-600">Commentaire <span className="text-gray-400 font-normal">(optionnel)</span></label>
               <textarea
@@ -283,7 +307,7 @@ export default function PrestationsPage() {
               </button>
               <button
                 onClick={handleArchiveConfirm}
-                disabled={!archiveReason.trim() || archiving}
+                disabled={!archiveReason.trim() || !archivePayment || archiving}
                 className="flex-1 py-2 rounded-xl bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors disabled:opacity-50"
               >
                 {archiving ? "Archivage…" : "Archiver"}
