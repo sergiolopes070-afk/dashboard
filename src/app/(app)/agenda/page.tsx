@@ -74,7 +74,7 @@ function firstMondayOfMonthGrid(d: Date): Date {
 // ─── Options prestation ───────────────────────────────────────────────────────
 const TYPES_PRESTA = [
   "Ménage", "Repassage", "Vitres", "Débarras",
-  "Après travaux", "Bureaux", "Lavage Canapé", "Lavage véhicule", "Autre",
+  "Après travaux", "Bureaux", "Lavage Canapé", "Lavage véhicule", "Lavage de matelas", "Autre",
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -83,6 +83,7 @@ interface CreateForm {
   typePresta: string; adresse: string; codePostal: string; ville: string;
   prix: string; prestataire: string; statut: StatutClient; message: string;
   date: string; heure: string;
+  commentaire: string; modePaiement: string;
 }
 
 const EMPTY_FORM: CreateForm = {
@@ -90,6 +91,7 @@ const EMPTY_FORM: CreateForm = {
   typePresta:"", adresse:"", codePostal:"", ville:"",
   prix:"", prestataire:"", statut:"", message:"",
   date:"", heure:"",
+  commentaire:"", modePaiement:"",
 };
 
 // ─── Composant DayDetailModal ─────────────────────────────────────────────────
@@ -262,7 +264,7 @@ function QuickCreateModal({
       const res = await fetch("/api/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, adresse: fullAdresse }),
+        body: JSON.stringify({ ...form, adresse: fullAdresse, commentaire: form.commentaire, modePaiement: form.modePaiement }),
       });
       if (!res.ok) throw new Error("Erreur serveur");
       const data = await res.json();
@@ -437,9 +439,42 @@ function QuickCreateModal({
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-500 mb-1 block">Note</label>
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Note client</label>
             <textarea rows={2} value={form.message} onChange={e => set("message", e.target.value)}
               className={`${inputCls} resize-none`} />
+          </div>
+
+          {/* ── Commentaire interne ── */}
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Interne</div>
+
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Commentaire interne</label>
+            <textarea rows={2} value={form.commentaire} onChange={e => set("commentaire", e.target.value)}
+              placeholder="Note interne pour le prestataire…"
+              className={`${inputCls} resize-none`} />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-2 block">Mode de paiement</label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: "Espèces",          icon: "💵" },
+                { label: "Virement bancaire", icon: "🏦" },
+                { label: "Lien de paiement",  icon: "🔗" },
+                { label: "Chèque",            icon: "📄" },
+                { label: "Carte sur place",   icon: "💳" },
+              ].map(({ label, icon }) => (
+                <button key={label} type="button"
+                  onClick={() => set("modePaiement", form.modePaiement === label ? "" : label)}
+                  className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors text-left flex items-center gap-1.5 ${
+                    form.modePaiement === label
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
+                  }`}>
+                  <span>{icon}</span>{label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {error && <p className="text-xs text-red-500">{error}</p>}
