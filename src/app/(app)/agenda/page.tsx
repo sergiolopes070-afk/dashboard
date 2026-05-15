@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo, useRef } from "react";
-import { ChevronLeft, ChevronRight, Plus, X, SlidersHorizontal } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, SlidersHorizontal, Download, CheckCircle2 } from "lucide-react";
 import { Prestation, Prestataire, StatutClient } from "@/lib/constants";
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
@@ -235,9 +235,11 @@ function QuickCreateModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [form, setForm] = useState<CreateForm>({ ...EMPTY_FORM, ...initial });
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState("");
+  const [form, setForm]       = useState<CreateForm>({ ...EMPTY_FORM, ...initial });
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState("");
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  const [clientName, setClientName] = useState("");
   const { villes, loading: cpLoading } = useVilleFromCP(form.codePostal);
 
   const set = (k: keyof CreateForm, v: string) =>
@@ -263,7 +265,10 @@ function QuickCreateModal({
         body: JSON.stringify({ ...form, adresse: fullAdresse }),
       });
       if (!res.ok) throw new Error("Erreur serveur");
-      onSaved();
+      const data = await res.json();
+      setClientName(`${form.prenom} ${form.nom}`);
+      setCreatedId(data.id);
+      onSaved(); // recharge l'agenda en arrière-plan
     } catch {
       setError("Impossible de sauvegarder. Réessayez.");
     } finally {
@@ -272,6 +277,47 @@ function QuickCreateModal({
   }
 
   const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
+
+  // ── Écran succès avec téléchargement devis ───────────────────────────────
+  if (createdId) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 text-center">
+          <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 size={28} className="text-green-600" />
+          </div>
+          <h3 className="font-bold text-gray-900 text-lg mb-1">Prestation créée !</h3>
+          <p className="text-sm text-gray-500 mb-6">
+            <span className="font-medium text-gray-700">{clientName}</span> a bien été ajouté.
+          </p>
+          <div className="flex flex-col gap-2.5">
+            <a
+              href={`/api/devis/${createdId}?download=1`}
+              download
+              className="w-full py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+            >
+              <Download size={16} />
+              Télécharger le devis
+            </a>
+            <a
+              href={`/api/devis/${createdId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="w-full py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+            >
+              Aperçu du devis
+            </a>
+            <button
+              onClick={onClose}
+              className="w-full py-2 text-sm text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
