@@ -212,6 +212,7 @@ export async function appendPrestation(fields: {
   date: string; heure: string; message: string; prix: string;
   source?: string; statutClient?: string; prestataire?: string;
   statut?: string; statutPresta?: string; commission?: string; commissionType?: string;
+  commentaire?: string; modePaiement?: string;
 }): Promise<string> {
   if (!supabase) throw new Error("Supabase non configuré");
   const db = supabase;
@@ -270,6 +271,8 @@ export async function appendPrestation(fields: {
     statut            : fields.statut || "",
     statut_presta     : fields.statutPresta || null,
     archive           : false,
+    commentaire       : fields.commentaire || null,
+    mode_paiement     : fields.modePaiement || null,
   };
 
   // Tente l'insertion avec les colonnes commission (peuvent ne pas exister encore)

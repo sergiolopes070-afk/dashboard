@@ -25,6 +25,8 @@ export async function POST(req: Request) {
       source       : body.source       || "",
       commission     : body.commission     || "",
       commissionType : body.commissionType || "%",
+      commentaire    : body.commentaire    || "",
+      modePaiement   : body.modePaiement   || "",
     });
 
     // Envoyer l'email de confirmation si l'adresse email est renseignée
