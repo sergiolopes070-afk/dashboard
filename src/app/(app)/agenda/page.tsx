@@ -446,6 +446,13 @@ export default function AgendaPage() {
   const [rescheduleHrs,     setRescheduleHrs]     = useState("");
   const [rescheduleSaving,  setRescheduleSaving]  = useState(false);
 
+  // ── Archive depuis l'agenda ────────────────────────────────────────────────
+  const [archiveEv,      setArchiveEv]      = useState<Prestation | null>(null);
+  const [archiveReason,  setArchiveReason]  = useState("");
+  const [archivePayment, setArchivePayment] = useState("");
+  const [archiveComment, setArchiveComment] = useState("");
+  const [archiving,      setArchiving]      = useState(false);
+
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const loadData = () => {
     Promise.all([
@@ -561,6 +568,29 @@ export default function AgendaPage() {
       loadData(); // rollback
     } finally {
       setRescheduleSaving(false);
+    }
+  }
+
+  // ── Archive depuis l'agenda ────────────────────────────────────────────────
+  async function handleArchiveConfirm() {
+    if (!archiveEv) return;
+    setArchiving(true);
+    const fullReason = archiveReason + (archiveComment.trim() ? ` — ${archiveComment.trim()}` : "");
+    try {
+      await fetch("/api/archive", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: archiveEv.row, reason: fullReason, modePaiement: archivePayment }),
+      });
+      setArchiveEv(null);
+      setArchiveReason("");
+      setArchivePayment("");
+      setArchiveComment("");
+      loadData();
+    } catch {
+      alert("Erreur lors de l'archivage. Réessayez.");
+    } finally {
+      setArchiving(false);
     }
   }
 
@@ -1020,17 +1050,31 @@ export default function AgendaPage() {
                     ))}
                   </div>
                   {!isArchived && (
-                    <button
-                      onClick={() => {
-                        setRescheduleEv(ev);
-                        setRescheduleDate(ev.date || "");
-                        setRescheduleHrs(ev.heure || "");
-                        setSelectedEvent(null);
-                      }}
-                      className="mt-4 w-full py-2 rounded-xl border border-blue-200 text-blue-600 text-sm font-medium hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      📅 Déplacer ce RDV
-                    </button>
+                    <div className="mt-4 flex flex-col gap-2">
+                      <button
+                        onClick={() => {
+                          setRescheduleEv(ev);
+                          setRescheduleDate(ev.date || "");
+                          setRescheduleHrs(ev.heure || "");
+                          setSelectedEvent(null);
+                        }}
+                        className="w-full py-2 rounded-xl border border-blue-200 text-blue-600 text-sm font-medium hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        📅 Déplacer ce RDV
+                      </button>
+                      <button
+                        onClick={() => {
+                          setArchiveEv(ev);
+                          setArchiveReason("");
+                          setArchivePayment("");
+                          setArchiveComment("");
+                          setSelectedEvent(null);
+                        }}
+                        className="w-full py-2 rounded-xl border border-orange-200 text-orange-600 text-sm font-medium hover:bg-orange-50 transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        📦 Archiver ce RDV
+                      </button>
+                    </div>
                   )}
                 </>
               );
@@ -1060,6 +1104,99 @@ export default function AgendaPage() {
           onClose={() => setCreateSlot(null)}
           onSaved={() => { setCreateSlot(null); loadData(); }}
         />
+      )}
+
+      {/* ── Modal archiver RDV ───────────────────────────────────────────────── */}
+      {archiveEv && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setArchiveEv(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-5 max-h-[90vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-900">📦 Archiver le RDV</h3>
+              <button onClick={() => setArchiveEv(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              <span className="font-medium text-gray-700">{archiveEv.prenom} {archiveEv.nom}</span>
+              {archiveEv.typePresta ? ` — ${archiveEv.typePresta}` : ""}
+              {archiveEv.date ? ` (${archiveEv.date})` : ""}
+            </p>
+
+            {/* Raison */}
+            <label className="text-xs font-medium text-gray-600 mb-2 block">Raison de l&apos;archivage</label>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {["Annulation client", "Prestation terminée", "Client injoignable", "Doublon"].map(r => (
+                <button key={r} type="button"
+                  onClick={() => setArchiveReason(r)}
+                  className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors text-left ${
+                    archiveReason === r
+                      ? "bg-orange-500 text-white border-orange-500"
+                      : "bg-white text-gray-700 border-gray-200 hover:border-orange-300"
+                  }`}>
+                  {r}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              placeholder="Autre raison…"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              value={["Annulation client","Prestation terminée","Client injoignable","Doublon"].includes(archiveReason) ? "" : archiveReason}
+              onChange={e => setArchiveReason(e.target.value)}
+            />
+
+            {/* Mode de paiement */}
+            <label className="text-xs font-medium text-gray-600 mb-2 block">
+              Mode de paiement <span className="text-orange-500">*</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {[
+                { label: "Espèces", icon: "💵" },
+                { label: "Virement bancaire", icon: "🏦" },
+                { label: "Lien de paiement", icon: "🔗" },
+                { label: "Chèque", icon: "📄" },
+                { label: "Carte sur place", icon: "💳" },
+              ].map(({ label, icon }) => (
+                <button key={label} type="button"
+                  onClick={() => setArchivePayment(label)}
+                  className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors text-left flex items-center gap-1.5 ${
+                    archivePayment === label
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
+                  }`}>
+                  <span>{icon}</span>{label}
+                </button>
+              ))}
+            </div>
+
+            {/* Commentaire optionnel */}
+            <label className="text-xs font-medium text-gray-600 mb-1.5 block">Commentaire (optionnel)</label>
+            <textarea
+              rows={2}
+              placeholder="Note interne…"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none mb-4 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              value={archiveComment}
+              onChange={e => setArchiveComment(e.target.value)}
+            />
+
+            {/* Actions */}
+            <div className="flex gap-2">
+              <button onClick={() => setArchiveEv(null)}
+                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                Annuler
+              </button>
+              <button
+                onClick={handleArchiveConfirm}
+                disabled={!archiveReason.trim() || !archivePayment || archiving}
+                className="flex-1 py-2 rounded-xl bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-40 transition-colors">
+                {archiving ? "Archivage…" : "Archiver"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Modal déplacer RDV ────────────────────────────────────────────── */}
