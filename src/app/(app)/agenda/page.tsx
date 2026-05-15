@@ -428,11 +428,23 @@ export default function AgendaPage() {
   const [createSlot,      setCreateSlot]      = useState<{ date: string; heure: string } | null>(null);
   const [selectedMonthDay, setSelectedMonthDay] = useState<Date | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef  = useRef<HTMLDivElement>(null);
+  const didDropRef = useRef<boolean>(false);
 
   const today = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
 
   const [showArchived, setShowArchived] = useState(true);
+
+  // ── Drag & drop ────────────────────────────────────────────────────────────
+  const [draggingEvent,    setDraggingEvent]    = useState<Prestation | null>(null);
+  const [dragOverDay,      setDragOverDay]      = useState<number | null>(null);
+  const [dragOverMins,     setDragOverMins]     = useState<number>(0);
+
+  // ── Reschedule modal (pour mobile / vue mois) ──────────────────────────────
+  const [rescheduleEv,      setRescheduleEv]      = useState<Prestation | null>(null);
+  const [rescheduleDate,    setRescheduleDate]    = useState("");
+  const [rescheduleHrs,     setRescheduleHrs]     = useState("");
+  const [rescheduleSaving,  setRescheduleSaving]  = useState(false);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const loadData = () => {
@@ -530,6 +542,28 @@ export default function AgendaPage() {
     else { const d = new Date(); setMonthDate(new Date(d.getFullYear(), d.getMonth(), 1)); }
   }
 
+  // ── Reschedule (drag & modal) ───────────────────────────────────────────────
+  async function reschedulePrestation(ev: Prestation, newDate: string, newHeure: string) {
+    setRescheduleSaving(true);
+    // Optimistic UI
+    setPrestations(prev => prev.map(p =>
+      p.row === ev.row ? { ...p, date: newDate, heure: newHeure } : p
+    ));
+    setSelectedEvent(null);
+    setRescheduleEv(null);
+    try {
+      await fetch("/api/prestations", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ row: ev.row, updates: { date: newDate, heure: newHeure } }),
+      });
+    } catch {
+      loadData(); // rollback
+    } finally {
+      setRescheduleSaving(false);
+    }
+  }
+
   // Clic sur numéro de jour (header semaine) → vue mois
   function handleDayHeaderClick(day: Date) {
     setMonthDate(new Date(day.getFullYear(), day.getMonth(), 1));
@@ -543,6 +577,7 @@ export default function AgendaPage() {
 
   // Clic sur un créneau horaire vide (vue semaine)
   function handleSlotClick(e: React.MouseEvent<HTMLDivElement>, day: Date) {
+    if (didDropRef.current) return; // évite d'ouvrir le modal après un drop
     const y = e.nativeEvent.offsetY;
     const totalMins = Math.floor((y / HOUR_PX) * 60 / 15) * 15 + HOUR_START * 60;
     const clamped = Math.max(HOUR_START * 60, Math.min(HOUR_END * 60 - 15, totalMins));
@@ -733,13 +768,48 @@ export default function AgendaPage() {
                 {weekDays.map((day, di) => {
                   const events  = eventsForDay(day);
                   const isToday = sameDay(day, today);
+                  const isDragOver = dragOverDay === di;
                   return (
                     <div
                       key={di}
-                      className={`flex-1 border-l border-gray-100 relative cursor-pointer group ${isToday ? "bg-blue-50/20" : "bg-white"}`}
+                      className={`flex-1 border-l border-gray-100 relative cursor-pointer group ${isToday ? "bg-blue-50/20" : "bg-white"} ${isDragOver ? "bg-blue-50/40" : ""}`}
                       style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}
                       onClick={e => handleSlotClick(e, day)}
                       title="Cliquer pour créer une prestation"
+                      onDragOver={e => {
+                        if (!draggingEvent) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const y = e.clientY - rect.top;
+                        const raw = Math.round((y / HOUR_PX) * 60 / 15) * 15 + HOUR_START * 60;
+                        const clamped = Math.max(HOUR_START * 60, Math.min((HOUR_END - 1) * 60, raw));
+                        setDragOverDay(di);
+                        setDragOverMins(clamped);
+                      }}
+                      onDragLeave={e => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                          setDragOverDay(null);
+                        }
+                      }}
+                      onDrop={async e => {
+                        e.preventDefault();
+                        if (!draggingEvent) return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const y = e.clientY - rect.top;
+                        const raw = Math.round((y / HOUR_PX) * 60 / 15) * 15 + HOUR_START * 60;
+                        const clamped = Math.max(HOUR_START * 60, Math.min((HOUR_END - 1) * 60, raw));
+                        const h = Math.floor(clamped / 60);
+                        const m = clamped % 60;
+                        const newHeure = `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+                        const newDate  = toFrDate(day);
+                        const ev = draggingEvent;
+                        setDraggingEvent(null);
+                        setDragOverDay(null);
+                        didDropRef.current = true;
+                        setTimeout(() => { didDropRef.current = false; }, 200);
+                        await reschedulePrestation(ev, newDate, newHeure);
+                      }}
                     >
                       {/* Lignes horaires */}
                       {HOURS.map((h, i) => (
@@ -753,6 +823,23 @@ export default function AgendaPage() {
 
                       {/* Hover hint */}
                       <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/[0.02] transition-colors pointer-events-none" />
+
+                      {/* Indicateur de drop */}
+                      {isDragOver && draggingEvent && (
+                        <div
+                          className="absolute left-1 right-1 rounded pointer-events-none z-30"
+                          style={{
+                            top: `${((dragOverMins - HOUR_START * 60) / 60) * HOUR_PX}px`,
+                            height: `${HOUR_PX}px`,
+                            backgroundColor: "rgba(59,130,246,0.12)",
+                            borderTop: "2px solid #3B82F6",
+                          }}
+                        >
+                          <span className="absolute top-0.5 left-1 bg-blue-500 text-white text-[9px] font-bold px-1 py-0.5 rounded-sm leading-none">
+                            {`${String(Math.floor(dragOverMins/60)).padStart(2,"0")}:${String(dragOverMins%60).padStart(2,"0")}`}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Events */}
                       {events.map((ev, ei) => {
@@ -768,6 +855,13 @@ export default function AgendaPage() {
                         return (
                           <button
                             key={ev.row}
+                            draggable={!isArchived}
+                            onDragStart={e => {
+                              e.stopPropagation();
+                              setDraggingEvent(ev);
+                              e.dataTransfer.effectAllowed = "move";
+                            }}
+                            onDragEnd={() => { setDraggingEvent(null); setDragOverDay(null); }}
                             onClick={e => { e.stopPropagation(); setSelectedEvent(ev); }}
                             className="absolute rounded-md text-left text-xs overflow-hidden shadow-sm hover:brightness-95 transition-all"
                             style={{
@@ -777,7 +871,8 @@ export default function AgendaPage() {
                               width : overlap > 0 ? "calc(50% - 4px)" : "calc(100% - 6px)",
                               backgroundColor: isArchived ? "#F3F4F6" : color.light,
                               borderLeft     : `3px solid ${isArchived ? "#9CA3AF" : color.bg}`,
-                              opacity: isArchived ? 0.6 : 1,
+                              opacity: isArchived ? 0.6 : (draggingEvent?.row === ev.row ? 0.4 : 1),
+                              cursor: isArchived ? "default" : "grab",
                               zIndex: 10 + ei,
                             }}
                           >
@@ -924,6 +1019,19 @@ export default function AgendaPage() {
                       </div>
                     ))}
                   </div>
+                  {!isArchived && (
+                    <button
+                      onClick={() => {
+                        setRescheduleEv(ev);
+                        setRescheduleDate(ev.date || "");
+                        setRescheduleHrs(ev.heure || "");
+                        setSelectedEvent(null);
+                      }}
+                      className="mt-4 w-full py-2 rounded-xl border border-blue-200 text-blue-600 text-sm font-medium hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      📅 Déplacer ce RDV
+                    </button>
+                  )}
                 </>
               );
             })()}
@@ -952,6 +1060,62 @@ export default function AgendaPage() {
           onClose={() => setCreateSlot(null)}
           onSaved={() => { setCreateSlot(null); loadData(); }}
         />
+      )}
+
+      {/* ── Modal déplacer RDV ────────────────────────────────────────────── */}
+      {rescheduleEv && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setRescheduleEv(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-5"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900">📅 Déplacer le RDV</h3>
+              <button onClick={() => setRescheduleEv(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              <span className="font-medium text-gray-700">{rescheduleEv.prenom} {rescheduleEv.nom}</span>
+              {rescheduleEv.typePresta ? ` — ${rescheduleEv.typePresta}` : ""}
+            </p>
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Nouvelle date</label>
+                <input
+                  type="text"
+                  placeholder="JJ/MM/AAAA"
+                  value={rescheduleDate}
+                  onChange={e => setRescheduleDate(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Nouvelle heure</label>
+                <input
+                  type="text"
+                  placeholder="HH:MM"
+                  value={rescheduleHrs}
+                  onChange={e => setRescheduleHrs(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setRescheduleEv(null)}
+                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                disabled={!rescheduleDate || rescheduleSaving}
+                onClick={() => reschedulePrestation(rescheduleEv, rescheduleDate, rescheduleHrs)}
+                className="flex-1 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {rescheduleSaving ? "Sauvegarde…" : "Confirmer"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
