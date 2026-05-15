@@ -432,13 +432,20 @@ export default function AgendaPage() {
 
   const today = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
 
+  const [showArchived, setShowArchived] = useState(true);
+
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const loadData = () => {
     Promise.all([
       fetch("/api/prestations").then(r => r.json()),
       fetch("/api/prestataires").then(r => r.json()),
-    ]).then(([prestas, prestas2]) => {
-      setPrestations(Array.isArray(prestas) ? prestas : []);
+      fetch("/api/archive").then(r => r.json()),
+    ]).then(([prestas, prestas2, archived]) => {
+      // Marque les archivés avec _archived:true et fusionne
+      const archivedMarked = (Array.isArray(archived) ? archived : [])
+        .map((p: Prestation) => ({ ...p, _archived: true }));
+      const all = [...(Array.isArray(prestas) ? prestas : []), ...archivedMarked];
+      setPrestations(all);
       setPrestataires(Array.isArray(prestas2) ? prestas2 : []);
       setChecked(prev => {
         const next = { ...prev };
@@ -476,11 +483,12 @@ export default function AgendaPage() {
   const visiblePrestations = useMemo(() =>
     prestations.filter(p => {
       if (!p.date) return false;
+      if ((p as Prestation & { _archived?: boolean })._archived && !showArchived) return false;
       const pid = idByNom[p.prestataire];
       if (p.prestataire && pid) return checked[pid] ?? false;
       return showSansPresta;
     }),
-    [prestations, checked, showSansPresta, idByNom]
+    [prestations, checked, showSansPresta, idByNom, showArchived]
   );
 
   function eventsForDay(day: Date): Prestation[] {
@@ -591,6 +599,22 @@ export default function AgendaPage() {
             )}
           </span>
           <span className="text-sm text-gray-400 truncate">Sans prestataire</span>
+        </label>
+      </div>
+
+      {/* ── Archivés toggle ─────────────────────────────────────────── */}
+      <div className="pt-2 border-t border-gray-100">
+        <label className="flex items-center gap-2.5 cursor-pointer group"
+          onClick={() => setShowArchived(v => !v)}>
+          <span className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0"
+            style={{ borderColor:"#6B7280", backgroundColor: showArchived ? "#6B7280" : "transparent" }}>
+            {showArchived && (
+              <svg viewBox="0 0 10 8" className="w-2.5 h-2">
+                <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </span>
+          <span className="text-sm text-gray-400 italic truncate">Archivés</span>
         </label>
       </div>
     </>
@@ -732,6 +756,7 @@ export default function AgendaPage() {
 
                       {/* Events */}
                       {events.map((ev, ei) => {
+                        const isArchived = !!(ev as Prestation & { _archived?: boolean })._archived;
                         const pid   = idByNom[ev.prestataire];
                         const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg:"#9CA3AF", light:"#F3F4F6", text:"#374151" };
                         const top_  = ev.heure ? topPx(ev.heure)   : 0;
@@ -750,20 +775,22 @@ export default function AgendaPage() {
                               height: `${Math.max(h_ - 2, 22)}px`,
                               left  : overlap > 0 ? "calc(50% + 2px)" : "3px",
                               width : overlap > 0 ? "calc(50% - 4px)" : "calc(100% - 6px)",
-                              backgroundColor: color.light,
-                              borderLeft     : `3px solid ${color.bg}`,
+                              backgroundColor: isArchived ? "#F3F4F6" : color.light,
+                              borderLeft     : `3px solid ${isArchived ? "#9CA3AF" : color.bg}`,
+                              opacity: isArchived ? 0.6 : 1,
                               zIndex: 10 + ei,
                             }}
                           >
                             <div className="px-1.5 py-1 h-full flex flex-col overflow-hidden">
                               {ev.heure && (
-                                <span className="font-bold leading-tight truncate" style={{ color: color.bg }}>{ev.heure}</span>
+                                <span className="font-bold leading-tight truncate" style={{ color: isArchived ? "#9CA3AF" : color.bg }}>{ev.heure}</span>
                               )}
-                              <span className="font-semibold leading-tight truncate text-gray-800">{ev.prenom} {ev.nom}</span>
-                              {h_ > 36 && <span className="text-gray-500 leading-tight truncate">{ev.typePresta}</span>}
-                              {h_ > 52 && ev.prestataire && (
+                              <span className={`font-semibold leading-tight truncate ${isArchived ? "line-through text-gray-400" : "text-gray-800"}`}>{ev.prenom} {ev.nom}</span>
+                              {h_ > 36 && <span className="text-gray-400 leading-tight truncate">{ev.typePresta}</span>}
+                              {h_ > 52 && ev.prestataire && !isArchived && (
                                 <span className="leading-tight truncate font-medium" style={{ color: color.text }}>{ev.prestataire}</span>
                               )}
+                              {isArchived && <span className="text-gray-400 text-[9px] leading-tight font-medium uppercase tracking-wide">Archivé</span>}
                             </div>
                           </button>
                         );
@@ -820,17 +847,21 @@ export default function AgendaPage() {
                     {/* Events du jour (max 3 + overflow) */}
                     <div className="space-y-0.5">
                       {events.slice(0, 3).map(ev => {
+                        const isArchived = !!(ev as Prestation & { _archived?: boolean })._archived;
                         const pid   = idByNom[ev.prestataire];
                         const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg:"#9CA3AF", light:"#F3F4F6", text:"#374151" };
                         return (
                           <button
                             key={ev.row}
                             onClick={e => { e.stopPropagation(); setSelectedEvent(ev); }}
-                            className="w-full text-left px-1.5 py-0.5 rounded text-xs truncate font-medium"
-                            style={{ backgroundColor: color.light, color: color.text }}
+                            className={`w-full text-left px-1.5 py-0.5 rounded text-xs truncate font-medium ${isArchived ? "opacity-55" : ""}`}
+                            style={{
+                              backgroundColor: isArchived ? "#F3F4F6" : color.light,
+                              color: isArchived ? "#9CA3AF" : color.text,
+                            }}
                           >
-                            {ev.heure && <span className="font-bold mr-1">{ev.heure}</span>}
-                            {ev.prenom} {ev.nom}
+                            {ev.heure && <span className={`font-bold mr-1 ${isArchived ? "line-through" : ""}`}>{ev.heure}</span>}
+                            <span className={isArchived ? "line-through" : ""}>{ev.prenom} {ev.nom}</span>
                           </button>
                         );
                       })}
@@ -856,17 +887,26 @@ export default function AgendaPage() {
               const ev    = selectedEvent;
               const pid   = idByNom[ev.prestataire];
               const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg:"#9CA3AF", light:"#F3F4F6", text:"#374151" };
+              const isArchived = !!(ev as Prestation & { _archived?: boolean; archive_reason?: string })._archived;
+              const archiveReason = (ev as Prestation & { _archived?: boolean; archive_reason?: string }).archive_reason;
               return (
                 <>
                   <div className="flex items-center justify-between mb-4">
-                    <div className="px-2 py-0.5 rounded-full text-xs font-semibold"
-                      style={{ backgroundColor: color.light, color: color.text }}>
-                      {ev.prestataire || "Sans prestataire"}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                        style={{ backgroundColor: isArchived ? "#F3F4F6" : color.light, color: isArchived ? "#6B7280" : color.text }}>
+                        {ev.prestataire || "Sans prestataire"}
+                      </div>
+                      {isArchived && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200">
+                          📦 Archivé
+                        </span>
+                      )}
                     </div>
                     <button onClick={() => setSelectedEvent(null)}
                       className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
                   </div>
-                  <h3 className="font-bold text-gray-900 text-base mb-1">{ev.prenom} {ev.nom}</h3>
+                  <h3 className={`font-bold text-base mb-1 ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</h3>
                   <p className="text-sm text-gray-500 mb-3">{ev.typePresta}</p>
                   <div className="space-y-1.5 text-sm text-gray-700">
                     {([
@@ -876,10 +916,11 @@ export default function AgendaPage() {
                       ["Prix",    ev.prix     ? `${ev.prix} €` : null],
                       ["Tél",     ev.tel      || null],
                       ["Note",    ev.commentaire || null],
+                      ...(isArchived && archiveReason ? [["Motif", archiveReason]] : []),
                     ] as [string, string|null][]).filter(([,v]) => v).map(([label, val]) => (
                       <div key={label} className="flex gap-2">
                         <span className="text-gray-400 w-20 shrink-0">{label}</span>
-                        <span>{val}</span>
+                        <span className={label === "Motif" ? "text-gray-500 italic" : ""}>{val}</span>
                       </div>
                     ))}
                   </div>
