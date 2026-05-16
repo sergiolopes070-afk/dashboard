@@ -527,6 +527,10 @@ export default function AgendaPage() {
   const [rescheduleHrs,     setRescheduleHrs]     = useState("");
   const [rescheduleSaving,  setRescheduleSaving]  = useState(false);
 
+  // ── Avis depuis l'agenda ───────────────────────────────────────────────────
+  const [avisLinkCopied, setAvisLinkCopied] = useState(false);
+  const [avisMsgCopied,  setAvisMsgCopied]  = useState(false);
+
   // ── Archive depuis l'agenda ────────────────────────────────────────────────
   const [archiveEv,      setArchiveEv]      = useState<Prestation | null>(null);
   const [archiveReason,  setArchiveReason]  = useState("");
@@ -1155,6 +1159,54 @@ export default function AgendaPage() {
                       >
                         📦 Archiver ce RDV
                       </button>
+
+                      {/* ── Avis client ── */}
+                      {(ev.prenom || ev.nom) && (<>
+                        <div className="border-t border-gray-100 pt-2 flex flex-col gap-2">
+                          <button
+                            onClick={() => {
+                              const params = new URLSearchParams({ nom: `${ev.prenom} ${ev.nom}`.trim() });
+                              if (ev.typePresta) params.set("prestation", ev.typePresta);
+                              const url = `${window.location.origin}/avis/${ev.row}?${params.toString()}`;
+                              navigator.clipboard.writeText(url).then(() => {
+                                setAvisLinkCopied(true);
+                                setTimeout(() => setAvisLinkCopied(false), 2000);
+                              });
+                            }}
+                            className={`w-full py-2 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
+                              avisLinkCopied
+                                ? "bg-green-50 text-green-700 border-green-200"
+                                : "bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100"
+                            }`}
+                          >
+                            ⭐ {avisLinkCopied ? "Lien copié !" : "Copier lien avis"}
+                          </button>
+                          <button
+                            onClick={() => {
+                              const params = new URLSearchParams({ nom: `${ev.prenom} ${ev.nom}`.trim() });
+                              if (ev.typePresta) params.set("prestation", ev.typePresta);
+                              const avisUrl = `${window.location.origin}/avis/${ev.row}?${params.toString()}`;
+                              const msg =
+                                `Bonjour ${ev.prenom} 👋,\n\n` +
+                                `J'espère que votre ${ev.typePresta ? `prestation de ${ev.typePresta}` : "prestation"} s'est très bien passée 😊.\n\n` +
+                                `Votre satisfaction est notre priorité et nous serions ravis d'avoir votre retour !\n\n` +
+                                `Si vous avez quelques instants, pourriez-vous laisser un avis ici ⭐ :\n${avisUrl}\n\n` +
+                                `Merci infiniment pour votre confiance 🙏\n\nÀ très bientôt,\nL'équipe KinouClean`;
+                              navigator.clipboard.writeText(msg).then(() => {
+                                setAvisMsgCopied(true);
+                                setTimeout(() => setAvisMsgCopied(false), 2000);
+                              });
+                            }}
+                            className={`w-full py-2 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
+                              avisMsgCopied
+                                ? "bg-green-50 text-green-700 border-green-200"
+                                : "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                            }`}
+                          >
+                            💬 {avisMsgCopied ? "Message copié !" : "Copier message fin de prestation"}
+                          </button>
+                        </div>
+                      </>)}
                     </div>
                   )}
                 </>
