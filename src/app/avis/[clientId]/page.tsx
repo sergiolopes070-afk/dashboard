@@ -133,20 +133,18 @@ function AvisContent() {
           </div>
 
           {/* Message contextuel */}
-          {rating > 0 && (
+          {isHigh && (
             <div style={{
               borderRadius: 10,
               padding: "10px 14px",
               marginBottom: 18,
               textAlign: "center",
               fontSize: 13,
-              background: isHigh ? "rgba(42,54,148,0.25)" : "rgba(180,80,80,0.15)",
-              color: isHigh ? "#7b93ff" : "#f87171",
-              border: `1px solid ${isHigh ? "rgba(42,54,148,0.5)" : "rgba(180,80,80,0.3)"}`,
+              background: "rgba(42,54,148,0.25)",
+              color: "#7b93ff",
+              border: "1px solid rgba(42,54,148,0.5)",
             }}>
-              {isHigh
-                ? "✨ Votre avis sera publié sur Google"
-                : "🔒 Votre retour restera confidentiel et transmis à notre équipe"}
+              ✨ Votre avis sera publié sur Google
             </div>
           )}
 
