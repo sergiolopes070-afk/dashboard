@@ -2,8 +2,9 @@
 import { useState, Suspense } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
+// Lien direct vers le formulaire d'écriture d'avis Google (Place ID KinouClean)
 const GOOGLE_REVIEW_URL =
-  "https://www.google.com/search?q=Kinouclean&stick=H4sIAAAAAAAA_-NgU1IxqDBJsjQ1tEg1TTE0SrVMNrQyqEhMTk5OszC1SDNJNbM0NTdbxMrlnZmXX5qck5qYBwCSiI-qNQAAAA&hl=fr&mat=Cd5JjDmCSRtqElYBTVDHnshZXV_DFuFutP9gHYU8TBcOARBIXDv0ud4rw1ySqA4OPg-YzskmEKYiK_YwxPC0i3iALYoprNIVdhYPsR6lOBRCtbXOvkDa3aSsMnkPPw6FLA&authuser=0";
+  "https://search.google.com/local/writereview?placeid=ChIJwekSXY5RuQR2leb0WPjMrA";
 
 // Composant interne qui utilise useSearchParams (doit être dans un Suspense)
 function AvisContent() {
@@ -33,6 +34,10 @@ function AvisContent() {
       });
       if (rating >= 4) {
         setRedirecting(true);
+        // Copier le commentaire dans le presse-papier pour faciliter le collage sur Google
+        if (comment.trim()) {
+          navigator.clipboard.writeText(comment).catch(() => {});
+        }
         setTimeout(() => { window.location.href = GOOGLE_REVIEW_URL; }, 1200);
       } else {
         setDone(true);
@@ -66,9 +71,14 @@ function AvisContent() {
         <div style={{ background: "#1e1e2e", borderRadius: 20, padding: "48px 32px", maxWidth: 420, width: "100%", textAlign: "center", boxShadow: "0 8px 40px rgba(0,0,0,0.5)" }}>
           <div style={{ fontSize: 52, marginBottom: 16 }}>⭐</div>
           <h2 style={{ color: "#ffffff", fontSize: 22, fontWeight: 700, margin: "0 0 12px" }}>Merci {clientName.split(" ")[0]} !</h2>
-          <p style={{ color: "#a0a0b0", fontSize: 15, lineHeight: 1.6, margin: "0 0 20px" }}>
+          <p style={{ color: "#a0a0b0", fontSize: 15, lineHeight: 1.6, margin: "0 0 8px" }}>
             Nous vous redirigeons vers Google pour publier votre avis…
           </p>
+          {comment.trim() && (
+            <p style={{ color: "#7b93ff", fontSize: 13, margin: "0 0 20px" }}>
+              📋 Votre commentaire a été copié — collez-le directement sur Google !
+            </p>
+          )}
           <div style={{ display: "flex", justifyContent: "center", gap: 6 }}>
             {[1,2,3].map(i => (
               <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "#2a3694", animation: `pulse 1s ${i * 0.2}s infinite` }} />
