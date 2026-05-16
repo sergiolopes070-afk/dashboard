@@ -2,9 +2,9 @@
 import { useState, Suspense } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
-// Lien direct vers le formulaire d'écriture d'avis Google (Place ID KinouClean)
+// Lien direct vers le formulaire d'écriture d'avis Google Maps (#lrd=CID,3 = write review)
 const GOOGLE_REVIEW_URL =
-  "https://search.google.com/local/writereview?placeid=ChIJwekSXY5RuQR2leb0WPjMrA";
+  "https://www.google.com/maps/place/Kinouclean/@48.7630231,2.1122147,17z/data=!4m6!3m5!1s0x4b9518e5d12e9c1:0xacccf858f4e69576!8m2!3d48.7630231!4d2.1122147!16s%2Fg%2F11njljl30f#lrd=0x4b9518e5d12e9c1:0xacccf858f4e69576,3,,";
 
 // Composant interne qui utilise useSearchParams (doit être dans un Suspense)
 function AvisContent() {
