@@ -88,6 +88,29 @@ function CopyAvisLink({ clientId, clientName, prestation }: { clientId: string; 
   );
 }
 
+function CopyMsgBtn({ msg }: { msg: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(msg).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
+        copied
+          ? "bg-green-50 text-green-700 border-green-200"
+          : "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+      }`}
+    >
+      <MessageCircle size={12} />
+      {copied ? "Message copié !" : "Copier message fin de prestation"}
+    </button>
+  );
+}
+
 function PrestationRow({
   p,
   onDelete,
@@ -607,28 +630,16 @@ export default function ClientsPage() {
                         clientName={`${c.prenom} ${c.nom}`}
                         prestation={c.prestations[0]?.typePresta}
                       />
-                      {c.tel && (() => {
-                        const tel = c.tel.replace(/\s/g, "").replace(/^0/, "33");
+                      {(() => {
                         const last = c.prestations[0];
                         const avisUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/avis/${c.clientId}?nom=${encodeURIComponent(`${c.prenom} ${c.nom}`)}${last?.typePresta ? `&prestation=${encodeURIComponent(last.typePresta)}` : ""}`;
-                        const msg = encodeURIComponent(
+                        const msg =
                           `Bonjour ${c.prenom} 👋,\n\n` +
                           `J'espère que votre ${last?.typePresta ? `prestation de ${last.typePresta}` : "prestation"} s'est très bien passée 😊.\n\n` +
                           `Votre satisfaction est notre priorité et nous serions ravis d'avoir votre retour !\n\n` +
                           `Si vous avez quelques instants, pourriez-vous laisser un avis ici ⭐ :\n${avisUrl}\n\n` +
-                          `Merci infiniment pour votre confiance 🙏\n\nÀ très bientôt,\nL'équipe KinouClean`
-                        );
-                        return (
-                          <a
-                            href={`https://wa.me/${tel}?text=${msg}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border bg-green-50 text-green-700 border-green-200 hover:bg-green-100 transition-colors"
-                          >
-                            <MessageCircle size={12} />
-                            Message fin de prestation
-                          </a>
-                        );
+                          `Merci infiniment pour votre confiance 🙏\n\nÀ très bientôt,\nL'équipe KinouClean`;
+                        return <CopyMsgBtn msg={msg} />;
                       })()}
                     </div>
                   )}
