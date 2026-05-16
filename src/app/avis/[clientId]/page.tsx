@@ -1,11 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
 const GOOGLE_REVIEW_URL =
   "https://www.google.com/search?q=Kinouclean&stick=H4sIAAAAAAAA_-NgU1IxqDBJsjQ1tEg1TTE0SrVMNrQyqEhMTk5OszC1SDNJNbM0NTdbxMrlnZmXX5qck5qYBwCSiI-qNQAAAA&hl=fr&mat=Cd5JjDmCSRtqElYBTVDHnshZXV_DFuFutP9gHYU8TBcOARBIXDv0ud4rw1ySqA4OPg-YzskmEKYiK_YwxPC0i3iALYoprNIVdhYPsR6lOBRCtbXOvkDa3aSsMnkPPw6FLA&authuser=0";
 
-export default function AvisPage() {
+// Composant interne qui utilise useSearchParams (doit être dans un Suspense)
+function AvisContent() {
   const params       = useParams();
   const searchParams = useSearchParams();
   const clientId     = params.clientId as string;
@@ -201,5 +202,18 @@ export default function AvisPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+// Export default avec Suspense obligatoire pour useSearchParams en Next.js 14
+export default function AvisPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: "100vh", background: "#0f0f1a", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <p style={{ color: "#a0a0b0", fontSize: 14 }}>Chargement…</p>
+      </div>
+    }>
+      <AvisContent />
+    </Suspense>
   );
 }
