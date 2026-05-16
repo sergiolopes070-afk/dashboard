@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Search, Phone, Mail, MapPin, UserPlus, Pencil, Wrench,
   Clock, ChevronDown, ChevronUp, CheckCircle2, FileText,
-  MessageCircle, Send, AlertTriangle, Calendar, Trash2, Download, Archive, X,
+  MessageCircle, Send, AlertTriangle, Calendar, Trash2, Download, Archive, X, Star,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import ClientModal from "@/components/ClientModal";
@@ -59,6 +59,32 @@ function ConfirmBtns({ onConfirm, onCancel }: { onConfirm: () => void; onCancel:
         Annuler
       </button>
     </span>
+  );
+}
+
+function CopyAvisLink({ clientId, clientName, prestation }: { clientId: string; clientName: string; prestation?: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    const params = new URLSearchParams({ nom: clientName });
+    if (prestation) params.set("prestation", prestation);
+    const url = `${window.location.origin}/avis/${clientId}?${params.toString()}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
+        copied
+          ? "bg-green-50 text-green-700 border-green-200"
+          : "bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100"
+      }`}
+    >
+      <Star size={12} className={copied ? "text-green-500" : "text-yellow-500"} />
+      {copied ? "Lien copié !" : "Copier lien avis"}
+    </button>
   );
 }
 
@@ -572,6 +598,40 @@ export default function ClientsPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* Lien avis + WhatsApp fin de prestation */}
+                  {c.clientId && (
+                    <div className="mt-3 pt-3 border-t border-gray-50 flex flex-wrap items-center gap-2">
+                      <CopyAvisLink
+                        clientId={c.clientId}
+                        clientName={`${c.prenom} ${c.nom}`}
+                        prestation={c.prestations[0]?.typePresta}
+                      />
+                      {c.tel && (() => {
+                        const tel = c.tel.replace(/\s/g, "").replace(/^0/, "33");
+                        const last = c.prestations[0];
+                        const avisUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/avis/${c.clientId}?nom=${encodeURIComponent(`${c.prenom} ${c.nom}`)}${last?.typePresta ? `&prestation=${encodeURIComponent(last.typePresta)}` : ""}`;
+                        const msg = encodeURIComponent(
+                          `Bonjour ${c.prenom} 👋,\n\n` +
+                          `J'espère que votre ${last?.typePresta ? `prestation de ${last.typePresta}` : "prestation"} s'est très bien passée 😊.\n\n` +
+                          `Votre satisfaction est notre priorité et nous serions ravis d'avoir votre retour !\n\n` +
+                          `Si vous avez quelques instants, pourriez-vous laisser un avis ici ⭐ :\n${avisUrl}\n\n` +
+                          `Merci infiniment pour votre confiance 🙏\n\nÀ très bientôt,\nL'équipe KinouClean`
+                        );
+                        return (
+                          <a
+                            href={`https://wa.me/${tel}?text=${msg}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border bg-green-50 text-green-700 border-green-200 hover:bg-green-100 transition-colors"
+                          >
+                            <MessageCircle size={12} />
+                            Message fin de prestation
+                          </a>
+                        );
+                      })()}
+                    </div>
+                  )}
 
                   {/* Bouton déplier */}
                   <button

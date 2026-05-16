@@ -10,6 +10,8 @@ export function middleware(request: NextRequest) {
   // Laisser passer les assets statiques et les routes d'auth API
   if (
     pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/avis") ||
+    pathname.startsWith("/avis") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon")
   ) {
