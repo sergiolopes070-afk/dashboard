@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Search, Phone, Mail, MapPin, UserPlus, Pencil, Wrench,
   Clock, ChevronDown, ChevronUp, CheckCircle2, FileText,
-  MessageCircle, Send, AlertTriangle, Calendar, Trash2, Download, Archive, X,
+  MessageCircle, Send, AlertTriangle, Calendar, Trash2, Download, Archive, X, Star,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import ClientModal from "@/components/ClientModal";
@@ -31,6 +31,32 @@ interface Client {
   derniere: string;
   tags: string[];
   clientId: string;
+}
+
+function CopyAvisLink({ clientId, clientName }: { clientId: string; clientName: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    const url = `${window.location.origin}/avis/${clientId}?nom=${encodeURIComponent(clientName)}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+        copied
+          ? "bg-green-50 text-green-600 border border-green-200"
+          : "bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100"
+      }`}
+    >
+      <Star size={12} className={copied ? "fill-green-500 text-green-500" : "fill-yellow-500 text-yellow-500"} />
+      {copied ? "Lien copié !" : "Copier le lien avis client"}
+    </button>
+  );
 }
 
 function StatusBadge({ label }: { label: string }) {
@@ -571,6 +597,13 @@ export default function ClientsPage() {
                         </p>
                       )}
                     </div>
+
+                    {/* Lien avis */}
+                    {c.clientId && (
+                      <div className="mt-3 pt-3 border-t border-gray-50">
+                        <CopyAvisLink clientId={c.clientId} clientName={`${c.prenom} ${c.nom}`} />
+                      </div>
+                    )}
                   </div>
 
                   {/* Bouton déplier */}

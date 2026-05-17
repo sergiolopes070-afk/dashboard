@@ -7,9 +7,11 @@ export function middleware(request: NextRequest) {
 
   console.log("[MIDDLEWARE]", pathname, "| session:", session ? "EXISTS" : "NONE", "| secret:", secret ? "SET" : "NOT SET");
 
-  // Laisser passer les assets statiques et les routes d'auth API
+  // Laisser passer les assets statiques, les routes d'auth et les avis publics
   if (
     pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/avis") ||
+    pathname.startsWith("/avis") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon")
   ) {
