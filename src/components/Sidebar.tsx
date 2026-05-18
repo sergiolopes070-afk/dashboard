@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useSidebar } from "./SidebarContext";
 import {
   LayoutDashboard, Users, Briefcase, Archive,
-  FileText, Settings, ChevronRight, Wrench, CalendarDays, TrendingDown, LogOut, X,
+  FileText, Settings, ChevronRight, Wrench, CalendarDays, TrendingDown, LogOut, X, UserSearch,
 } from "lucide-react";
 
 const nav = [
@@ -12,6 +12,7 @@ const nav = [
   { href: "/prestations",   label: "Prestations",       icon: Briefcase },
   { href: "/prestataires",  label: "Prestataires",      icon: Wrench },
   { href: "/clients",       label: "Clients",           icon: Users },
+  { href: "/prospects",     label: "Prospects",         icon: UserSearch },
   { href: "/agenda",        label: "Agenda",            icon: CalendarDays },
   { href: "/devis",         label: "Devis",             icon: FileText },
   { href: "/depenses",      label: "Dépenses",          icon: TrendingDown },
