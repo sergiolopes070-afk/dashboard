@@ -37,6 +37,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   // Mise à jour standard (statut, date_relance, notes, champs contact…)
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (body.genre       !== undefined) patch.genre        = body.genre || null;
   if (body.statut      !== undefined) patch.statut       = body.statut;
   if (body.dateRelance !== undefined) patch.date_relance = body.dateRelance || null;
   if (body.notes       !== undefined) patch.notes        = body.notes;

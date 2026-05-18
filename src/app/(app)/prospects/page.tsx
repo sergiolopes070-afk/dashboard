@@ -17,6 +17,7 @@ interface Prospect {
   id: string;
   createdAt: string;
   updatedAt: string;
+  genre: string;
   prenom: string;
   nom: string;
   tel: string;
@@ -86,7 +87,7 @@ function StatutBadge({ statut, small }: { statut: string; small?: boolean }) {
 // ─── Composant : Formulaire ajout prospect ────────────────────────────────────
 function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: (p: Prospect) => void }) {
   const [form, setForm] = useState({
-    prenom: "", nom: "", tel: "", email: "",
+    genre: "", prenom: "", nom: "", tel: "", email: "",
     source: "", typePresta: "", adresse: "", budget: "", notes: "",
   });
   const [saving, setSaving] = useState(false);
@@ -127,6 +128,22 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
           {error && <p className="text-xs text-red-500 bg-red-50 p-2 rounded-lg">{error}</p>}
 
           <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Contact</div>
+          <div>
+            <label className="text-xs text-gray-500 mb-2 block">Civilité</label>
+            <div className="flex gap-2">
+              {["Monsieur", "Madame"].map(g => (
+                <button key={g} type="button"
+                  onClick={() => set("genre", form.genre === g ? "" : g)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    form.genre === g
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                  }`}>
+                  {g}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="text-xs text-gray-500 mb-1 block">Prénom *</label>
               <input value={form.prenom} onChange={e => set("prenom", e.target.value)} className={inputCls} /></div>
@@ -188,7 +205,7 @@ function ProspectModal({
   onDeleted: (id: string) => void;
   onConverted: (id: string) => void;
 }) {
-  const [p, setP]                   = useState<Prospect>(prospect);
+  const [p, setP] = useState<Prospect>({ genre: "", ...prospect });
   const [commentText, setCommentText] = useState("");
   const [addingComment, setAddingComment] = useState(false);
   const [saving, setSaving]         = useState(false);
@@ -279,6 +296,21 @@ function ProspectModal({
 
         {/* ── Body scrollable ── */}
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+
+          {/* Genre */}
+          <div className="flex gap-2">
+            {["Monsieur", "Madame"].map(g => (
+              <button key={g} type="button"
+                onClick={() => patch({ genre: p.genre === g ? "" : g })}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  p.genre === g
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white text-gray-500 border-gray-200 hover:border-blue-300"
+                }`}>
+                {g}
+              </button>
+            ))}
+          </div>
 
           {/* Statut + relance */}
           <div className="flex flex-wrap items-center gap-3">

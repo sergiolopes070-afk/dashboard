@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
     id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     created_at   TIMESTAMPTZ DEFAULT NOW(),
     updated_at   TIMESTAMPTZ DEFAULT NOW(),
+    genre        TEXT,
     prenom       TEXT NOT NULL,
     nom          TEXT NOT NULL,
     tel          TEXT,
@@ -31,6 +32,7 @@ function rowToProspect(r: Record<string, any>) {
     id          : r.id          as string,
     createdAt   : r.created_at  as string,
     updatedAt   : r.updated_at  as string,
+    genre       : r.genre       || "",
     prenom      : r.prenom      || "",
     nom         : r.nom         || "",
     tel         : r.tel         || "",
@@ -59,12 +61,13 @@ export async function GET() {
 export async function POST(req: Request) {
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 500 });
   const body = await req.json();
-  const { prenom, nom, tel, email, source, typePresta, adresse, budget, notes } = body;
+  const { genre, prenom, nom, tel, email, source, typePresta, adresse, budget, notes } = body;
   if (!prenom || !nom) return NextResponse.json({ error: "Prénom et nom requis" }, { status: 400 });
 
   const { data, error } = await supabase
     .from("prospects")
     .insert({
+      genre      : genre      || null,
       prenom, nom,
       tel        : tel        || null,
       email      : email      || null,
