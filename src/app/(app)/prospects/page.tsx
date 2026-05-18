@@ -205,7 +205,7 @@ function ProspectModal({
   onDeleted: (id: string) => void;
   onConverted: (id: string) => void;
 }) {
-  const [p, setP] = useState<Prospect>({ genre: "", ...prospect });
+  const [p, setP] = useState<Prospect>({ ...prospect, genre: prospect.genre ?? "" });
   const [commentText, setCommentText] = useState("");
   const [addingComment, setAddingComment] = useState(false);
   const [saving, setSaving]         = useState(false);
