@@ -256,7 +256,8 @@ export default function HomePage() {
           const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
           const daysInMonth  = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
-          const caMois = [...stats.prestations, ...stats.archive]
+          // Bénéfice net = uniquement les prestations archivées (terminées)
+          const caMois = stats.archive
             .filter(p => {
               if (!p.date) return false;
               const parts = p.date.split("/");
@@ -265,7 +266,7 @@ export default function HomePage() {
             })
             .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
 
-          const commMois = [...stats.prestations, ...stats.archive]
+          const commMois = stats.archive
             .filter(p => {
               if (!p.date) return false;
               const parts = p.date.split("/");
@@ -293,7 +294,7 @@ export default function HomePage() {
           const weekStart = new Date(now); weekStart.setDate(now.getDate() + diffToMon); weekStart.setHours(0,0,0,0);
           const weekEnd   = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6); weekEnd.setHours(23,59,59,999);
 
-          const caWeek = [...stats.prestations, ...stats.archive]
+          const caWeek = stats.archive
             .filter(p => {
               if (!p.date) return false;
               const parts = p.date.split("/");
@@ -303,7 +304,7 @@ export default function HomePage() {
             })
             .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
 
-          const commWeek = [...stats.prestations, ...stats.archive]
+          const commWeek = stats.archive
             .filter(p => {
               if (!p.date) return false;
               const parts = p.date.split("/");
@@ -395,7 +396,7 @@ export default function HomePage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <h2 className="font-semibold text-gray-800 mb-4">Bénéfice net mensuel {new Date().getFullYear()}</h2>
-              <RevenueChart prestations={[...stats.prestations, ...stats.archive]} />
+              <RevenueChart prestations={stats.archive} />
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <h2 className="font-semibold text-gray-800 mb-4">Types de prestations</h2>
