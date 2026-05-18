@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   Users, Briefcase, TrendingUp, Wrench,
   AlertTriangle, Clock, FileText, CalendarCheck, UserPlus, UserCheck, CalendarDays, ChevronRight, TrendingDown,
-  BellRing, RefreshCcw, CheckCircle2,
+  BellRing, RefreshCcw, CheckCircle2, ChevronDown, UserSearch, X, Loader2,
 } from "lucide-react";
 import StatCard from "@/components/StatCard";
 import PrestationTable from "@/components/PrestationTable";
@@ -56,13 +56,124 @@ interface Stats {
   toReassignList   : Prestation[];
 }
 
+const SOURCES_PROSPECT   = ["Google","Réseaux sociaux","Bouche à oreille","Recommandation","Formulaire web","Autre"];
+const TYPES_PRESTA_QUICK = ["Ménage","Repassage","Vitres","Débarras","Après travaux","Bureaux","Lavage Canapé","Lavage véhicule","Lavage de matelas","Autre"];
+
+function QuickProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({ genre: "", prenom: "", nom: "", tel: "", email: "", typePresta: "", source: "", notes: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState("");
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.prenom || !form.nom) { setError("Prénom et nom sont requis."); return; }
+    setSaving(true); setError("");
+    try {
+      const res = await fetch("/api/prospects", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Erreur");
+      onSaved();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erreur");
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+              <UserSearch size={15} className="text-purple-600" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-gray-900">Nouveau prospect</h2>
+              <p className="text-xs text-gray-400">Ajout rapide — détails dans l&apos;onglet Prospects</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={18} className="text-gray-400" /></button>
+        </div>
+        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+          {error && <p className="text-xs text-red-500 bg-red-50 p-2 rounded-lg">{error}</p>}
+
+          <div>
+            <label className="text-xs text-gray-500 mb-2 block">Civilité</label>
+            <div className="flex gap-2">
+              {["Monsieur","Madame"].map(g => (
+                <button key={g} type="button" onClick={() => set("genre", form.genre === g ? "" : g)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${form.genre === g ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"}`}>
+                  {g}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs text-gray-500 mb-1 block">Prénom *</label>
+              <input value={form.prenom} onChange={e => set("prenom", e.target.value)} className={inputCls} /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Nom *</label>
+              <input value={form.nom} onChange={e => set("nom", e.target.value)} className={inputCls} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs text-gray-500 mb-1 block">Téléphone</label>
+              <input value={form.tel} onChange={e => set("tel", e.target.value)} className={inputCls} placeholder="06 00 00 00 00" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Email</label>
+              <input type="email" value={form.email} onChange={e => set("email", e.target.value)} className={inputCls} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs text-gray-500 mb-1 block">Type de prestation</label>
+              <select value={form.typePresta} onChange={e => set("typePresta", e.target.value)} className={inputCls}>
+                <option value="">— Sélectionner —</option>
+                {TYPES_PRESTA_QUICK.map(t => <option key={t} value={t}>{t}</option>)}
+              </select></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Source</label>
+              <select value={form.source} onChange={e => set("source", e.target.value)} className={inputCls}>
+                <option value="">— Source —</option>
+                {SOURCES_PROSPECT.map(s => <option key={s} value={s}>{s}</option>)}
+              </select></div>
+          </div>
+          <div><label className="text-xs text-gray-500 mb-1 block">Notes</label>
+            <textarea rows={2} value={form.notes} onChange={e => set("notes", e.target.value)}
+              className={`${inputCls} resize-none`} placeholder="Infos clés, demandes particulières…" /></div>
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+            <button type="submit" disabled={saving}
+              className="flex-1 py-2 rounded-xl bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+              {saving ? "Enregistrement…" : "Ajouter le prospect"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const [stats, setStats]         = useState<Stats | null>(null);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
-  const [showNewClient, setShowNewClient] = useState(false);
+  const [showNewClient, setShowNewClient]     = useState(false);
+  const [showNewProspect, setShowNewProspect] = useState(false);
+  const [showDropdown, setShowDropdown]       = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [depenses, setDepenses]   = useState<Depense[]>([]);
   const [rentaPeriod, setRentaPeriod] = useState<"semaine" | "mois">("mois");
+
+  // Fermer le dropdown si clic en dehors
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowDropdown(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   // Mini agenda : semaine courante
   const weekStart = useMemo(() => getMondayOfWeek(new Date()), []);
@@ -113,13 +224,45 @@ export default function HomePage() {
         loading={loading}
         alerts={(stats?.toReassign || 0)}
         action={
-          <button
-            onClick={() => setShowNewClient(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
-          >
-            <UserPlus size={15} />
-            Nouveau client
-          </button>
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setShowDropdown(v => !v)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
+            >
+              <UserPlus size={15} />
+              Nouveau
+              <ChevronDown size={14} className={`transition-transform ${showDropdown ? "rotate-180" : ""}`} />
+            </button>
+            {showDropdown && (
+              <div className="absolute right-0 top-full mt-1.5 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-30 w-52">
+                <button
+                  onClick={() => { setShowNewClient(true); setShowDropdown(false); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-green-50 transition-colors text-left"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
+                    <UserPlus size={13} className="text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Nouveau client</p>
+                    <p className="text-xs text-gray-400">Créer + 1er RDV</p>
+                  </div>
+                </button>
+                <div className="border-t border-gray-50" />
+                <button
+                  onClick={() => { setShowNewProspect(true); setShowDropdown(false); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-purple-50 transition-colors text-left"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center shrink-0">
+                    <UserSearch size={13} className="text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Nouveau prospect</p>
+                    <p className="text-xs text-gray-400">À relancer plus tard</p>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         }
       />
 
@@ -524,6 +667,12 @@ export default function HomePage() {
           prestataires={stats?.prestataires ?? []}
           onClose={() => setShowNewClient(false)}
           onSaved={() => { setShowNewClient(false); load(); }}
+        />
+      )}
+      {showNewProspect && (
+        <QuickProspectModal
+          onClose={() => setShowNewProspect(false)}
+          onSaved={() => { setShowNewProspect(false); }}
         />
       )}
 
