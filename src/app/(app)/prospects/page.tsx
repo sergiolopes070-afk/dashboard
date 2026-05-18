@@ -6,6 +6,7 @@ import {
   Users, TrendingUp, Clock, CheckCircle2,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Commentaire {
@@ -167,8 +168,17 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
             <div><label className="text-xs text-gray-500 mb-1 block">Budget estimé (€)</label>
               <input value={form.budget} onChange={e => set("budget", e.target.value)} className={inputCls} placeholder="ex: 150" /></div>
           </div>
-          <div><label className="text-xs text-gray-500 mb-1 block">Adresse / Zone</label>
-            <input value={form.adresse} onChange={e => set("adresse", e.target.value)} className={inputCls} placeholder="Ville ou adresse approximative" /></div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Adresse / Zone</label>
+            <AddressAutocomplete
+              value={form.adresse}
+              onChange={v => set("adresse", v)}
+              onSelect={(adresse, cp, ville) => set("adresse", `${adresse}, ${cp} ${ville}`.trim())}
+              className={inputCls}
+              placeholder="Ville ou adresse approximative"
+            />
+            <p className="text-xs text-gray-400 mt-1">Tapez au moins 4 caractères pour rechercher</p>
+          </div>
           <div><label className="text-xs text-gray-500 mb-1 block">Source</label>
             <select value={form.source} onChange={e => set("source", e.target.value)} className={inputCls}>
               <option value="">— Comment nous a-t-il trouvés ? —</option>

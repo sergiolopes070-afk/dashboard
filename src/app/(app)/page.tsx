@@ -10,6 +10,7 @@ import PrestationTable from "@/components/PrestationTable";
 import Topbar from "@/components/Topbar";
 import StatusBadge from "@/components/StatusBadge";
 import NewClientModal from "@/components/NewClientModal";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
 import dynamic from "next/dynamic";
 import { Prestation, Prestataire, Depense } from "@/lib/constants";
 
@@ -60,7 +61,7 @@ const SOURCES_PROSPECT   = ["Google","Réseaux sociaux","Bouche à oreille","Rec
 const TYPES_PRESTA_QUICK = ["Ménage","Repassage","Vitres","Débarras","Après travaux","Bureaux","Lavage Canapé","Lavage véhicule","Lavage de matelas","Autre"];
 
 function QuickProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ genre: "", prenom: "", nom: "", tel: "", email: "", typePresta: "", source: "", notes: "" });
+  const [form, setForm] = useState({ genre: "", prenom: "", nom: "", tel: "", email: "", typePresta: "", source: "", adresse: "", notes: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState("");
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
@@ -135,6 +136,17 @@ function QuickProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved
                 <option value="">— Source —</option>
                 {SOURCES_PROSPECT.map(s => <option key={s} value={s}>{s}</option>)}
               </select></div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Adresse / Zone</label>
+            <AddressAutocomplete
+              value={form.adresse}
+              onChange={v => set("adresse", v)}
+              onSelect={(adresse, cp, ville) => set("adresse", `${adresse}, ${cp} ${ville}`.trim())}
+              className={inputCls}
+              placeholder="Ville ou adresse approximative"
+            />
+            <p className="text-xs text-gray-400 mt-1">Tapez au moins 4 caractères pour rechercher</p>
           </div>
           <div><label className="text-xs text-gray-500 mb-1 block">Notes</label>
             <textarea rows={2} value={form.notes} onChange={e => set("notes", e.target.value)}
