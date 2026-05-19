@@ -1243,6 +1243,38 @@ export default function AgendaPage() {
                       >
                         📦 Archiver ce RDV
                       </button>
+
+                      {/* ── WhatsApp prestataire ── */}
+                      {(() => {
+                        const prestataireObj = prestataires.find(p => p.nom === ev.prestataire);
+                        if (!prestataireObj?.tel) return null;
+                        const prestaTel = prestataireObj.tel.replace(/\s/g, "").replace(/^0/, "33");
+                        const baseUrl   = typeof window !== "undefined" ? window.location.origin : "";
+                        const acceptUrl = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=accepter`;
+                        const refusUrl  = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=refuser`;
+                        const msg = encodeURIComponent(
+                          `Bonjour ${ev.prestataire} 👋,\n\nUne mission vous a été proposée chez KinouClean :\n\n` +
+                          `👤 Client : ${ev.prenom} ${ev.nom}\n` +
+                          `🧹 Prestation : ${ev.typePresta || "—"}\n` +
+                          `📍 Adresse : ${ev.adresse || "—"}\n` +
+                          `📅 Date : ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
+                          `💶 Prix : ${ev.prix ? ev.prix + " €" : "—"}\n\n` +
+                          `Merci de répondre directement via ces liens :\n\n` +
+                          `✅ ACCEPTER la mission :\n${acceptUrl}\n\n` +
+                          `❌ REFUSER la mission :\n${refusUrl}\n\n` +
+                          `Votre réponse mettra à jour la fiche client automatiquement 🙏`
+                        );
+                        return (
+                          <a
+                            href={`https://wa.me/${prestaTel}?text=${msg}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full py-2 rounded-xl border border-green-200 text-green-700 text-sm font-medium hover:bg-green-50 transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            📱 Envoyer la mission à {ev.prestataire}
+                          </a>
+                        );
+                      })()}
                     </>)}
 
                     {/* ── Avis client (affiché même si archivé) ── */}
