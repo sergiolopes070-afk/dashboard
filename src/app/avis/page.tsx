@@ -4,12 +4,13 @@ import { useState } from "react";
 const GOOGLE_REVIEW_URL = "https://g.page/r/CXaV5vRY-MysEBM/review";
 
 export default function AvisUniverselPage() {
-  const [rating,      setRating]      = useState(0);
-  const [hovered,     setHovered]     = useState(0);
-  const [comment,     setComment]     = useState("");
-  const [submitting,  setSubmitting]  = useState(false);
-  const [done,        setDone]        = useState(false);
-  const [redirecting, setRedirecting] = useState(false);
+  const [rating,     setRating]     = useState(0);
+  const [hovered,    setHovered]    = useState(0);
+  const [comment,    setComment]    = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [done,       setDone]       = useState(false);
+  const [copied,     setCopied]     = useState(false);
+  const [calque,     setCalque]     = useState(false);
 
   const effective = hovered || rating;
 
@@ -18,13 +19,15 @@ export default function AvisUniverselPage() {
     setSubmitting(true);
     try {
       if (rating >= 4) {
-        setRedirecting(true);
+        // Copier le commentaire dans le presse-papier
         if (comment.trim()) {
-          navigator.clipboard.writeText(comment).catch(() => {});
+          try { await navigator.clipboard.writeText(comment); setCopied(true); } catch { /* silencieux */ }
         }
-        setTimeout(() => { window.location.href = GOOGLE_REVIEW_URL; }, 1200);
+        // Ouvrir Google dans un nouvel onglet
+        window.open(GOOGLE_REVIEW_URL, "_blank", "noopener,noreferrer");
+        // Afficher le calque d'aide au collage
+        setCalque(true);
       } else {
-        // ≤ 3 étoiles → email privé
         await fetch("/api/avis", {
           method : "POST",
           headers: { "Content-Type": "application/json" },
@@ -45,7 +48,11 @@ export default function AvisUniverselPage() {
     }
   }
 
-  // ── Confirmation (≤ 3 étoiles) ────────────────────────────────────────────
+  async function recopy() {
+    try { await navigator.clipboard.writeText(comment); setCopied(true); } catch { /* silencieux */ }
+  }
+
+  // ── Merci (≤ 3 étoiles) ──────────────────────────────────────────────────
   if (done) {
     return (
       <div style={{ minHeight: "100vh", background: "#0f0f1a", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
@@ -60,26 +67,71 @@ export default function AvisUniverselPage() {
     );
   }
 
-  // ── Redirection Google (≥ 4 étoiles) ─────────────────────────────────────
-  if (redirecting) {
+  // ── Calque "coller sur Google" (≥ 4 étoiles) ─────────────────────────────
+  if (calque) {
     return (
-      <div style={{ minHeight: "100vh", background: "#0f0f1a", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
-        <div style={{ background: "#1e1e2e", borderRadius: 20, padding: "48px 32px", maxWidth: 420, width: "100%", textAlign: "center", boxShadow: "0 8px 40px rgba(0,0,0,0.5)" }}>
-          <div style={{ fontSize: 52, marginBottom: 16 }}>⭐</div>
-          <h2 style={{ color: "#ffffff", fontSize: 22, fontWeight: 700, margin: "0 0 12px" }}>Merci !</h2>
-          <p style={{ color: "#a0a0b0", fontSize: 15, lineHeight: 1.6, margin: "0 0 8px" }}>
-            Nous vous redirigeons vers Google pour publier votre avis…
+      <div style={{ minHeight: "100vh", background: "#0f0f1a", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", fontFamily: "Arial, sans-serif" }}>
+        <div style={{ background: "#1e1e2e", borderRadius: 20, padding: "40px 32px", maxWidth: 460, width: "100%", textAlign: "center", boxShadow: "0 8px 40px rgba(0,0,0,0.6)" }}>
+
+          <div style={{ fontSize: 52, marginBottom: 12 }}>🎉</div>
+          <h2 style={{ color: "#ffffff", fontSize: 22, fontWeight: 700, margin: "0 0 8px" }}>Merci pour vos {rating} étoiles !</h2>
+          <p style={{ color: "#a0a0b0", fontSize: 14, margin: "0 0 24px", lineHeight: 1.5 }}>
+            Google s&apos;est ouvert dans un nouvel onglet.
           </p>
-          {comment.trim() && (
-            <p style={{ color: "#7b93ff", fontSize: 13, margin: "0 0 20px" }}>
-              📋 Votre commentaire a été copié — collez-le directement sur Google !
+
+          {comment.trim() ? (
+            <>
+              {/* Bloc texte copié */}
+              <div style={{ background: "#13131f", border: "1px solid #2a3694", borderRadius: 12, padding: "16px 18px", marginBottom: 20, textAlign: "left" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <span style={{ color: "#7b93ff", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>
+                    {copied ? "✅ Texte copié !" : "📋 Votre commentaire"}
+                  </span>
+                  <button
+                    onClick={recopy}
+                    style={{ background: copied ? "#1a3a1a" : "#2a3694", color: copied ? "#4ade80" : "#fff", border: "none", borderRadius: 8, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    {copied ? "Recopier" : "Copier"}
+                  </button>
+                </div>
+                <p style={{ color: "#d0d0e0", fontSize: 14, lineHeight: 1.6, margin: 0, whiteSpace: "pre-wrap" }}>{comment}</p>
+              </div>
+
+              {/* Raccourci clavier */}
+              <div style={{ background: "rgba(42,54,148,0.2)", border: "1px solid rgba(42,54,148,0.4)", borderRadius: 12, padding: "14px 18px", marginBottom: 24 }}>
+                <p style={{ color: "#a0b0ff", fontSize: 13, margin: "0 0 10px" }}>
+                  Allez sur l&apos;onglet Google et collez votre texte :
+                </p>
+                <div style={{ display: "flex", justifyContent: "center", gap: 12 }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <kbd style={{ background: "#1a1a2e", border: "1px solid #3a3a5e", borderRadius: 6, padding: "4px 10px", color: "#e0e0f0", fontSize: 14, fontFamily: "monospace", boxShadow: "0 2px 0 #111" }}>⌘</kbd>
+                    <kbd style={{ background: "#1a1a2e", border: "1px solid #3a3a5e", borderRadius: 6, padding: "4px 10px", color: "#e0e0f0", fontSize: 14, fontFamily: "monospace", boxShadow: "0 2px 0 #111" }}>V</kbd>
+                    <span style={{ color: "#555", fontSize: 12 }}>sur Mac</span>
+                  </div>
+                  <span style={{ color: "#333" }}>|</span>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <kbd style={{ background: "#1a1a2e", border: "1px solid #3a3a5e", borderRadius: 6, padding: "4px 10px", color: "#e0e0f0", fontSize: 14, fontFamily: "monospace", boxShadow: "0 2px 0 #111" }}>Ctrl</kbd>
+                    <kbd style={{ background: "#1a1a2e", border: "1px solid #3a3a5e", borderRadius: 6, padding: "4px 10px", color: "#e0e0f0", fontSize: 14, fontFamily: "monospace", boxShadow: "0 2px 0 #111" }}>V</kbd>
+                    <span style={{ color: "#555", fontSize: 12 }}>sur PC</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p style={{ color: "#a0a0b0", fontSize: 14, marginBottom: 24 }}>
+              Allez sur l&apos;onglet Google pour publier votre avis !
             </p>
           )}
-          <div style={{ display: "flex", justifyContent: "center", gap: 6 }}>
-            {[1,2,3].map(i => (
-              <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "#2a3694", animation: `pulse 1s ${i * 0.2}s infinite` }} />
-            ))}
-          </div>
+
+          {/* Bouton ouvrir Google */}
+          <a
+            href={GOOGLE_REVIEW_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "block", width: "100%", padding: "14px", borderRadius: 12, background: "#2a3694", color: "#fff", fontSize: 15, fontWeight: 700, textDecoration: "none", boxSizing: "border-box" }}
+          >
+            Ouvrir Google →
+          </a>
         </div>
       </div>
     );
