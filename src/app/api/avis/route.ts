@@ -93,8 +93,8 @@ export async function POST(req: Request) {
       rating: number; comment: string;
     };
 
-    if (!rating || !clientId) {
-      return NextResponse.json({ error: "rating et clientId requis" }, { status: 400 });
+    if (!rating) {
+      return NextResponse.json({ error: "rating requis" }, { status: 400 });
     }
 
     // ≥ 4 étoiles → on redirige vers Google, pas d'email
