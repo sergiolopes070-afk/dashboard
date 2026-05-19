@@ -134,13 +134,6 @@ export default function AvisUniverselPage() {
             ))}
           </div>
 
-          {/* Message si ≥ 4 étoiles */}
-          {rating >= 4 && (
-            <div style={{ borderRadius: 10, padding: "10px 14px", marginBottom: 18, textAlign: "center", fontSize: 13, background: "rgba(42,54,148,0.25)", color: "#7b93ff", border: "1px solid rgba(42,54,148,0.5)" }}>
-              ✨ Votre avis sera publié sur Google
-            </div>
-          )}
-
           {/* Commentaire */}
           <div style={{ marginBottom: 24 }}>
             <label style={{ display: "block", color: "#a0a0b0", fontSize: 13, marginBottom: 8 }}>
