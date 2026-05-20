@@ -117,6 +117,8 @@ export async function updatePrestation(
 
   for (const [key, value] of Object.entries(updates)) {
     switch (key) {
+      case "typePresta":   prestaPatch.type_prestation = value;                           break;
+      case "message":      prestaPatch.message         = value;                           break;
       case "statut":
         prestaPatch.statut = value;
         // Auto-archive dès que la prestation est marquée TERMINÉ
