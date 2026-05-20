@@ -177,8 +177,9 @@ export default function AvisUniverselPage() {
                   fontSize: 44,
                   lineHeight: 1,
                   transform: effective >= i ? "scale(1.15)" : "scale(1)",
-                  transition: "transform 0.15s, filter 0.15s",
-                  filter: effective >= i ? "drop-shadow(0 0 6px #f59e0b)" : "grayscale(1) opacity(0.4)",
+                  transition: "transform 0.15s, color 0.15s, filter 0.15s",
+                  color: effective >= i ? "#f59e0b" : "#4a4a6a",
+                  filter: effective >= i ? "drop-shadow(0 0 8px #f59e0b88)" : "none",
                 }}
               >
                 ★
