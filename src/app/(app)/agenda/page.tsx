@@ -1414,9 +1414,6 @@ export default function AgendaPage() {
                         const prestataireObj = prestataires.find(p => p.nom === ev.prestataire);
                         if (!prestataireObj?.tel) return null;
                         const prestaTel = prestataireObj.tel.replace(/\s/g, "").replace(/^0/, "33");
-                        const baseUrl   = typeof window !== "undefined" ? window.location.origin : "";
-                        const acceptUrl = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=accepter`;
-                        const refusUrl  = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=refuser`;
                         const msg = encodeURIComponent(
                           `Bonjour ${ev.prestataire} 👋,\n\nUne mission vous a été proposée chez KinouClean :\n\n` +
                           `👤 Client : ${ev.prenom} ${ev.nom}\n` +
@@ -1426,10 +1423,7 @@ export default function AgendaPage() {
                           `💶 Prix : ${ev.prix ? ev.prix + " €" : "—"}` +
                           (ev.message?.trim() ? `\n\n💬 Message client :\n${ev.message.trim()}` : "") +
                           (ev.commentaire?.trim() ? `\n\n📝 Note interne :\n${ev.commentaire.trim()}` : "") +
-                          `\n\nMerci de répondre directement via ces liens :\n\n` +
-                          `✅ ACCEPTER la mission :\n${acceptUrl}\n\n` +
-                          `❌ REFUSER la mission :\n${refusUrl}\n\n` +
-                          `Votre réponse mettra à jour la fiche client automatiquement 🙏`
+                          `\n\nMerci 🙏`
                         );
                         return (
                           <a
