@@ -626,6 +626,8 @@ export default function AgendaPage() {
   const [editMode,   setEditMode]   = useState(false);
   const [editForm,   setEditForm]   = useState<Partial<Prestation>>({});
   const [editSaving, setEditSaving] = useState(false);
+  const [editCp,     setEditCp]     = useState("");
+  const [editVille,  setEditVille]  = useState("");
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const loadData = () => {
@@ -776,16 +778,20 @@ export default function AgendaPage() {
     (Object.keys(editForm) as (keyof Prestation)[]).forEach(k => {
       updates[k] = String(editForm[k] ?? "");
     });
+    // Combiner adresse + CP + ville si CP ou ville renseignés
+    const fullAdresse = [editForm.adresse, editCp, editVille].filter(Boolean).join(" ");
+    if (fullAdresse) updates.adresse = fullAdresse;
     try {
       await fetch("/api/prestations", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ row: selectedEvent.row, updates }),
       });
-      const updated = { ...selectedEvent, ...editForm } as Prestation;
+      const updated = { ...selectedEvent, ...editForm, adresse: fullAdresse || editForm.adresse || selectedEvent.adresse } as Prestation;
       setPrestations(prev => prev.map(p => p.row === selectedEvent.row ? updated : p));
       setSelectedEvent(updated);
       setEditMode(false);
+      setEditCp(""); setEditVille("");
     } catch {
       alert("Erreur lors de la sauvegarde.");
     } finally {
@@ -1242,6 +1248,7 @@ export default function AgendaPage() {
                                   heure: ev.heure, date: ev.date,
                                   message: ev.message, commentaire: ev.commentaire,
                                 });
+                                setEditCp(""); setEditVille("");
                                 setEditMode(true);
                               }}
                               className="text-xs text-blue-500 hover:text-blue-700 font-semibold"
@@ -1282,7 +1289,30 @@ export default function AgendaPage() {
                       </div>
                       <div>
                         <label className="text-xs text-gray-400 mb-1 block">Adresse</label>
-                        <input className={inputCls} value={editForm.adresse ?? ""} onChange={e => setEditForm(f => ({ ...f, adresse: e.target.value }))} />
+                        <AddressAutocomplete
+                          value={editForm.adresse ?? ""}
+                          onChange={v => setEditForm(f => ({ ...f, adresse: v }))}
+                          onSelect={(adresse, cp, ville) => {
+                            setEditForm(f => ({ ...f, adresse }));
+                            setEditCp(cp);
+                            setEditVille(ville);
+                          }}
+                          inputCls={inputCls}
+                        />
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <input
+                            className={inputCls}
+                            placeholder="Code postal"
+                            value={editCp}
+                            onChange={e => setEditCp(e.target.value)}
+                          />
+                          <input
+                            className={inputCls}
+                            placeholder="Ville"
+                            value={editVille}
+                            onChange={e => setEditVille(e.target.value)}
+                          />
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
