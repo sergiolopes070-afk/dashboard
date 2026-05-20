@@ -622,6 +622,11 @@ export default function AgendaPage() {
   const [archiveComment, setArchiveComment] = useState("");
   const [archiving,      setArchiving]      = useState(false);
 
+  // ── Édition inline depuis le modal ────────────────────────────────────────
+  const [editMode,   setEditMode]   = useState(false);
+  const [editForm,   setEditForm]   = useState<Partial<Prestation>>({});
+  const [editSaving, setEditSaving] = useState(false);
+
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const loadData = () => {
     Promise.all([
@@ -760,6 +765,31 @@ export default function AgendaPage() {
       alert("Erreur lors de l'archivage. Réessayez.");
     } finally {
       setArchiving(false);
+    }
+  }
+
+  // ── Sauvegarde édition inline ─────────────────────────────────────────────
+  async function saveEdit() {
+    if (!selectedEvent) return;
+    setEditSaving(true);
+    const updates: Record<string, string> = {};
+    (Object.keys(editForm) as (keyof Prestation)[]).forEach(k => {
+      updates[k] = String(editForm[k] ?? "");
+    });
+    try {
+      await fetch("/api/prestations", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ row: selectedEvent.row, updates }),
+      });
+      const updated = { ...selectedEvent, ...editForm } as Prestation;
+      setPrestations(prev => prev.map(p => p.row === selectedEvent.row ? updated : p));
+      setSelectedEvent(updated);
+      setEditMode(false);
+    } catch {
+      alert("Erreur lors de la sauvegarde.");
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -1175,7 +1205,7 @@ export default function AgendaPage() {
       {selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
           onClick={() => setSelectedEvent(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-5"
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-5 max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}>
             {(() => {
               const ev    = selectedEvent;
@@ -1183,8 +1213,10 @@ export default function AgendaPage() {
               const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg:"#9CA3AF", light:"#F3F4F6", text:"#374151" };
               const isArchived = !!(ev as Prestation & { _archived?: boolean; archive_reason?: string })._archived;
               const archiveReason = (ev as Prestation & { _archived?: boolean; archive_reason?: string }).archive_reason;
+              const inputCls = "w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-800 focus:outline-none focus:border-blue-400";
               return (
                 <>
+                  {/* ── Header ── */}
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2 flex-wrap">
                       <div className="px-2 py-0.5 rounded-full text-xs font-semibold"
@@ -1197,28 +1229,131 @@ export default function AgendaPage() {
                         </span>
                       )}
                     </div>
-                    <button onClick={() => setSelectedEvent(null)}
-                      className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
+                    <div className="flex items-center gap-2">
+                      {!isArchived && (
+                        editMode
+                          ? <button onClick={() => setEditMode(false)} className="text-xs text-gray-400 hover:text-gray-600 font-medium">Annuler</button>
+                          : <button
+                              onClick={() => {
+                                setEditForm({
+                                  prenom: ev.prenom, nom: ev.nom, tel: ev.tel, email: ev.email,
+                                  typePresta: ev.typePresta, adresse: ev.adresse, prix: ev.prix,
+                                  prestataire: ev.prestataire, statut: ev.statut,
+                                  heure: ev.heure, date: ev.date,
+                                  message: ev.message, commentaire: ev.commentaire,
+                                });
+                                setEditMode(true);
+                              }}
+                              className="text-xs text-blue-500 hover:text-blue-700 font-semibold"
+                            >✏️ Modifier</button>
+                      )}
+                      <button onClick={() => { setSelectedEvent(null); setEditMode(false); }}
+                        className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
+                    </div>
                   </div>
-                  <h3 className={`font-bold text-base mb-1 ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</h3>
-                  <p className="text-sm text-gray-500 mb-3">{ev.typePresta}</p>
-                  <div className="space-y-1.5 text-sm text-gray-700">
-                    {([
-                      ["Date",    `${ev.date}${ev.heure ? ` à ${ev.heure}` : ""}`],
-                      ["Adresse", ev.adresse || null],
-                      ["Statut",  ev.statut  || null],
-                      ["Prix",    ev.prix     ? `${ev.prix} €` : null],
-                      ["Tél",     ev.tel      || null],
-                      ["Note",    ev.commentaire || null],
-                      ...(isArchived && archiveReason ? [["Motif", archiveReason]] : []),
-                    ] as [string, string|null][]).filter(([,v]) => v).map(([label, val]) => (
-                      <div key={label} className="flex gap-2">
-                        <span className="text-gray-400 w-20 shrink-0">{label}</span>
-                        <span className={label === "Motif" ? "text-gray-500 italic" : ""}>{val}</span>
+
+                  {/* ── Mode édition ── */}
+                  {editMode ? (
+                    <div className="space-y-3 mb-4">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">Prénom</label>
+                          <input className={inputCls} value={editForm.prenom ?? ""} onChange={e => setEditForm(f => ({ ...f, prenom: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">Nom</label>
+                          <input className={inputCls} value={editForm.nom ?? ""} onChange={e => setEditForm(f => ({ ...f, nom: e.target.value }))} />
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                  <div className="mt-4 flex flex-col gap-2">
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">Téléphone</label>
+                        <input className={inputCls} value={editForm.tel ?? ""} onChange={e => setEditForm(f => ({ ...f, tel: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">Email</label>
+                        <input className={inputCls} value={editForm.email ?? ""} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">Prestation</label>
+                        <select className={inputCls} value={editForm.typePresta ?? ""} onChange={e => setEditForm(f => ({ ...f, typePresta: e.target.value }))}>
+                          <option value="">— Choisir —</option>
+                          {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">Adresse</label>
+                        <input className={inputCls} value={editForm.adresse ?? ""} onChange={e => setEditForm(f => ({ ...f, adresse: e.target.value }))} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">Date (JJ/MM/AAAA)</label>
+                          <input className={inputCls} value={editForm.date ?? ""} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} placeholder="JJ/MM/AAAA" />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">Heure</label>
+                          <input className={inputCls} value={editForm.heure ?? ""} onChange={e => setEditForm(f => ({ ...f, heure: e.target.value }))} placeholder="HH:MM" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">Prix (€)</label>
+                          <input className={inputCls} type="number" value={editForm.prix ?? ""} onChange={e => setEditForm(f => ({ ...f, prix: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-400 mb-1 block">Statut</label>
+                          <select className={inputCls} value={editForm.statut ?? ""} onChange={e => setEditForm(f => ({ ...f, statut: e.target.value as Prestation["statut"] }))}>
+                            {STATUTS.map(s => <option key={s} value={s}>{s || "—"}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">Prestataire</label>
+                        <select className={inputCls} value={editForm.prestataire ?? ""} onChange={e => setEditForm(f => ({ ...f, prestataire: e.target.value }))}>
+                          <option value="">— Aucun —</option>
+                          {prestataires.map(p => <option key={p.id} value={p.nom}>{p.nom}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">💬 Message client</label>
+                        <textarea className={inputCls} rows={2} value={editForm.message ?? ""} onChange={e => setEditForm(f => ({ ...f, message: e.target.value }))} placeholder="Message du client…" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">📝 Note interne</label>
+                        <textarea className={inputCls} rows={2} value={editForm.commentaire ?? ""} onChange={e => setEditForm(f => ({ ...f, commentaire: e.target.value }))} placeholder="Note interne…" />
+                      </div>
+                      <button
+                        onClick={saveEdit}
+                        disabled={editSaving}
+                        className="w-full py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
+                      >
+                        {editSaving ? "Enregistrement…" : "💾 Enregistrer les modifications"}
+                      </button>
+                    </div>
+                  ) : (
+                    /* ── Mode affichage ── */
+                    <>
+                      <h3 className={`font-bold text-base mb-1 ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</h3>
+                      <p className="text-sm text-gray-500 mb-3">{ev.typePresta}</p>
+                      <div className="space-y-1.5 text-sm text-gray-700">
+                        {([
+                          ["Date",    `${ev.date}${ev.heure ? ` à ${ev.heure}` : ""}`],
+                          ["Adresse", ev.adresse || null],
+                          ["Statut",  ev.statut  || null],
+                          ["Prix",    ev.prix     ? `${ev.prix} €` : null],
+                          ["Tél",     ev.tel      || null],
+                          ["Message", ev.message  || null],
+                          ["Note",    ev.commentaire || null],
+                          ...(isArchived && archiveReason ? [["Motif", archiveReason]] : []),
+                        ] as [string, string|null][]).filter(([,v]) => v).map(([label, val]) => (
+                          <div key={label} className="flex gap-2">
+                            <span className="text-gray-400 w-20 shrink-0">{label}</span>
+                            <span className={label === "Motif" ? "text-gray-500 italic" : ""}>{val}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {!editMode && <div className="mt-4 flex flex-col gap-2">
                     {!isArchived && (<>
                       <button
                         onClick={() => {
@@ -1258,8 +1393,10 @@ export default function AgendaPage() {
                           `🧹 Prestation : ${ev.typePresta || "—"}\n` +
                           `📍 Adresse : ${ev.adresse || "—"}\n` +
                           `📅 Date : ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
-                          `💶 Prix : ${ev.prix ? ev.prix + " €" : "—"}\n\n` +
-                          `Merci de répondre directement via ces liens :\n\n` +
+                          `💶 Prix : ${ev.prix ? ev.prix + " €" : "—"}` +
+                          (ev.message?.trim() ? `\n\n💬 Message client :\n${ev.message.trim()}` : "") +
+                          (ev.commentaire?.trim() ? `\n\n📝 Note interne :\n${ev.commentaire.trim()}` : "") +
+                          `\n\nMerci de répondre directement via ces liens :\n\n` +
                           `✅ ACCEPTER la mission :\n${acceptUrl}\n\n` +
                           `❌ REFUSER la mission :\n${refusUrl}\n\n` +
                           `Votre réponse mettra à jour la fiche client automatiquement 🙏`
@@ -1324,7 +1461,7 @@ export default function AgendaPage() {
                         </button>
                       </div>
                     )}
-                  </div>
+                  </div>}
                 </>
               );
             })()}
