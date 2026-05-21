@@ -156,7 +156,10 @@ export async function updatePrestation(
       case "prenom":  clientPatch.prenom  = value; break;
       case "tel":     clientPatch.tel     = value; break;
       case "email":   clientPatch.email   = value; break;
-      case "adresse": clientPatch.adresse = value; break;
+      case "adresse":
+        clientPatch.adresse  = value; // met à jour la fiche client
+        prestaPatch.adresse  = value; // met à jour l'adresse de la prestation
+        break;
     }
   }
 
