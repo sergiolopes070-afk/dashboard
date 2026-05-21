@@ -1423,6 +1423,7 @@ export default function AgendaPage() {
                         const msg = encodeURIComponent(
                           `Bonjour ${ev.prestataire} 👋,\n\nUne mission vous a été proposée chez KinouClean :\n\n` +
                           `👤 Client : ${ev.prenom} ${ev.nom}\n` +
+                          `📞 Téléphone : ${ev.tel || "—"}\n` +
                           `🧹 Prestation : ${ev.typePresta || "—"}\n` +
                           `📍 Adresse : ${ev.adresse || "—"}\n` +
                           `📅 Date : ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
