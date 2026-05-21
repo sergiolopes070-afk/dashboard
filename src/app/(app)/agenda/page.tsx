@@ -782,18 +782,24 @@ export default function AgendaPage() {
     const fullAdresse = [editForm.adresse, editCp, editVille].filter(Boolean).join(" ");
     if (fullAdresse) updates.adresse = fullAdresse;
     try {
-      await fetch("/api/prestations", {
+      const res = await fetch("/api/prestations", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ row: selectedEvent.row, updates }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Erreur ${res.status}`);
+      }
+      // Recharger les vraies données depuis la base
+      loadData();
       const updated = { ...selectedEvent, ...editForm, adresse: fullAdresse || editForm.adresse || selectedEvent.adresse } as Prestation;
-      setPrestations(prev => prev.map(p => p.row === selectedEvent.row ? updated : p));
       setSelectedEvent(updated);
       setEditMode(false);
       setEditCp(""); setEditVille("");
-    } catch {
-      alert("Erreur lors de la sauvegarde.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erreur inconnue";
+      alert(`Erreur lors de la sauvegarde : ${msg}`);
     } finally {
       setEditSaving(false);
     }
