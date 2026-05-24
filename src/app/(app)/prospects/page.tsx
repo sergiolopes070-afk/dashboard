@@ -3,7 +3,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import {
   Plus, X, Search, Phone, Mail, MapPin, Calendar, MessageSquare,
   ChevronRight, UserCheck, Loader2, Trash2, Star, ArrowRight, Bell,
-  Users, TrendingUp, Clock, CheckCircle2, Camera,
+  Users, TrendingUp, Clock, CheckCircle2,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
@@ -91,42 +91,59 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     genre: "", prenom: "", nom: "", tel: "", email: "",
     source: "", typePresta: "", adresse: "", budget: "", notes: "",
   });
-  const [saving,     setSaving]     = useState(false);
-  const [extracting, setExtracting] = useState(false);
-  const [extracted,  setExtracted]  = useState(false);
-  const [error,      setError]      = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [saving,    setSaving]    = useState(false);
+  const [showPaste, setShowPaste] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [extracted, setExtracted] = useState(false);
+  const [error,     setError]     = useState("");
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
   const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
 
-  async function handleScreenshot(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setExtracting(true); setExtracted(false); setError("");
-    try {
-      const fd = new FormData();
-      fd.append("image", file);
-      const res = await fetch("/api/prospects/extract", { method: "POST", body: fd });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Erreur extraction");
-      const d = json.data as Record<string, string>;
-      setForm(f => ({
-        ...f,
-        prenom   : d.prenom    || f.prenom,
-        nom      : d.nom       || f.nom,
-        tel      : d.tel       || f.tel,
-        email    : d.email     || f.email,
-        adresse  : d.adresse   || f.adresse,
-        typePresta: d.typePresta || f.typePresta,
-        notes    : d.notes     || f.notes,
-      }));
-      setExtracted(true);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Impossible d'analyser l'image");
-    } finally {
-      setExtracting(false);
-      if (fileRef.current) fileRef.current.value = "";
+  const PRESTA_MAP: Record<string, string> = {
+    "canapé": "Lavage Canapé", "canape": "Lavage Canapé", "sofa": "Lavage Canapé",
+    "matelas": "Lavage de matelas",
+    "voiture": "Nettoyage de voiture", "auto": "Nettoyage de voiture", "véhicule": "Nettoyage de voiture",
+    "appartement": "Nettoyage appartement", "appart": "Nettoyage appartement", "maison": "Nettoyage appartement",
+  };
+
+  function extractFromText(text: string) {
+    const lower = text.toLowerCase();
+
+    // Téléphone français
+    const telMatch = text.match(/(?:(?:\+|00)33[\s.-]?|0)[67][\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}/);
+    const tel = telMatch ? telMatch[0].replace(/[\s.+-]/g, "").replace(/^0033/, "33").replace(/^33/, "0") : "";
+
+    // Email
+    const emailMatch = text.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+    const email = emailMatch ? emailMatch[0] : "";
+
+    // Type de prestation
+    let typePresta = "";
+    for (const [kw, type] of Object.entries(PRESTA_MAP)) {
+      if (lower.includes(kw)) { typePresta = type; break; }
     }
+
+    // Notes : premières lignes non vides significatives
+    const lines = text.split(/\n/).map(l => l.trim()).filter(l => l.length > 4 && !/^\d{1,2}[:/]\d{2}/.test(l));
+    const notes = lines.slice(0, 3).join(" — ").substring(0, 300);
+
+    return { tel, email, typePresta, notes };
+  }
+
+  function handlePasteExtract() {
+    if (!pasteText.trim()) return;
+    const d = extractFromText(pasteText);
+    setForm(f => ({
+      ...f,
+      tel      : d.tel       || f.tel,
+      email    : d.email     || f.email,
+      typePresta: d.typePresta || f.typePresta,
+      notes    : d.notes     || f.notes,
+      source   : f.source    || "Réseaux sociaux",
+    }));
+    setExtracted(true);
+    setShowPaste(false);
+    setPasteText("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -156,28 +173,45 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
             <h2 className="font-semibold text-gray-900">Nouveau prospect</h2>
           </div>
           <div className="flex items-center gap-2">
-            {/* Bouton screenshot IA */}
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleScreenshot} />
             <button
               type="button"
-              onClick={() => fileRef.current?.click()}
-              disabled={extracting}
-              title="Créer depuis un screenshot Instagram / WhatsApp"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 text-xs font-semibold hover:bg-purple-100 transition-colors disabled:opacity-50 border border-purple-200"
+              onClick={() => { setShowPaste(v => !v); setExtracted(false); }}
+              title="Coller un DM Instagram / WhatsApp pour remplir auto"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 text-xs font-semibold hover:bg-purple-100 transition-colors border border-purple-200"
             >
-              {extracting
-                ? <><Loader2 size={13} className="animate-spin" /> Analyse…</>
-                : <><Camera size={13} /> Screenshot</>
-              }
+              <MessageSquare size={13} /> Coller DM
             </button>
             <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={18} className="text-gray-400" /></button>
           </div>
         </div>
 
+        {/* Panneau coller DM */}
+        {showPaste && (
+          <div className="mx-5 mt-3 p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-2">
+            <p className="text-xs text-purple-700 font-medium">Copie le message Instagram / WhatsApp et colle-le ici :</p>
+            <textarea
+              autoFocus
+              rows={4}
+              value={pasteText}
+              onChange={e => setPasteText(e.target.value)}
+              placeholder="Colle le message ici… le numéro, la ville et le service seront détectés automatiquement."
+              className="w-full text-sm border border-purple-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none bg-white"
+            />
+            <button
+              type="button"
+              onClick={handlePasteExtract}
+              disabled={!pasteText.trim()}
+              className="w-full py-2 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 disabled:opacity-40 transition-colors"
+            >
+              Extraire les infos
+            </button>
+          </div>
+        )}
+
         {/* Bandeau confirmation extraction */}
         {extracted && (
           <div className="mx-5 mt-3 px-3 py-2 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-xs text-green-700 font-medium">
-            ✅ Informations extraites — vérifie et complète si nécessaire
+            ✅ Infos détectées — vérifie et complète si nécessaire
           </div>
         )}
 
