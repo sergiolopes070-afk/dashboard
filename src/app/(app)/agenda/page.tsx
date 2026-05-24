@@ -1419,13 +1419,11 @@ export default function AgendaPage() {
                       {ev.tel && (
                         <a
                           href={`https://wa.me/${ev.tel.replace(/\s/g, "").replace(/^0/, "33")}?text=${encodeURIComponent(
-                            `Bonjour ${ev.prenom} 😊,\n\n` +
-                            `Nous vous rappelons votre rendez-vous prévu demain :\n\n` +
+                            `Rappel de votre rendez-vous demain :\n\n` +
                             `🧹 ${ev.typePresta || "Prestation KinouClean"}\n` +
                             `📅 ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
                             `📍 ${ev.adresse || "—"}\n\n` +
-                            `En cas d'empêchement, merci de nous prévenir le plus tôt possible.\n\n` +
-                            `À très bientôt,\nL'équipe KinouClean 🙏`
+                            `En cas d'empêchement, merci de nous prévenir le plus tôt possible.`
                           )}`}
                           target="_blank"
                           rel="noopener noreferrer"
