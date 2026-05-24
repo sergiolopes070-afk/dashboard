@@ -1415,6 +1415,26 @@ export default function AgendaPage() {
                         📦 Archiver ce RDV
                       </button>
 
+                      {/* ── Rappel WhatsApp client ── */}
+                      {ev.tel && (
+                        <a
+                          href={`https://wa.me/${ev.tel.replace(/\s/g, "").replace(/^0/, "33")}?text=${encodeURIComponent(
+                            `Bonjour ${ev.prenom} 😊,\n\n` +
+                            `Nous vous rappelons votre rendez-vous prévu demain :\n\n` +
+                            `🧹 ${ev.typePresta || "Prestation KinouClean"}\n` +
+                            `📅 ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
+                            `📍 ${ev.adresse || "—"}\n\n` +
+                            `En cas d'empêchement, merci de nous prévenir le plus tôt possible.\n\n` +
+                            `À très bientôt,\nL'équipe KinouClean 🙏`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-2 rounded-xl border border-sky-200 text-sky-700 text-sm font-medium hover:bg-sky-50 transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          🔔 Envoyer un rappel à {ev.prenom}
+                        </a>
+                      )}
+
                       {/* ── WhatsApp prestataire ── */}
                       {(() => {
                         const prestataireObj = prestataires.find(p => p.nom === ev.prestataire);
