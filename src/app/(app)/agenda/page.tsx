@@ -256,9 +256,10 @@ function AddressAutocomplete({ value, onChange, onSelect, inputCls }: {
   onSelect: (adresse: string, cp: string, ville: string) => void;
   inputCls: string;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open,        setOpen]        = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
-  const { suggestions, loading } = useAddressSearch(value);
+  const { suggestions } = useAddressSearch(searchQuery);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -273,17 +274,12 @@ function AddressAutocomplete({ value, onChange, onSelect, inputCls }: {
       <input
         type="text"
         value={value}
-        onChange={e => { onChange(e.target.value); setOpen(true); }}
-        onFocus={() => value.length >= 4 && setOpen(true)}
+        onChange={e => { onChange(e.target.value); setSearchQuery(e.target.value); setOpen(true); }}
+        onFocus={() => searchQuery.length >= 4 && setOpen(true)}
         placeholder="12 rue de la Paix, Paris…"
         autoComplete="off"
         className={inputCls}
       />
-      {loading && (
-        <div className="absolute right-3 top-2.5">
-          <Loader2 size={14} className="animate-spin text-gray-400" />
-        </div>
-      )}
       {open && suggestions.length > 0 && (
         <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
           {suggestions.map((s, i) => (
@@ -292,6 +288,7 @@ function AddressAutocomplete({ value, onChange, onSelect, inputCls }: {
               onMouseDown={e => e.preventDefault()}
               onClick={() => {
                 onSelect(s.properties.name, s.properties.postcode, s.properties.city);
+                setSearchQuery("");
                 setOpen(false);
               }}
               className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-start gap-2"
@@ -1350,11 +1347,11 @@ export default function AgendaPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs text-gray-400 mb-1 block">💬 Message client</label>
+                        <label className="text-xs text-gray-400 mb-1 block">Message client</label>
                         <textarea className={inputCls} rows={2} value={editForm.message ?? ""} onChange={e => setEditForm(f => ({ ...f, message: e.target.value }))} placeholder="Message du client…" />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-400 mb-1 block">📝 Note interne</label>
+                        <label className="text-xs text-gray-400 mb-1 block">Note interne</label>
                         <textarea className={inputCls} rows={2} value={editForm.commentaire ?? ""} onChange={e => setEditForm(f => ({ ...f, commentaire: e.target.value }))} placeholder="Note interne…" />
                       </div>
                       <button
@@ -1362,7 +1359,7 @@ export default function AgendaPage() {
                         disabled={editSaving}
                         className="w-full py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
                       >
-                        {editSaving ? "Enregistrement…" : "💾 Enregistrer les modifications"}
+                        {editSaving ? "Enregistrement…" : "Enregistrer les modifications"}
                       </button>
                     </div>
                   ) : (
