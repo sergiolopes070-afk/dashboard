@@ -71,6 +71,10 @@ function firstMondayOfMonthGrid(d: Date): Date {
   return getMondayOfWeek(first);
 }
 
+// ─── Raisons d'archivage sans paiement (annulations) ────────────────────────
+const CANCELLATION_REASONS = ["Annulation client", "Client injoignable", "Doublon"];
+const isCancellationReason = (r: string) => CANCELLATION_REASONS.some(cr => r.startsWith(cr));
+
 // ─── Icônes & abbréviations mode de paiement ─────────────────────────────────
 const PAYMENT_ICONS: Record<string, string> = {
   "Espèces"          : "💵",
@@ -1691,29 +1695,38 @@ export default function AgendaPage() {
               onChange={e => setArchiveReason(e.target.value)}
             />
 
-            {/* Mode de paiement */}
-            <label className="text-xs font-medium text-gray-600 mb-2 block">
-              Mode de paiement <span className="text-orange-500">*</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              {[
-                { label: "Espèces", icon: "💵" },
-                { label: "Virement bancaire", icon: "🏦" },
-                { label: "Lien de paiement", icon: "🔗" },
-                { label: "Chèque", icon: "📄" },
-                { label: "Carte sur place", icon: "💳" },
-              ].map(({ label, icon }) => (
-                <button key={label} type="button"
-                  onClick={() => setArchivePayment(label)}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors text-left flex items-center gap-1.5 ${
-                    archivePayment === label
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
-                  }`}>
-                  <span>{icon}</span>{label}
-                </button>
-              ))}
-            </div>
+            {/* Mode de paiement — masqué pour les annulations */}
+            {isCancellationReason(archiveReason) ? (
+              <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 mb-3 flex items-center gap-2">
+                <span className="text-lg">🚫</span>
+                <p className="text-xs text-gray-500">Pas de paiement pour une annulation — non comptabilisé dans le CA</p>
+              </div>
+            ) : (
+              <>
+                <label className="text-xs font-medium text-gray-600 mb-2 block">
+                  Mode de paiement <span className="text-orange-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {[
+                    { label: "Espèces", icon: "💵" },
+                    { label: "Virement bancaire", icon: "🏦" },
+                    { label: "Lien de paiement", icon: "🔗" },
+                    { label: "Chèque", icon: "📄" },
+                    { label: "Carte sur place", icon: "💳" },
+                  ].map(({ label, icon }) => (
+                    <button key={label} type="button"
+                      onClick={() => setArchivePayment(label)}
+                      className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors text-left flex items-center gap-1.5 ${
+                        archivePayment === label
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
+                      }`}>
+                      <span>{icon}</span>{label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             {/* Commentaire optionnel */}
             <label className="text-xs font-medium text-gray-600 mb-1.5 block">Commentaire (optionnel)</label>
@@ -1733,7 +1746,7 @@ export default function AgendaPage() {
               </button>
               <button
                 onClick={handleArchiveConfirm}
-                disabled={!archiveReason.trim() || !archivePayment || archiving}
+                disabled={!archiveReason.trim() || (!archivePayment && !isCancellationReason(archiveReason)) || archiving}
                 className="flex-1 py-2 rounded-xl bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-40 transition-colors">
                 {archiving ? "Archivage…" : "Archiver"}
               </button>

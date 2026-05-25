@@ -432,8 +432,12 @@ export async function getDashboardStats() {
   const toReassign   = prestations.filter((p) => p.statut === "PRESTATAIRE REFUSÉ – À RÉAFFECTER");
   const waitingPresta = prestations.filter((p) => p.statutPresta === "EN ATTENTE PRESTA");
 
-  const totalCA  = [...prestations, ...archive].map((p) => parseFloat(p.prix) || 0).reduce((a, b) => a + b, 0);
-  const archiveCA = archive.map((p) => parseFloat(p.prix) || 0).reduce((a, b) => a + b, 0);
+  // Les annulations ne comptent pas dans le CA
+  const CANCELLATION_REASONS = ["Annulation client", "Client injoignable", "Doublon"];
+  const isCancelled = (p: Prestation) => CANCELLATION_REASONS.some(r => (p.archiveReason || "").startsWith(r));
+  const archivePaid = archive.filter(p => !isCancelled(p));
+  const totalCA  = [...prestations, ...archivePaid].map((p) => parseFloat(p.prix) || 0).reduce((a, b) => a + b, 0);
+  const archiveCA = archivePaid.map((p) => parseFloat(p.prix) || 0).reduce((a, b) => a + b, 0);
   const devisGeneres = [...prestations, ...archive].filter((p) => p.genDevis === "FAIT" || p.devisPDF).length;
 
   return {
