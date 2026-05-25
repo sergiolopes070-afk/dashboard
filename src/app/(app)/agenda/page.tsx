@@ -625,6 +625,7 @@ export default function AgendaPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [editCp,     setEditCp]     = useState("");
   const [editVille,  setEditVille]  = useState("");
+  const [paymentSaving, setPaymentSaving] = useState(false);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const loadData = () => {
@@ -799,6 +800,24 @@ export default function AgendaPage() {
       alert(`Erreur lors de la sauvegarde : ${msg}`);
     } finally {
       setEditSaving(false);
+    }
+  }
+
+  // ── Mise à jour mode de paiement (même sur archivé) ─────────────────────
+  async function updatePaymentMode(evRow: string, newMode: string) {
+    setPaymentSaving(true);
+    try {
+      await fetch("/api/prestations", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ row: evRow, updates: { modePaiement: newMode } }),
+      });
+      setPrestations(prev => prev.map(p =>
+        p.row === evRow ? { ...p, modePaiement: newMode as Prestation["modePaiement"] } : p
+      ));
+      setSelectedEvent(prev => prev ? { ...prev, modePaiement: newMode as Prestation["modePaiement"] } : prev);
+    } finally {
+      setPaymentSaving(false);
     }
   }
 
@@ -1250,6 +1269,7 @@ export default function AgendaPage() {
                                   prestataire: ev.prestataire, statut: ev.statut,
                                   heure: ev.heure, date: ev.date,
                                   message: ev.message, commentaire: ev.commentaire,
+                                  modePaiement: ev.modePaiement,
                                 });
                                 setEditCp(""); setEditVille("");
                                 setEditMode(true);
@@ -1354,6 +1374,29 @@ export default function AgendaPage() {
                         <label className="text-xs text-gray-400 mb-1 block">Note interne</label>
                         <textarea className={inputCls} rows={2} value={editForm.commentaire ?? ""} onChange={e => setEditForm(f => ({ ...f, commentaire: e.target.value }))} placeholder="Note interne…" />
                       </div>
+                      <div>
+                        <label className="text-xs text-gray-400 mb-2 block">Mode de paiement</label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {[
+                            { label: "Espèces",           icon: "💵" },
+                            { label: "Virement bancaire",  icon: "🏦" },
+                            { label: "Lien de paiement",   icon: "🔗" },
+                            { label: "Chèque",             icon: "📄" },
+                            { label: "Carte sur place",    icon: "💳" },
+                          ].map(({ label, icon }) => (
+                            <button key={label} type="button"
+                              onClick={() => setEditForm(f => ({ ...f, modePaiement: f.modePaiement === label ? undefined : label as Prestation["modePaiement"] }))}
+                              className={`px-2.5 py-2 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+                                editForm.modePaiement === label
+                                  ? "bg-blue-600 text-white border-blue-600"
+                                  : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                              }`}>
+                              <span>{icon}</span>
+                              <span className="truncate">{label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <button
                         onClick={saveEdit}
                         disabled={editSaving}
@@ -1369,13 +1412,13 @@ export default function AgendaPage() {
                       <p className="text-sm text-gray-500 mb-3">{ev.typePresta}</p>
                       <div className="space-y-1.5 text-sm text-gray-700">
                         {([
-                          ["Date",    `${ev.date}${ev.heure ? ` à ${ev.heure}` : ""}`],
-                          ["Adresse", ev.adresse || null],
-                          ["Statut",  ev.statut  || null],
-                          ["Prix",    ev.prix     ? `${ev.prix} €` : null],
-                          ["Tél",     ev.tel      || null],
-                          ["Message", ev.message  || null],
-                          ["Note",    ev.commentaire || null],
+                          ["Date",     `${ev.date}${ev.heure ? ` à ${ev.heure}` : ""}`],
+                          ["Adresse",  ev.adresse || null],
+                          ["Statut",   ev.statut  || null],
+                          ["Prix",     ev.prix     ? `${ev.prix} €` : null],
+                          ["Tél",      ev.tel      || null],
+                          ["Message",  ev.message  || null],
+                          ["Note",     ev.commentaire || null],
                           ...(isArchived && archiveReason ? [["Motif", archiveReason]] : []),
                         ] as [string, string|null][]).filter(([,v]) => v).map(([label, val]) => (
                           <div key={label} className="flex gap-2">
@@ -1384,6 +1427,40 @@ export default function AgendaPage() {
                           </div>
                         ))}
                       </div>
+
+                      {/* ── Mode de paiement (visible + modifiable même archivé) ── */}
+                      {(() => {
+                        const PAYMENT_OPTIONS = [
+                          { label: "Espèces",           icon: "💵" },
+                          { label: "Virement bancaire",  icon: "🏦" },
+                          { label: "Lien de paiement",   icon: "🔗" },
+                          { label: "Chèque",             icon: "📄" },
+                          { label: "Carte sur place",    icon: "💳" },
+                        ];
+                        return (
+                          <div className="mt-4 border-t border-gray-100 pt-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mode de paiement</p>
+                              {paymentSaving && <span className="text-[10px] text-blue-400">Enregistrement…</span>}
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {PAYMENT_OPTIONS.map(({ label, icon }) => (
+                                <button key={label} type="button"
+                                  disabled={paymentSaving}
+                                  onClick={() => updatePaymentMode(ev.row, ev.modePaiement === label ? "" : label)}
+                                  className={`px-2.5 py-2 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+                                    ev.modePaiement === label
+                                      ? "bg-blue-600 text-white border-blue-600"
+                                      : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                                  } disabled:opacity-50`}>
+                                  <span>{icon}</span>
+                                  <span className="truncate">{label}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                   {!editMode && <div className="mt-4 flex flex-col gap-2">
