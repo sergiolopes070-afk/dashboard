@@ -389,17 +389,49 @@ function ProspectModal({
           </div>
 
           {/* Date de relance */}
-          <div className="bg-gray-50 rounded-xl p-3">
+          <div className="bg-orange-50 border border-orange-100 rounded-xl p-3">
             <div className="flex items-center gap-2 mb-2">
               <Bell size={14} className="text-orange-500" />
-              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Date de relance</p>
+              <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide">Relance</p>
               {relance && <span className={`text-xs ml-auto ${relance.cls}`}>{relance.text}</span>}
+              {p.dateRelance && (
+                <button onClick={() => patch({ dateRelance: "" })} className="text-gray-300 hover:text-red-400 ml-1" title="Supprimer la relance">
+                  <X size={13} />
+                </button>
+              )}
             </div>
+            {/* Chips rapides */}
+            <div className="flex gap-1.5 flex-wrap mb-2">
+              {[
+                { label: "Demain",    days: 1 },
+                { label: "+3 jours",  days: 3 },
+                { label: "+1 semaine",days: 7 },
+              ].map(({ label, days }) => {
+                const d = new Date(); d.setDate(d.getDate() + days);
+                const iso = d.toISOString().split("T")[0];
+                const active = p.dateRelance === iso;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => patch({ dateRelance: active ? "" : iso })}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                      active
+                        ? "bg-orange-500 text-white border-orange-500"
+                        : "bg-white text-orange-600 border-orange-200 hover:border-orange-400"
+                    }`}
+                  >
+                    {active ? "✓ " : ""}{label}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Date personnalisée */}
             <input
               type="date"
               value={p.dateRelance}
               onChange={e => patch({ dateRelance: e.target.value })}
-              className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+              className="w-full border border-orange-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300 text-gray-600"
             />
           </div>
 
@@ -686,12 +718,24 @@ export default function ProspectsPage() {
               const relance = relanceLabel(p.dateRelance);
               const isOverdueFlag = p.dateRelance ? isOverdue(p.dateRelance) : false;
               const isTodayFlag   = p.dateRelance ? isDueToday(p.dateRelance) : false;
+              const tomorrowIso = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; })();
+              const hasRelanceTomorrow = p.dateRelance === tomorrowIso;
+
+              async function quickRelance() {
+                const newDate = hasRelanceTomorrow ? "" : tomorrowIso;
+                await fetch(`/api/prospects/${p.id}`, {
+                  method: "PATCH", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ dateRelance: newDate }),
+                });
+                setProspects(prev => prev.map(pr => pr.id === p.id ? { ...pr, dateRelance: newDate } : pr));
+              }
+
               return (
-                <button
+                <div
                   key={p.id}
-                  onClick={() => setSelected(p)}
-                  className={`w-full bg-white rounded-2xl border shadow-sm p-4 flex items-center gap-4 hover:border-blue-300 hover:shadow-md transition-all text-left
+                  className={`w-full bg-white rounded-2xl border shadow-sm p-4 flex items-center gap-3 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer
                     ${isOverdueFlag ? "border-red-200" : isTodayFlag ? "border-orange-200" : "border-gray-100"}`}
+                  onClick={() => setSelected(p)}
                 >
                   {/* Avatar */}
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
@@ -707,28 +751,32 @@ export default function ProspectsPage() {
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                       {p.tel && <span className="text-xs text-gray-500 flex items-center gap-1"><Phone size={11} />{p.tel}</span>}
                       {p.typePresta && <span className="text-xs text-gray-500">{p.typePresta}</span>}
-                      {p.source && <span className="text-xs text-gray-400">via {p.source}</span>}
                     </div>
                   </div>
 
-                  {/* Relance + commentaires */}
-                  <div className="shrink-0 text-right hidden sm:block">
-                    {relance && (
-                      <div className={`text-xs flex items-center gap-1 justify-end ${relance.cls}`}>
-                        <Calendar size={11} />
-                        {relance.text}
-                      </div>
-                    )}
-                    {p.commentaires.length > 0 && (
-                      <div className="text-xs text-gray-400 flex items-center gap-1 justify-end mt-0.5">
-                        <MessageSquare size={11} />
-                        {p.commentaires.length} note{p.commentaires.length > 1 ? "s" : ""}
-                      </div>
+                  {/* Relance rapide + statut relance */}
+                  <div className="shrink-0 flex flex-col items-end gap-1" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={quickRelance}
+                      title={hasRelanceTomorrow ? "Annuler la relance demain" : "Relance demain"}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                        hasRelanceTomorrow
+                          ? "bg-orange-500 text-white border-orange-500"
+                          : "bg-white text-gray-400 border-gray-200 hover:text-orange-500 hover:border-orange-300"
+                      }`}
+                    >
+                      <Bell size={11} />
+                      {hasRelanceTomorrow ? "Demain ✓" : "Rappel"}
+                    </button>
+                    {relance && !hasRelanceTomorrow && (
+                      <span className={`text-[11px] flex items-center gap-1 ${relance.cls}`}>
+                        <Calendar size={10} />{relance.text}
+                      </span>
                     )}
                   </div>
 
                   <ChevronRight size={16} className="text-gray-300 shrink-0" />
-                </button>
+                </div>
               );
             })}
           </div>
