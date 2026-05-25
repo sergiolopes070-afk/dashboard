@@ -89,11 +89,9 @@ function StatutBadge({ statut, small }: { statut: string; small?: boolean }) {
 function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: (p: Prospect) => void }) {
   const [form, setForm] = useState({
     genre: "", prenom: "", nom: "", tel: "", email: "",
-    source: "", typePresta: "", adresse: "", budget: "", notes: "",
+    source: "Réseaux sociaux", typePresta: "", adresse: "", budget: "", notes: "",
   });
   const [saving,    setSaving]    = useState(false);
-  const [showPaste, setShowPaste] = useState(false);
-  const [pasteText, setPasteText] = useState("");
   const [extracted, setExtracted] = useState(false);
   const [error,     setError]     = useState("");
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
@@ -108,47 +106,39 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
   function extractFromText(text: string) {
     const lower = text.toLowerCase();
-
-    // Téléphone français
     const telMatch = text.match(/(?:(?:\+|00)33[\s.-]?|0)[67][\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}[\s.-]?\d{2}/);
-    const tel = telMatch ? telMatch[0].replace(/[\s.+-]/g, "").replace(/^0033/, "33").replace(/^33/, "0") : "";
-
-    // Email
+    const tel = telMatch ? telMatch[0].replace(/[\s.-]/g, "").replace(/^0033/, "33").replace(/^33/, "0") : "";
     const emailMatch = text.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
     const email = emailMatch ? emailMatch[0] : "";
-
-    // Type de prestation
     let typePresta = "";
     for (const [kw, type] of Object.entries(PRESTA_MAP)) {
       if (lower.includes(kw)) { typePresta = type; break; }
     }
-
-    // Notes : premières lignes non vides significatives
     const lines = text.split(/\n/).map(l => l.trim()).filter(l => l.length > 4 && !/^\d{1,2}[:/]\d{2}/.test(l));
     const notes = lines.slice(0, 3).join(" — ").substring(0, 300);
-
     return { tel, email, typePresta, notes };
   }
 
-  function handlePasteExtract() {
-    if (!pasteText.trim()) return;
-    const d = extractFromText(pasteText);
-    setForm(f => ({
-      ...f,
-      tel      : d.tel       || f.tel,
-      email    : d.email     || f.email,
-      typePresta: d.typePresta || f.typePresta,
-      notes    : d.notes     || f.notes,
-      source   : f.source    || "Réseaux sociaux",
-    }));
-    setExtracted(true);
-    setShowPaste(false);
-    setPasteText("");
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const text = e.clipboardData.getData("text");
+    if (!text.trim()) return;
+    // Laisser le texte s'afficher, puis extraire
+    setTimeout(() => {
+      const d = extractFromText(text);
+      setForm(f => ({
+        ...f,
+        tel      : d.tel       || f.tel,
+        email    : d.email     || f.email,
+        typePresta: d.typePresta || f.typePresta,
+        notes    : d.notes     || f.notes,
+      }));
+      setExtracted(true);
+    }, 0);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.prenom || !form.nom) { setError("Prénom et nom sont requis."); return; }
+    if (!form.prenom) { setError("Le prénom est requis."); return; }
     setSaving(true); setError("");
     try {
       const res = await fetch("/api/prospects", {
@@ -164,131 +154,69 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-              <Plus size={15} className="text-blue-600" />
-            </div>
-            <h2 className="font-semibold text-gray-900">Nouveau prospect</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => { setShowPaste(v => !v); setExtracted(false); }}
-              title="Coller un DM Instagram / WhatsApp pour remplir auto"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 text-xs font-semibold hover:bg-purple-100 transition-colors border border-purple-200"
-            >
-              <MessageSquare size={13} /> Coller DM
-            </button>
-            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={18} className="text-gray-400" /></button>
-          </div>
+          <h2 className="font-semibold text-gray-900">Nouveau prospect</h2>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={18} className="text-gray-400" /></button>
         </div>
 
-        {/* Panneau coller DM */}
-        {showPaste && (
-          <div className="mx-5 mt-3 p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-2">
-            <p className="text-xs text-purple-700 font-medium">Copie le message Instagram / WhatsApp et colle-le ici :</p>
+        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3 max-h-[80vh] overflow-y-auto">
+
+          {/* Zone collage DM — toujours visible */}
+          <div className={`rounded-xl border-2 border-dashed p-3 transition-colors ${extracted ? "border-green-300 bg-green-50" : "border-purple-200 bg-purple-50"}`}>
+            <p className="text-xs font-semibold mb-1.5 flex items-center gap-1.5 ${extracted ? 'text-green-700' : 'text-purple-700'}">
+              {extracted ? "✅ DM analysé — complète le nom ci-dessous" : <><MessageSquare size={12} /> Colle le DM ici (Instagram, WhatsApp…)</>}
+            </p>
             <textarea
-              autoFocus
-              rows={4}
-              value={pasteText}
-              onChange={e => setPasteText(e.target.value)}
-              placeholder="Colle le message ici… le numéro, la ville et le service seront détectés automatiquement."
-              className="w-full text-sm border border-purple-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none bg-white"
+              rows={3}
+              placeholder="Colle le message… le numéro et la prestation seront détectés automatiquement."
+              onPaste={handlePaste}
+              className="w-full text-sm bg-white border border-purple-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none placeholder-gray-400"
             />
-            <button
-              type="button"
-              onClick={handlePasteExtract}
-              disabled={!pasteText.trim()}
-              className="w-full py-2 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 disabled:opacity-40 transition-colors"
-            >
-              Extraire les infos
-            </button>
           </div>
-        )}
 
-        {/* Bandeau confirmation extraction */}
-        {extracted && (
-          <div className="mx-5 mt-3 px-3 py-2 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-xs text-green-700 font-medium">
-            ✅ Infos détectées — vérifie et complète si nécessaire
-          </div>
-        )}
+          {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
 
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4 max-h-[75vh] overflow-y-auto">
-          {error && <p className="text-xs text-red-500 bg-red-50 p-2 rounded-lg">{error}</p>}
-
-          <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Contact</div>
-          <div>
-            <label className="text-xs text-gray-500 mb-2 block">Civilité</label>
-            <div className="flex gap-2">
-              {["Monsieur", "Madame"].map(g => (
-                <button key={g} type="button"
-                  onClick={() => set("genre", form.genre === g ? "" : g)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    form.genre === g
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
-                  }`}>
-                  {g}
-                </button>
-              ))}
+          {/* Champs essentiels */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Prénom *</label>
+              <input autoFocus value={form.prenom} onChange={e => set("prenom", e.target.value)} className={inputCls} placeholder="Prénom" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Nom</label>
+              <input value={form.nom} onChange={e => set("nom", e.target.value)} className={inputCls} placeholder="Nom" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500 mb-1 block">Prénom *</label>
-              <input value={form.prenom} onChange={e => set("prenom", e.target.value)} className={inputCls} /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Nom *</label>
-              <input value={form.nom} onChange={e => set("nom", e.target.value)} className={inputCls} /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500 mb-1 block">Téléphone</label>
-              <input value={form.tel} onChange={e => set("tel", e.target.value)} className={inputCls} placeholder="06 00 00 00 00" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Email</label>
-              <input type="email" value={form.email} onChange={e => set("email", e.target.value)} className={inputCls} /></div>
-          </div>
 
-          <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Intérêt</div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500 mb-1 block">Type de prestation</label>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Téléphone</label>
+              <input value={form.tel} onChange={e => set("tel", e.target.value)} className={inputCls} placeholder="06 00 00 00 00" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Prestation</label>
               <select value={form.typePresta} onChange={e => set("typePresta", e.target.value)} className={inputCls}>
-                <option value="">— Sélectionner —</option>
+                <option value="">— Type —</option>
                 {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
-              </select></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Budget estimé (€)</label>
-              <input value={form.budget} onChange={e => set("budget", e.target.value)} className={inputCls} placeholder="ex: 150" /></div>
+              </select>
+            </div>
           </div>
+
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">Adresse / Zone</label>
-            <AddressAutocomplete
-              value={form.adresse}
-              onChange={v => set("adresse", v)}
-              onSelect={(adresse, cp, ville) => set("adresse", `${adresse}, ${cp} ${ville}`.trim())}
-              className={inputCls}
-              placeholder="Ville ou adresse approximative"
-            />
-            <p className="text-xs text-gray-400 mt-1">Tapez au moins 4 caractères pour rechercher</p>
+            <label className="text-xs text-gray-500 mb-1 block">Notes</label>
+            <textarea rows={2} value={form.notes} onChange={e => set("notes", e.target.value)}
+              className={`${inputCls} resize-none`} placeholder="Demande, budget, disponibilités…" />
           </div>
-          <div><label className="text-xs text-gray-500 mb-1 block">Source</label>
-            <select value={form.source} onChange={e => set("source", e.target.value)} className={inputCls}>
-              <option value="">— Comment nous a-t-il trouvés ? —</option>
-              {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select></div>
 
-          <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Notes</div>
-          <div><label className="text-xs text-gray-500 mb-1 block">Notes initiales</label>
-            <textarea rows={3} value={form.notes} onChange={e => set("notes", e.target.value)}
-              className={`${inputCls} resize-none`} placeholder="Infos clés, demandes particulières…" /></div>
-
-          <div className="flex gap-2 pt-1 pb-2">
-            <button type="button" onClick={onClose}
-              className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
-            <button type="submit" disabled={saving}
-              className="flex-1 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
-              {saving ? <Loader2 size={15} className="animate-spin" /> : null}
-              {saving ? "Enregistrement…" : "Ajouter le prospect"}
-            </button>
-          </div>
+          {/* Bouton */}
+          <button type="submit" disabled={saving}
+            className="w-full py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 mt-1">
+            {saving ? <Loader2 size={15} className="animate-spin" /> : null}
+            {saving ? "Enregistrement…" : "Ajouter le prospect"}
+          </button>
         </form>
       </div>
     </div>
