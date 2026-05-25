@@ -50,6 +50,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (body.budget      !== undefined) patch.budget       = body.budget;
   if (body.source        !== undefined) patch.source        = body.source;
   if (body.relanceSteps  !== undefined) patch.relance_steps = Array.isArray(body.relanceSteps) ? body.relanceSteps.join(",") : "";
+  if (body.commentaires  !== undefined) patch.commentaires  = body.commentaires;
 
   const { error } = await supabase.from("prospects").update(patch).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

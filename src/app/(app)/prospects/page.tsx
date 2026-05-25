@@ -3,7 +3,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import {
   Plus, X, Search, Phone, Mail, MapPin, Calendar, MessageSquare,
   ChevronRight, UserCheck, Loader2, Trash2, Star, ArrowRight, Bell,
-  Users, TrendingUp, Clock, CheckCircle2,
+  Users, TrendingUp, Clock, CheckCircle2, Pencil, Check,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
@@ -242,6 +242,8 @@ function ProspectModal({
   const [convertForm, setConvertForm] = useState({ date: "", heure: "", prix: "", typePresta: p.typePresta, adresse: p.adresse });
   const [converting, setConverting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameForm, setNameForm] = useState({ prenom: prospect.prenom, nom: prospect.nom });
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom of comments when added
@@ -296,6 +298,23 @@ function ProspectModal({
     } finally { setConverting(false); }
   }
 
+  async function saveName() {
+    if (!nameForm.prenom.trim()) return;
+    await patch({ prenom: nameForm.prenom.trim(), nom: nameForm.nom.trim() });
+    setEditingName(false);
+  }
+
+  async function deleteComment(commentId: string) {
+    const updated = p.commentaires.filter(c => c.id !== commentId);
+    await fetch(`/api/prospects/${p.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commentaires: updated }),
+    });
+    const next = { ...p, commentaires: updated };
+    setP(next);
+    onUpdated({ id: p.id, commentaires: updated });
+  }
+
   const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
   const isActive = p.statut !== "CONVERTI" && p.statut !== "PERDU";
   const relance  = relanceLabel(p.dateRelance);
@@ -313,7 +332,38 @@ function ProspectModal({
               {p.prenom[0]?.toUpperCase()}{p.nom[0]?.toUpperCase()}
             </div>
             <div>
-              <h2 className="font-bold text-gray-900">{p.prenom} {p.nom}</h2>
+              {editingName ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    autoFocus
+                    value={nameForm.prenom}
+                    onChange={e => setNameForm(f => ({ ...f, prenom: e.target.value }))}
+                    onKeyDown={e => { if (e.key === "Enter") saveName(); if (e.key === "Escape") setEditingName(false); }}
+                    className="border border-gray-300 rounded px-2 py-0.5 text-sm font-bold w-24 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    placeholder="Prénom"
+                  />
+                  <input
+                    value={nameForm.nom}
+                    onChange={e => setNameForm(f => ({ ...f, nom: e.target.value }))}
+                    onKeyDown={e => { if (e.key === "Enter") saveName(); if (e.key === "Escape") setEditingName(false); }}
+                    className="border border-gray-300 rounded px-2 py-0.5 text-sm font-bold w-24 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    placeholder="Nom"
+                  />
+                  <button onClick={saveName} className="text-green-500 hover:text-green-700 p-0.5" title="Sauvegarder"><Check size={14} /></button>
+                  <button onClick={() => setEditingName(false)} className="text-gray-300 hover:text-gray-500 p-0.5" title="Annuler"><X size={14} /></button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 group">
+                  <h2 className="font-bold text-gray-900">{p.prenom} {p.nom}</h2>
+                  <button
+                    onClick={() => { setNameForm({ prenom: p.prenom, nom: p.nom }); setEditingName(true); }}
+                    className="text-gray-300 hover:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
+                    title="Modifier le nom"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                </div>
+              )}
               <p className="text-xs text-gray-400">{formatDate(p.createdAt)}</p>
             </div>
           </div>
@@ -558,7 +608,7 @@ function ProspectModal({
                 const firstChar = c.texte.charAt(0);
                 const emoji = (firstChar.codePointAt(0) ?? 0) > 127 ? firstChar : null;
                 return (
-                  <div key={c.id} className="flex gap-2.5 items-start">
+                  <div key={c.id} className="flex gap-2.5 items-start group">
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 mt-0.5 ${emoji ? "bg-blue-50" : "bg-gray-100"}`}>
                       {emoji || "💬"}
                     </div>
@@ -566,6 +616,13 @@ function ProspectModal({
                       <p className="text-[10px] text-gray-400 mb-0.5">{formatDate(c.date)}</p>
                       <p className="text-sm text-gray-800 leading-snug">{c.texte}</p>
                     </div>
+                    <button
+                      onClick={() => deleteComment(c.id)}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-400 transition-all shrink-0 mt-0.5"
+                      title="Supprimer cette note"
+                    >
+                      <X size={13} />
+                    </button>
                   </div>
                 );
               })}
