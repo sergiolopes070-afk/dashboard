@@ -71,6 +71,15 @@ function firstMondayOfMonthGrid(d: Date): Date {
   return getMondayOfWeek(first);
 }
 
+// ─── Icônes mode de paiement ─────────────────────────────────────────────────
+const PAYMENT_ICONS: Record<string, string> = {
+  "Espèces"          : "💵",
+  "Virement bancaire": "🏦",
+  "Lien de paiement" : "🔗",
+  "Chèque"           : "📄",
+  "Carte sur place"  : "💳",
+};
+
 // ─── Options prestation ───────────────────────────────────────────────────────
 const TYPES_PRESTA = [
   "Ménage", "Repassage", "Vitres", "Débarras",
@@ -1134,9 +1143,14 @@ export default function AgendaPage() {
                             }}
                           >
                             <div className="px-1.5 py-1 h-full flex flex-col overflow-hidden">
-                              {ev.heure && (
-                                <span className="font-bold leading-tight truncate" style={{ color: isArchived ? "#9CA3AF" : color.bg }}>{ev.heure}</span>
-                              )}
+                              <div className="flex items-center justify-between gap-1">
+                                {ev.heure && (
+                                  <span className="font-bold leading-tight truncate" style={{ color: isArchived ? "#9CA3AF" : color.bg }}>{ev.heure}</span>
+                                )}
+                                {ev.modePaiement && PAYMENT_ICONS[ev.modePaiement] && (
+                                  <span className="text-[11px] shrink-0" title={ev.modePaiement}>{PAYMENT_ICONS[ev.modePaiement]}</span>
+                                )}
+                              </div>
                               <span className={`font-semibold leading-tight truncate ${isArchived ? "line-through text-gray-400" : "text-gray-800"}`}>{ev.prenom} {ev.nom}</span>
                               {h_ > 36 && <span className="text-gray-400 leading-tight truncate">{ev.typePresta}</span>}
                               {h_ > 52 && ev.prestataire && !isArchived && (
@@ -1206,14 +1220,17 @@ export default function AgendaPage() {
                           <button
                             key={ev.row}
                             onClick={e => { e.stopPropagation(); setSelectedEvent(ev); }}
-                            className={`w-full text-left px-1.5 py-0.5 rounded text-xs truncate font-medium ${isArchived ? "opacity-55" : ""}`}
+                            className={`w-full text-left px-1.5 py-0.5 rounded text-xs font-medium flex items-center gap-1 ${isArchived ? "opacity-55" : ""}`}
                             style={{
                               backgroundColor: isArchived ? "#F3F4F6" : color.light,
                               color: isArchived ? "#9CA3AF" : color.text,
                             }}
                           >
-                            {ev.heure && <span className={`font-bold mr-1 ${isArchived ? "line-through" : ""}`}>{ev.heure}</span>}
-                            <span className={isArchived ? "line-through" : ""}>{ev.prenom} {ev.nom}</span>
+                            {ev.heure && <span className={`font-bold shrink-0 ${isArchived ? "line-through" : ""}`}>{ev.heure}</span>}
+                            <span className={`truncate flex-1 ${isArchived ? "line-through" : ""}`}>{ev.prenom} {ev.nom}</span>
+                            {ev.modePaiement && PAYMENT_ICONS[ev.modePaiement] && (
+                              <span className="shrink-0 text-[10px]" title={ev.modePaiement}>{PAYMENT_ICONS[ev.modePaiement]}</span>
+                            )}
                           </button>
                         );
                       })}
