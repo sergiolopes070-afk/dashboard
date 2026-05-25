@@ -504,44 +504,72 @@ function ProspectModal({
             />
           </div>
 
-          {/* Commentaires internes */}
+          {/* Journal des échanges */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
               <MessageSquare size={12} />
-              Historique des échanges ({p.commentaires.length})
+              Journal des échanges {p.commentaires.length > 0 && `(${p.commentaires.length})`}
             </p>
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-              {p.commentaires.length === 0 && (
-                <p className="text-xs text-gray-400 italic text-center py-3">Aucun commentaire pour le moment</p>
-              )}
-              {p.commentaires.map(c => (
-                <div key={c.id} className="flex gap-2.5">
-                  <div className="w-1.5 shrink-0 mt-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                  </div>
-                  <div className="flex-1 bg-blue-50 rounded-xl px-3 py-2">
-                    <p className="text-[10px] text-gray-400 mb-1">{formatDate(c.date)}</p>
-                    <p className="text-sm text-gray-800">{c.texte}</p>
-                  </div>
-                </div>
+
+            {/* Tags rapides */}
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {[
+                { emoji: "📞", label: "Appel passé" },
+                { emoji: "💬", label: "DM envoyé" },
+                { emoji: "📧", label: "Email envoyé" },
+                { emoji: "🎯", label: "Très intéressé" },
+                { emoji: "💤", label: "Pas disponible" },
+                { emoji: "💶", label: "Devis demandé" },
+                { emoji: "❌", label: "Pas de réponse" },
+              ].map(({ emoji, label }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setCommentText(t => t ? `${emoji} ${label} — ${t}` : `${emoji} ${label}`)}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 hover:bg-blue-50 hover:text-blue-700 text-xs text-gray-600 border border-gray-200 hover:border-blue-200 transition-colors"
+                >
+                  {emoji} {label}
+                </button>
               ))}
-              <div ref={commentsEndRef} />
             </div>
 
-            {/* Ajouter un commentaire */}
-            <div className="flex gap-2 mt-3">
+            {/* Input note */}
+            <div className="flex gap-2 mb-3">
               <input
                 type="text"
                 value={commentText}
                 onChange={e => setCommentText(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addComment(); } }}
-                placeholder="Ajouter un commentaire… (Entrée pour valider)"
+                placeholder="Ajouter une note… (Entrée pour valider)"
                 className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
               <button onClick={addComment} disabled={!commentText.trim() || addingComment}
                 className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-40 transition-colors shrink-0">
                 {addingComment ? <Loader2 size={14} className="animate-spin" /> : <ChevronRight size={14} />}
               </button>
+            </div>
+
+            {/* Timeline */}
+            <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+              {p.commentaires.length === 0 && (
+                <p className="text-xs text-gray-400 italic text-center py-3">Aucune note pour le moment</p>
+              )}
+              {[...p.commentaires].reverse().map(c => {
+                const firstChar = c.texte.charAt(0);
+                const emoji = (firstChar.codePointAt(0) ?? 0) > 127 ? firstChar : null;
+                return (
+                  <div key={c.id} className="flex gap-2.5 items-start">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 mt-0.5 ${emoji ? "bg-blue-50" : "bg-gray-100"}`}>
+                      {emoji || "💬"}
+                    </div>
+                    <div className="flex-1 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
+                      <p className="text-[10px] text-gray-400 mb-0.5">{formatDate(c.date)}</p>
+                      <p className="text-sm text-gray-800 leading-snug">{c.texte}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={commentsEndRef} />
             </div>
           </div>
 
@@ -703,6 +731,63 @@ export default function ProspectsPage() {
       />
 
       <div className="flex-1 p-3 sm:p-6 space-y-4">
+
+        {/* ── À relancer aujourd'hui ── */}
+        {(() => {
+          const today = new Date().toDateString();
+          const aRelancer = prospects.filter(p =>
+            p.dateRelance &&
+            !["CONVERTI","PERDU"].includes(p.statut) &&
+            new Date(p.dateRelance) <= new Date(today)
+          );
+          if (!aRelancer.length) return null;
+          return (
+            <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Bell size={16} className="text-orange-500" />
+                <h3 className="font-semibold text-orange-800 text-sm">
+                  À relancer aujourd'hui · {aRelancer.length} contact{aRelancer.length > 1 ? "s" : ""}
+                </h3>
+              </div>
+              <div className="space-y-2">
+                {aRelancer.map(p => {
+                  const overdue = isOverdue(p.dateRelance);
+                  return (
+                    <div key={p.id} className="bg-white rounded-xl border border-orange-100 px-3 py-2.5 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
+                        {p.prenom[0]?.toUpperCase()}{p.nom[0]?.toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{p.prenom} {p.nom}</p>
+                        <p className="text-xs text-gray-500 truncate">{p.typePresta || p.source || "—"}</p>
+                      </div>
+                      {overdue && <span className="text-xs text-red-500 font-semibold shrink-0">En retard</span>}
+                      <div className="flex gap-1.5 shrink-0">
+                        {p.tel && (
+                          <a
+                            href={`https://wa.me/${p.tel.replace(/\s/g,"").replace(/^0/,"33")}`}
+                            target="_blank" rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
+                            title="WhatsApp"
+                          >
+                            <Phone size={13} />
+                          </a>
+                        )}
+                        <button
+                          onClick={() => setSelected(p)}
+                          className="p-1.5 rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors text-xs font-medium px-2"
+                        >
+                          Ouvrir
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── Stat cards ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
