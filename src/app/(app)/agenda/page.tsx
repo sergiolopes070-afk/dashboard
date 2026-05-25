@@ -71,13 +71,20 @@ function firstMondayOfMonthGrid(d: Date): Date {
   return getMondayOfWeek(first);
 }
 
-// ─── Icônes mode de paiement ─────────────────────────────────────────────────
+// ─── Icônes & abbréviations mode de paiement ─────────────────────────────────
 const PAYMENT_ICONS: Record<string, string> = {
   "Espèces"          : "💵",
   "Virement bancaire": "🏦",
   "Lien de paiement" : "🔗",
   "Chèque"           : "📄",
   "Carte sur place"  : "💳",
+};
+const PAYMENT_SHORT: Record<string, string> = {
+  "Espèces"          : "Espèces",
+  "Virement bancaire": "Virement",
+  "Lien de paiement" : "Lien",
+  "Chèque"           : "Chèque",
+  "Carte sur place"  : "Carte",
 };
 
 // ─── Options prestation ───────────────────────────────────────────────────────
@@ -169,12 +176,18 @@ function DayDetailModal({
                           <button
                             key={ev.row}
                             onClick={() => { onClose(); onSelectEvent(ev); }}
-                            className="w-full text-left px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-2 hover:brightness-95 transition-all"
+                            className="w-full text-left px-2 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 hover:brightness-95 transition-all"
                             style={{ backgroundColor: color.light, color: color.text }}
                           >
-                            <span className="font-bold" style={{ color: color.bg }}>{ev.heure}</span>
-                            <span className="font-semibold text-gray-800 truncate">{ev.prenom} {ev.nom}</span>
-                            {ev.typePresta && <span className="text-gray-500 truncate hidden sm:block">{ev.typePresta}</span>}
+                            <span className="font-bold shrink-0" style={{ color: color.bg }}>{ev.heure}</span>
+                            <span className="font-semibold text-gray-800 truncate flex-1">{ev.prenom} {ev.nom}</span>
+                            {ev.typePresta && <span className="text-gray-500 truncate hidden sm:block shrink-0">{ev.typePresta}</span>}
+                            {ev.modePaiement && PAYMENT_ICONS[ev.modePaiement] && (
+                              <span className="shrink-0 text-xs font-semibold px-1.5 py-0.5 rounded-full"
+                                style={{ backgroundColor: color.bg + "20", color: color.bg }}>
+                                {PAYMENT_ICONS[ev.modePaiement]} {PAYMENT_SHORT[ev.modePaiement]}
+                              </span>
+                            )}
                           </button>
                         );
                       })}
@@ -1142,21 +1155,22 @@ export default function AgendaPage() {
                               zIndex: 10 + ei,
                             }}
                           >
-                            <div className="px-1.5 py-1 h-full flex flex-col overflow-hidden">
-                              <div className="flex items-center justify-between gap-1">
-                                {ev.heure && (
-                                  <span className="font-bold leading-tight truncate" style={{ color: isArchived ? "#9CA3AF" : color.bg }}>{ev.heure}</span>
-                                )}
-                                {ev.modePaiement && PAYMENT_ICONS[ev.modePaiement] && (
-                                  <span className="text-[11px] shrink-0" title={ev.modePaiement}>{PAYMENT_ICONS[ev.modePaiement]}</span>
-                                )}
-                              </div>
-                              <span className={`font-semibold leading-tight truncate ${isArchived ? "line-through text-gray-400" : "text-gray-800"}`}>{ev.prenom} {ev.nom}</span>
-                              {h_ > 36 && <span className="text-gray-400 leading-tight truncate">{ev.typePresta}</span>}
-                              {h_ > 52 && ev.prestataire && !isArchived && (
-                                <span className="leading-tight truncate font-medium" style={{ color: color.text }}>{ev.prestataire}</span>
+                            <div className="px-1.5 py-1 h-full flex flex-col overflow-hidden gap-px">
+                              {ev.heure && (
+                                <span className="font-bold leading-tight truncate text-[11px]" style={{ color: isArchived ? "#9CA3AF" : color.bg }}>{ev.heure}</span>
                               )}
-                              {isArchived && <span className="text-gray-400 text-[9px] leading-tight font-medium uppercase tracking-wide">Archivé</span>}
+                              <span className={`font-semibold leading-tight truncate text-[11px] ${isArchived ? "line-through text-gray-400" : "text-gray-800"}`}>{ev.prenom} {ev.nom}</span>
+                              {h_ > 36 && <span className="text-gray-400 leading-tight truncate text-[10px]">{ev.typePresta}</span>}
+                              {h_ > 52 && ev.prestataire && !isArchived && (
+                                <span className="leading-tight truncate text-[10px] font-medium" style={{ color: color.text }}>{ev.prestataire}</span>
+                              )}
+                              {ev.modePaiement && PAYMENT_ICONS[ev.modePaiement] && (
+                                <span className="mt-auto inline-flex items-center gap-0.5 text-[10px] font-semibold px-1 py-0.5 rounded w-fit"
+                                  style={{ backgroundColor: isArchived ? "#E5E7EB" : color.bg + "22", color: isArchived ? "#9CA3AF" : color.bg }}>
+                                  {PAYMENT_ICONS[ev.modePaiement]}{h_ > 40 && ` ${PAYMENT_SHORT[ev.modePaiement] ?? ev.modePaiement}`}
+                                </span>
+                              )}
+                              {isArchived && !ev.modePaiement && <span className="text-gray-400 text-[9px] leading-tight font-medium uppercase tracking-wide">Archivé</span>}
                             </div>
                           </button>
                         );
@@ -1217,21 +1231,24 @@ export default function AgendaPage() {
                         const pid   = idByNom[ev.prestataire];
                         const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg:"#9CA3AF", light:"#F3F4F6", text:"#374151" };
                         return (
-                          <button
-                            key={ev.row}
-                            onClick={e => { e.stopPropagation(); setSelectedEvent(ev); }}
-                            className={`w-full text-left px-1.5 py-0.5 rounded text-xs font-medium flex items-center gap-1 ${isArchived ? "opacity-55" : ""}`}
-                            style={{
-                              backgroundColor: isArchived ? "#F3F4F6" : color.light,
-                              color: isArchived ? "#9CA3AF" : color.text,
-                            }}
-                          >
-                            {ev.heure && <span className={`font-bold shrink-0 ${isArchived ? "line-through" : ""}`}>{ev.heure}</span>}
-                            <span className={`truncate flex-1 ${isArchived ? "line-through" : ""}`}>{ev.prenom} {ev.nom}</span>
+                          <div key={ev.row} className={`w-full rounded overflow-hidden ${isArchived ? "opacity-55" : ""}`}
+                            style={{ backgroundColor: isArchived ? "#F3F4F6" : color.light }}>
+                            <button
+                              onClick={e => { e.stopPropagation(); setSelectedEvent(ev); }}
+                              className="w-full text-left px-1.5 py-0.5 text-xs font-medium flex items-center gap-1"
+                              style={{ color: isArchived ? "#9CA3AF" : color.text }}
+                            >
+                              {ev.heure && <span className={`font-bold shrink-0 ${isArchived ? "line-through" : ""}`}>{ev.heure}</span>}
+                              <span className={`truncate flex-1 ${isArchived ? "line-through" : ""}`}>{ev.prenom} {ev.nom}</span>
+                            </button>
                             {ev.modePaiement && PAYMENT_ICONS[ev.modePaiement] && (
-                              <span className="shrink-0 text-[10px]" title={ev.modePaiement}>{PAYMENT_ICONS[ev.modePaiement]}</span>
+                              <div className="px-1.5 pb-0.5 flex items-center gap-0.5 text-[10px] font-semibold"
+                                style={{ color: isArchived ? "#9CA3AF" : color.bg }}>
+                                {PAYMENT_ICONS[ev.modePaiement]}
+                                <span>{PAYMENT_SHORT[ev.modePaiement] ?? ev.modePaiement}</span>
+                              </div>
                             )}
-                          </button>
+                          </div>
                         );
                       })}
                       {events.length > 3 && (
