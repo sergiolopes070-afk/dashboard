@@ -630,6 +630,39 @@ function ProspectModal({
             </div>
           </div>
 
+          {/* ── Actions rapides ── */}
+          {isActive && (p.tel || p.email) && (
+            <div className="flex gap-2 flex-wrap">
+              {p.tel && (
+                <a
+                  href={`https://wa.me/${p.tel.replace(/\s/g,"").replace(/^0/,"33")}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors"
+                >
+                  <Phone size={15} />
+                  WhatsApp
+                </a>
+              )}
+              {p.tel && (
+                <a
+                  href={`tel:${p.tel}`}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+                >
+                  <Phone size={15} />
+                  Appeler
+                </a>
+              )}
+              {p.email && (
+                <a
+                  href={`mailto:${p.email}`}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+                >
+                  <Mail size={15} />
+                </a>
+              )}
+            </div>
+          )}
+
           {/* ── Convertir en client ── */}
           {isActive && (
             <div className="border border-green-200 rounded-xl overflow-hidden">
@@ -985,7 +1018,11 @@ export default function ProspectsPage() {
       {showAdd && (
         <AddProspectModal
           onClose={() => setShowAdd(false)}
-          onSaved={p => { setProspects(prev => [p, ...prev]); setShowAdd(false); }}
+          onSaved={p => {
+            setProspects(prev => [p, ...prev]);
+            setShowAdd(false);
+            setSelected(p); // Ouvre directement la fiche du nouveau prospect
+          }}
         />
       )}
       {selected && (
