@@ -48,7 +48,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (body.typePresta  !== undefined) patch.type_presta  = body.typePresta;
   if (body.adresse     !== undefined) patch.adresse      = body.adresse;
   if (body.budget      !== undefined) patch.budget       = body.budget;
-  if (body.source      !== undefined) patch.source       = body.source;
+  if (body.source        !== undefined) patch.source        = body.source;
+  if (body.relanceSteps  !== undefined) patch.relance_steps = Array.isArray(body.relanceSteps) ? body.relanceSteps.join(",") : "";
 
   const { error } = await supabase.from("prospects").update(patch).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

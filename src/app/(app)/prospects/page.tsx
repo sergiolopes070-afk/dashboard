@@ -29,6 +29,7 @@ interface Prospect {
   budget: string;
   statut: string;
   dateRelance: string;
+  relanceSteps: string[]; // étapes cochées : "j1", "j3", "j7"
   notes: string;
   commentaires: Commentaire[];
 }
@@ -233,7 +234,7 @@ function ProspectModal({
   onDeleted: (id: string) => void;
   onConverted: (id: string) => void;
 }) {
-  const [p, setP] = useState<Prospect>({ ...prospect, genre: prospect.genre ?? "" });
+  const [p, setP] = useState<Prospect>({ ...prospect, genre: prospect.genre ?? "", relanceSteps: prospect.relanceSteps ?? [] });
   const [commentText, setCommentText] = useState("");
   const [addingComment, setAddingComment] = useState(false);
   const [saving, setSaving]         = useState(false);
@@ -387,6 +388,61 @@ function ProspectModal({
               </div>
             )}
           </div>
+
+          {/* Étapes de relance cochables */}
+          {(() => {
+            const STEPS = [
+              { key: "j1", label: "J+1 — Demain",      days: 1 },
+              { key: "j3", label: "J+3 — 3 jours",     days: 3 },
+              { key: "j7", label: "J+7 — 1 semaine",   days: 7 },
+            ];
+            const steps = p.relanceSteps || [];
+
+            function toggleStep(key: string) {
+              const next = steps.includes(key) ? steps.filter(s => s !== key) : [...steps, key];
+              // Auto-avance la relance à la prochaine étape non cochée
+              const nextStep = STEPS.find(s => !next.includes(s.key));
+              const updates: Record<string, unknown> = { relanceSteps: next };
+              if (nextStep && !steps.includes(key)) {
+                const d = new Date(); d.setDate(d.getDate() + nextStep.days);
+                updates.dateRelance = d.toISOString().split("T")[0];
+              }
+              patch(updates as Parameters<typeof patch>[0]);
+            }
+
+            return (
+              <div className="bg-white border border-gray-100 rounded-xl p-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                  <Bell size={12} className="text-orange-400" /> Suivi des contacts
+                </p>
+                <div className="space-y-2">
+                  {STEPS.map(({ key, label }) => {
+                    const done = steps.includes(key);
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => toggleStep(key)}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border text-sm transition-all ${
+                          done
+                            ? "bg-green-50 border-green-200 text-green-700"
+                            : "bg-gray-50 border-gray-200 text-gray-500 hover:border-orange-300 hover:bg-orange-50"
+                        }`}
+                      >
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                          done ? "bg-green-500 border-green-500" : "border-gray-300"
+                        }`}>
+                          {done && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        </div>
+                        <span className={`font-medium ${done ? "line-through opacity-60" : ""}`}>{label}</span>
+                        {done && <span className="ml-auto text-xs text-green-600 font-medium">Contacté ✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Date de relance */}
           <div className="bg-orange-50 border border-orange-100 rounded-xl p-3">

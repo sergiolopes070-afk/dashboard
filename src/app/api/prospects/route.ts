@@ -42,9 +42,10 @@ function rowToProspect(r: Record<string, any>) {
     adresse     : r.adresse     || "",
     budget      : r.budget      || "",
     statut      : r.statut      || "NOUVEAU",
-    dateRelance : r.date_relance || "",
-    notes       : r.notes       || "",
-    commentaires: Array.isArray(r.commentaires) ? r.commentaires : [],
+    dateRelance  : r.date_relance  || "",
+    relanceSteps : r.relance_steps ? String(r.relance_steps).split(",").filter(Boolean) : [],
+    notes        : r.notes        || "",
+    commentaires : Array.isArray(r.commentaires) ? r.commentaires : [],
   };
 }
 
