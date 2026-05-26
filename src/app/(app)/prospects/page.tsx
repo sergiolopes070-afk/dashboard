@@ -756,7 +756,8 @@ export default function ProspectsPage() {
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading]     = useState(true);
   const [search, setSearch]       = useState("");
-  const [filterStatut, setFilterStatut] = useState<string>("ACTIFS");
+  const [filterRelance, setFilterRelance] = useState<string>("urgent");
+  const [filterStatut,  setFilterStatut]  = useState<string>("ACTIFS");
   const [showAdd, setShowAdd]     = useState(false);
   const [selected, setSelected]   = useState<Prospect | null>(null);
 
@@ -769,27 +770,69 @@ export default function ProspectsPage() {
   }
   useEffect(() => { load(); }, []);
 
-  // ── Stats ──
-  const stats = useMemo(() => {
-    const now = new Date().toDateString();
-    return {
-      total    : prospects.length,
-      actifs   : prospects.filter(p => !["CONVERTI","PERDU"].includes(p.statut)).length,
-      convertis: prospects.filter(p => p.statut === "CONVERTI").length,
-      relances : prospects.filter(p => p.dateRelance && !["CONVERTI","PERDU"].includes(p.statut) && new Date(p.dateRelance) <= new Date(now)).length,
-    };
-  }, [prospects]);
+  // ── Dates de référence ──
+  const todayIso = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const in3Iso   = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().split("T")[0]; }, []);
+  const in7Iso   = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().split("T")[0]; }, []);
 
-  // ── Filtres ──
-  const filtered = useMemo(() => {
-    return prospects.filter(p => {
-      if (filterStatut === "ACTIFS" && ["CONVERTI","PERDU"].includes(p.statut)) return false;
+  // ── Compteurs pour badges ──
+  const counts = useMemo(() => {
+    const actifs = prospects.filter(p => !["CONVERTI","PERDU"].includes(p.statut));
+    return {
+      urgent : actifs.filter(p => p.dateRelance && p.dateRelance <= todayIso).length,
+      j3     : actifs.filter(p => p.dateRelance && p.dateRelance <= in3Iso).length,
+      j7     : actifs.filter(p => p.dateRelance && p.dateRelance <= in7Iso).length,
+      actifs : actifs.length,
+      total  : prospects.length,
+      convertis: prospects.filter(p => p.statut === "CONVERTI").length,
+    };
+  }, [prospects, todayIso, in3Iso, in7Iso]);
+
+  // ── Filtrage + tri ──
+  const sorted = useMemo(() => {
+    const actifs = !["ACTIFS","TOUS"].includes(filterRelance) || filterStatut === "ACTIFS";
+    const list = prospects.filter(p => {
+      // Filtre statut secondaire
       if (filterStatut !== "ACTIFS" && filterStatut !== "TOUS" && p.statut !== filterStatut) return false;
+      if (filterStatut === "ACTIFS" && ["CONVERTI","PERDU"].includes(p.statut)) return false;
+
+      // Filtre relance principal
+      if (filterRelance === "urgent") {
+        if (["CONVERTI","PERDU"].includes(p.statut)) return false;
+        return p.dateRelance && p.dateRelance <= todayIso;
+      }
+      if (filterRelance === "j3") {
+        if (["CONVERTI","PERDU"].includes(p.statut)) return false;
+        return p.dateRelance && p.dateRelance <= in3Iso;
+      }
+      if (filterRelance === "j7") {
+        if (["CONVERTI","PERDU"].includes(p.statut)) return false;
+        return p.dateRelance && p.dateRelance <= in7Iso;
+      }
+      if (filterRelance === "ACTIFS" || actifs) {
+        if (filterRelance === "ACTIFS" && ["CONVERTI","PERDU"].includes(p.statut)) return false;
+      }
+
+      // Filtre recherche
+      if (search) {
+        const q = search.toLowerCase();
+        return `${p.prenom} ${p.nom} ${p.tel} ${p.email} ${p.typePresta}`.toLowerCase().includes(q);
+      }
+      return true;
+    }).filter(p => {
       if (!search) return true;
       const q = search.toLowerCase();
       return `${p.prenom} ${p.nom} ${p.tel} ${p.email} ${p.typePresta}`.toLowerCase().includes(q);
     });
-  }, [prospects, filterStatut, search]);
+
+    // Tri : date relance croissante (sans date → en bas), puis date de création décroissante
+    return [...list].sort((a, b) => {
+      if (!a.dateRelance && !b.dateRelance) return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      if (!a.dateRelance) return 1;
+      if (!b.dateRelance) return -1;
+      return a.dateRelance.localeCompare(b.dateRelance);
+    });
+  }, [prospects, filterRelance, filterStatut, search, todayIso, in3Iso, in7Iso]);
 
   // ── Mutations ──
   function handleUpdated(update: Partial<Prospect> & { id: string }) {
@@ -803,6 +846,14 @@ export default function ProspectsPage() {
     setProspects(prev => prev.map(p => p.id === id ? { ...p, statut: "CONVERTI" } : p));
   }
 
+  const RELANCE_FILTERS = [
+    { key: "urgent", label: "🔴 Aujourd'hui",    count: counts.urgent,   activeClass: "bg-red-500 text-white",    inactiveClass: "bg-red-50 text-red-600 border-red-200"    },
+    { key: "j3",     label: "🟠 Dans 3 jours",   count: counts.j3,       activeClass: "bg-orange-500 text-white", inactiveClass: "bg-orange-50 text-orange-600 border-orange-200" },
+    { key: "j7",     label: "🟡 Cette semaine",  count: counts.j7,       activeClass: "bg-amber-500 text-white",  inactiveClass: "bg-amber-50 text-amber-600 border-amber-200"  },
+    { key: "ACTIFS", label: "📋 Tous les actifs",count: counts.actifs,   activeClass: "bg-blue-600 text-white",   inactiveClass: "bg-gray-100 text-gray-600 border-gray-200"    },
+    { key: "TOUS",   label: "Tous",              count: counts.total,    activeClass: "bg-gray-700 text-white",   inactiveClass: "bg-gray-100 text-gray-600 border-gray-200"    },
+  ];
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       <Topbar
@@ -810,7 +861,7 @@ export default function ProspectsPage() {
         subtitle="Suivi et relance des contacts entrants"
         onRefresh={load}
         loading={loading}
-        alerts={stats.relances}
+        alerts={counts.urgent}
         action={
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors">
@@ -822,130 +873,96 @@ export default function ProspectsPage() {
 
       <div className="flex-1 p-3 sm:p-6 space-y-4">
 
-        {/* ── À relancer aujourd'hui ── */}
-        {(() => {
-          const today = new Date().toDateString();
-          const aRelancer = prospects.filter(p =>
-            p.dateRelance &&
-            !["CONVERTI","PERDU"].includes(p.statut) &&
-            new Date(p.dateRelance) <= new Date(today)
-          );
-          if (!aRelancer.length) return null;
-          return (
-            <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Bell size={16} className="text-orange-500" />
-                <h3 className="font-semibold text-orange-800 text-sm">
-                  À relancer aujourd'hui · {aRelancer.length} contact{aRelancer.length > 1 ? "s" : ""}
-                </h3>
-              </div>
-              <div className="space-y-2">
-                {aRelancer.map(p => {
-                  const overdue = isOverdue(p.dateRelance);
-                  return (
-                    <div key={p.id} className="bg-white rounded-xl border border-orange-100 px-3 py-2.5 flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
-                        {p.prenom[0]?.toUpperCase()}{p.nom[0]?.toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 truncate">{p.prenom} {p.nom}</p>
-                        <p className="text-xs text-gray-500 truncate">{p.typePresta || p.source || "—"}</p>
-                      </div>
-                      {overdue && <span className="text-xs text-red-500 font-semibold shrink-0">En retard</span>}
-                      <div className="flex gap-1.5 shrink-0">
-                        {p.tel && (
-                          <a
-                            href={`https://wa.me/${p.tel.replace(/\s/g,"").replace(/^0/,"33")}`}
-                            target="_blank" rel="noopener noreferrer"
-                            onClick={e => e.stopPropagation()}
-                            className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition-colors"
-                            title="WhatsApp"
-                          >
-                            <Phone size={13} />
-                          </a>
-                        )}
-                        <button
-                          onClick={() => setSelected(p)}
-                          className="p-1.5 rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors text-xs font-medium px-2"
-                        >
-                          Ouvrir
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── Stat cards ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* ── Stat cards compactes ── */}
+        <div className="grid grid-cols-4 gap-2">
           {[
-            { label: "Total prospects", val: stats.total,     icon: Users,       color: "text-blue-600",   bg: "bg-blue-50"   },
-            { label: "Actifs",          val: stats.actifs,    icon: Clock,       color: "text-amber-600",  bg: "bg-amber-50"  },
-            { label: "À relancer",      val: stats.relances,  icon: Bell,        color: "text-orange-600", bg: "bg-orange-50" },
-            { label: "Convertis",       val: stats.convertis, icon: TrendingUp,  color: "text-green-600",  bg: "bg-green-50"  },
-          ].map(({ label, val, icon: Icon, color, bg }) => (
-            <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center shrink-0`}>
-                <Icon size={18} className={color} />
+            { label: "Actifs",    val: counts.actifs,    color: "text-blue-600",   bg: "bg-blue-50",   icon: Clock       },
+            { label: "À rappeler",val: counts.urgent,    color: "text-red-600",    bg: "bg-red-50",    icon: Bell        },
+            { label: "Convertis", val: counts.convertis, color: "text-green-600",  bg: "bg-green-50",  icon: TrendingUp  },
+            { label: "Total",     val: counts.total,     color: "text-gray-600",   bg: "bg-gray-100",  icon: Users       },
+          ].map(({ label, val, color, bg, icon: Icon }) => (
+            <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 flex flex-col items-center gap-1">
+              <div className={`w-8 h-8 rounded-xl ${bg} flex items-center justify-center`}>
+                <Icon size={15} className={color} />
               </div>
-              <div>
-                <p className="text-xl font-bold text-gray-900">{val}</p>
-                <p className="text-xs text-gray-500">{label}</p>
-              </div>
+              <p className="text-lg font-bold text-gray-900 leading-none">{val}</p>
+              <p className="text-[10px] text-gray-400 text-center leading-tight">{label}</p>
             </div>
           ))}
         </div>
 
-        {/* ── Barre filtres ── */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Rechercher un prospect…"
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400"
-            />
-          </div>
-          <div className="flex gap-1 flex-wrap">
-            {[
-              { key: "ACTIFS", label: "Actifs" },
-              { key: "NOUVEAU", label: "Nouveaux" },
-              { key: "CONTACTÉ", label: "Contactés" },
-              { key: "RELANCÉ", label: "Relancés" },
-              { key: "CONVERTI", label: "Convertis" },
-              { key: "PERDU", label: "Perdus" },
-              { key: "TOUS", label: "Tous" },
-            ].map(f => (
-              <button key={f.key} onClick={() => setFilterStatut(f.key)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  filterStatut === f.key ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+        {/* ── Filtres relance (principal) ── */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 space-y-3">
+          <div className="flex gap-1.5 flex-wrap">
+            {RELANCE_FILTERS.map(f => (
+              <button key={f.key} onClick={() => setFilterRelance(f.key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                  filterRelance === f.key ? f.activeClass : f.inactiveClass + " hover:opacity-80"
                 }`}>
                 {f.label}
+                {f.count > 0 && (
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    filterRelance === f.key ? "bg-white/30" : "bg-white border border-current"
+                  }`}>
+                    {f.count}
+                  </span>
+                )}
               </button>
             ))}
           </div>
+
+          {/* Filtres statut secondaires + recherche */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Rechercher…"
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+            </div>
+            <div className="flex gap-1 flex-wrap">
+              {[
+                { key: "ACTIFS",   label: "Actifs"    },
+                { key: "NOUVEAU",  label: "Nouveaux"  },
+                { key: "CONTACTÉ", label: "Contactés" },
+                { key: "RELANCÉ",  label: "Relancés"  },
+                { key: "CONVERTI", label: "Convertis" },
+                { key: "PERDU",    label: "Perdus"    },
+                { key: "TOUS",     label: "Tous"      },
+              ].map(f => (
+                <button key={f.key} onClick={() => setFilterStatut(f.key)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                    filterStatut === f.key ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                  }`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {/* ── Liste des prospects ── */}
+        {/* ── Liste triée par urgence ── */}
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 size={24} className="animate-spin text-blue-400" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : sorted.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
             <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Users size={24} className="text-gray-400" />
+              <Bell size={24} className="text-gray-300" />
             </div>
-            <p className="text-gray-500 font-medium">Aucun prospect trouvé</p>
-            <p className="text-sm text-gray-400 mt-1">Ajoutez votre premier prospect en cliquant sur le bouton en haut à droite.</p>
+            <p className="text-gray-500 font-medium">
+              {filterRelance === "urgent" ? "Aucun prospect à rappeler aujourd'hui 🎉" : "Aucun prospect trouvé"}
+            </p>
+            <p className="text-sm text-gray-400 mt-1">
+              {filterRelance === "urgent" ? "Tu es à jour !" : "Essaie un autre filtre."}
+            </p>
           </div>
         ) : (
           <div className="space-y-2">
-            {filtered.map(p => {
+            {sorted.map(p => {
               const relance = relanceLabel(p.dateRelance);
               const isOverdueFlag = p.dateRelance ? isOverdue(p.dateRelance) : false;
               const isTodayFlag   = p.dateRelance ? isDueToday(p.dateRelance) : false;
