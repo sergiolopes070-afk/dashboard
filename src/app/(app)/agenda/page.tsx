@@ -652,6 +652,8 @@ export default function AgendaPage() {
   const [editCp,     setEditCp]     = useState("");
   const [editVille,  setEditVille]  = useState("");
   const [paymentSaving, setPaymentSaving] = useState(false);
+  const [cancelConfirm, setCancelConfirm] = useState(false);
+  const [cancelling,    setCancelling]    = useState(false);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const loadData = () => {
@@ -826,6 +828,23 @@ export default function AgendaPage() {
       alert(`Erreur lors de la sauvegarde : ${msg}`);
     } finally {
       setEditSaving(false);
+    }
+  }
+
+  // ── Annulation rapide (sans motif, sans modal) ───────────────────────────
+  async function quickCancel(evRow: string) {
+    setCancelling(true);
+    try {
+      await fetch("/api/archive", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: evRow, reason: "Annulation client", modePaiement: "" }),
+      });
+      setSelectedEvent(null);
+      setCancelConfirm(false);
+      loadData();
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -1270,7 +1289,7 @@ export default function AgendaPage() {
       {/* ── Modal détail event ───────────────────────────────────────────── */}
       {selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={() => setSelectedEvent(null)}>
+          onClick={() => { setSelectedEvent(null); setCancelConfirm(false); }}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-5 max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}>
             {(() => {
@@ -1315,7 +1334,7 @@ export default function AgendaPage() {
                               className="text-xs text-blue-500 hover:text-blue-700 font-semibold"
                             >✏️ Modifier</button>
                       )}
-                      <button onClick={() => { setSelectedEvent(null); setEditMode(false); }}
+                      <button onClick={() => { setSelectedEvent(null); setEditMode(false); setCancelConfirm(false); }}
                         className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
                     </div>
                   </div>
@@ -1503,6 +1522,35 @@ export default function AgendaPage() {
                   )}
                   {!editMode && <div className="mt-4 flex flex-col gap-2">
                     {!isArchived && (<>
+                      {/* ── Annulation rapide ── */}
+                      {!cancelConfirm ? (
+                        <button
+                          onClick={() => setCancelConfirm(true)}
+                          className="w-full py-2 rounded-xl border border-red-200 text-red-500 text-sm font-medium hover:bg-red-50 transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          ❌ Annuler ce RDV
+                        </button>
+                      ) : (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-2">
+                          <p className="text-xs text-red-700 font-medium text-center">Confirmer l&apos;annulation ?</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setCancelConfirm(false)}
+                              className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                            >
+                              Retour
+                            </button>
+                            <button
+                              onClick={() => quickCancel(ev.row)}
+                              disabled={cancelling}
+                              className="flex-1 py-1.5 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors"
+                            >
+                              {cancelling ? "Annulation…" : "Oui, annuler"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <button
                         onClick={() => {
                           setRescheduleEv(ev);
