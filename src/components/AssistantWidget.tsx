@@ -1,10 +1,11 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { X, Send, Loader2, Bot, ChevronDown } from "lucide-react";
+import { X, Send, Loader2, Bot, ChevronDown, Wrench } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
+  toolName?: string; // nom de l'outil en cours d'exécution
 }
 
 const SUGGESTIONS = [
@@ -13,6 +14,16 @@ const SUGGESTIONS = [
   "Quel est mon CA ce mois-ci ?",
   "Rédige un message de relance WhatsApp",
 ];
+
+const TOOL_LABELS: Record<string, string> = {
+  get_prospects:      "📋 Chargement des prospects…",
+  get_prestations:    "📅 Chargement de l'agenda…",
+  update_prospect:    "✏️ Mise à jour du prospect…",
+  add_note_prospect:  "📝 Ajout de la note…",
+  update_prestation:  "🔄 Mise à jour de la prestation…",
+  find_nearest_rdv:   "📍 Calcul des distances…",
+  calculate_route:    "🗺️ Calcul de l'itinéraire…",
+};
 
 export default function AssistantWidget() {
   const [open, setOpen]         = useState(false);
@@ -75,15 +86,43 @@ export default function AssistantWidget() {
           const data = line.slice(6);
           if (data === "[DONE]") break;
           try {
-            const { text } = JSON.parse(data);
-            setMessages(prev => {
-              const updated = [...prev];
-              updated[updated.length - 1] = {
-                role: "assistant",
-                content: updated[updated.length - 1].content + text,
-              };
-              return updated;
-            });
+            const evt = JSON.parse(data);
+
+            if (evt.type === "tool") {
+              // Affiche une bulle outil temporaire
+              const toolLabel = TOOL_LABELS[evt.name] ?? `🔧 ${evt.name}`;
+              setMessages(prev => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                // Si la dernière bulle est déjà vide (placeholder), on y met le toolName
+                if (last.role === "assistant" && !last.content) {
+                  updated[updated.length - 1] = { ...last, toolName: evt.name, content: "" };
+                } else {
+                  // Sinon on ajoute une nouvelle bulle outil
+                  updated.push({ role: "assistant", content: "", toolName: evt.name });
+                }
+                void toolLabel; // avoid unused warning
+                return updated;
+              });
+            } else if (evt.type === "text" && evt.text) {
+              setMessages(prev => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                // Si la dernière bulle était un outil, on la remplace par du texte
+                if (last.role === "assistant" && last.toolName) {
+                  updated[updated.length - 1] = { role: "assistant", content: evt.text };
+                } else {
+                  updated[updated.length - 1] = {
+                    role: "assistant",
+                    content: last.content + evt.text,
+                  };
+                }
+                return updated;
+              });
+            } else if (evt.type === "done") {
+              // Nettoyage : retire les bulles outil vides qui n'ont pas eu de texte
+              setMessages(prev => prev.filter(m => !(m.role === "assistant" && !m.content && m.toolName)));
+            }
           } catch { /* ignore */ }
         }
       }
@@ -150,19 +189,30 @@ export default function AssistantWidget() {
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 {m.role === "assistant" && (
-                  <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center shrink-0 mr-2 mt-1">
-                    <Bot size={12} className="text-blue-600" />
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mr-2 mt-1 ${m.toolName ? "bg-amber-100" : "bg-blue-100"}`}>
+                    {m.toolName
+                      ? <Wrench size={11} className="text-amber-600" />
+                      : <Bot size={12} className="text-blue-600" />
+                    }
                   </div>
                 )}
                 <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
                   m.role === "user"
                     ? "bg-blue-600 text-white rounded-br-sm"
-                    : "bg-gray-100 text-gray-800 rounded-bl-sm"
+                    : m.toolName
+                      ? "bg-amber-50 text-amber-700 border border-amber-100 rounded-bl-sm"
+                      : "bg-gray-100 text-gray-800 rounded-bl-sm"
                 }`}>
-                  {m.content
-                    ? formatMessage(m.content)
-                    : <Loader2 size={14} className="animate-spin text-gray-400" />
-                  }
+                  {m.toolName && !m.content ? (
+                    <span className="flex items-center gap-1.5">
+                      <Loader2 size={12} className="animate-spin shrink-0" />
+                      {TOOL_LABELS[m.toolName] ?? `🔧 ${m.toolName}…`}
+                    </span>
+                  ) : m.content ? (
+                    formatMessage(m.content)
+                  ) : (
+                    <Loader2 size={14} className="animate-spin text-gray-400" />
+                  )}
                 </div>
               </div>
             ))}
