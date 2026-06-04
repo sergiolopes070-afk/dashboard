@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { getPrestations, getArchive, updatePrestation } from "@/lib/sheets";
+import { getPrestations, updatePrestation } from "@/lib/sheets";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
