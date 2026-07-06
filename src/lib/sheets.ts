@@ -58,6 +58,7 @@ function rowToPrestation(row: Record<string, any>): Prestation {
     updatedAt        : (row.updated_at as string) || "",
     stripePaymentUrl : (row.stripe_payment_url as string) || "",
     modePaiement     : ((row.mode_paiement as string) || "") as ModePaiement,
+    clientNotes      : Array.isArray(client.notes) ? client.notes : [],
   };
 }
 
@@ -347,6 +348,13 @@ export async function deletePrestataire(id: string): Promise<void> {
 export async function updateClientTags(clientId: string, tags: string[]): Promise<void> {
   if (!supabase) return;
   const { error } = await supabase.from("clients").update({ tags }).eq("id", clientId);
+  if (error) throw new Error(error.message);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function updateClientNotes(clientId: string, notes: any[]): Promise<void> {
+  if (!supabase) return;
+  const { error } = await supabase.from("clients").update({ notes }).eq("id", clientId);
   if (error) throw new Error(error.message);
 }
 

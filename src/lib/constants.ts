@@ -42,6 +42,13 @@ export const MODE_PAIEMENT_ICONS: Record<string, string> = {
   "Carte sur place"  : "💳",
 };
 
+export interface ClientNote {
+  id: string;
+  date: string;   // ISO
+  texte: string;
+  type?: string;  // 📞 appel, 💬 message, 📧 email, 📄 devis, 🤝 visite…
+}
+
 export interface Prestation {
   row: string; // UUID (prestation id)
   clientId: string; // UUID (client id)
@@ -71,6 +78,7 @@ export interface Prestation {
   commission: string;        // valeur (ex: "20" = 20% ou 20€)
   commissionType: "%" | "€"; // type de commission
   modePaiement?: ModePaiement; // mode de paiement choisi
+  clientNotes?: ClientNote[];  // journal de suivi du client (actions menées)
   archiveReason?: string;    // raison de l'archivage (annulation, etc.)
   tags?: string[];           // tags du client (Régulier, VIP, etc.)
   satisfaction?: number;     // note de satisfaction 1-5

@@ -8,7 +8,7 @@ import {
 import Topbar from "@/components/Topbar";
 import ClientModal from "@/components/ClientModal";
 import NewClientModal from "@/components/NewClientModal";
-import { Prestation, Prestataire, STATUT_COLORS } from "@/lib/constants";
+import { Prestation, Prestataire, ClientNote, STATUT_COLORS } from "@/lib/constants";
 
 const TAGS_PRESET = ["Régulier", "VIP", "Difficile", "Sensible", "Pro", "Fidèle"];
 const TAG_COLORS: Record<string, string> = {
@@ -31,7 +31,17 @@ interface Client {
   derniere: string;
   tags: string[];
   clientId: string;
+  notes: ClientNote[];
 }
+
+const NOTE_TYPES = [
+  { icon: "📞", label: "Appel" },
+  { icon: "💬", label: "Message" },
+  { icon: "📧", label: "Email" },
+  { icon: "📄", label: "Devis" },
+  { icon: "🤝", label: "Visite" },
+  { icon: "📌", label: "Note" },
+];
 
 function StatusBadge({ label }: { label: string }) {
   if (!label) return null;
@@ -59,6 +69,108 @@ function ConfirmBtns({ onConfirm, onCancel }: { onConfirm: () => void; onCancel:
         Annuler
       </button>
     </span>
+  );
+}
+
+function ClientJournal({
+  notes,
+  onAdd,
+  onDelete,
+}: {
+  notes: ClientNote[];
+  onAdd: (texte: string, type: string) => void;
+  onDelete: (noteId: string) => void;
+}) {
+  const [texte, setTexte] = useState("");
+  const [type, setType]   = useState(NOTE_TYPES[0].icon);
+  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+
+  const submit = () => {
+    if (!texte.trim()) return;
+    onAdd(texte, type);
+    setTexte("");
+  };
+
+  const fmtDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }) +
+      " · " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  return (
+    <div className="bg-blue-50/40 rounded-xl border border-blue-100 p-3">
+      <p className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+        <MessageCircle size={12} /> Journal de suivi
+      </p>
+
+      {/* Sélecteur de type */}
+      <div className="flex flex-wrap gap-1 mb-2">
+        {NOTE_TYPES.map(t => (
+          <button
+            key={t.icon}
+            onClick={() => setType(t.icon)}
+            className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+              type === t.icon
+                ? "bg-blue-600 text-white border-blue-600"
+                : "bg-white text-gray-500 border-gray-200 hover:border-blue-300"
+            }`}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Input d'ajout */}
+      <div className="flex gap-2 mb-3">
+        <input
+          type="text"
+          value={texte}
+          onChange={e => setTexte(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
+          placeholder="Action menée (ex: relance téléphonique, devis envoyé…)"
+          className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+        />
+        <button
+          onClick={submit}
+          disabled={!texte.trim()}
+          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40"
+        >
+          <Send size={14} />
+        </button>
+      </div>
+
+      {/* Liste */}
+      {notes.length === 0 ? (
+        <p className="text-xs text-gray-400 text-center py-2">
+          Aucune action enregistrée pour ce client
+        </p>
+      ) : (
+        <div className="space-y-1.5 max-h-56 overflow-y-auto">
+          {notes.map(n => (
+            <div key={n.id} className="group flex items-start gap-2 bg-white rounded-lg px-2.5 py-1.5 border border-gray-100">
+              <span className="text-sm shrink-0">{n.type || "📌"}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-800 break-words">{n.texte}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">{fmtDate(n.date)}</p>
+              </div>
+              {confirmDel === n.id ? (
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => { onDelete(n.id); setConfirmDel(null); }} className="text-red-600 text-xs font-semibold">Oui</button>
+                  <button onClick={() => setConfirmDel(null)} className="text-gray-400 text-xs">Non</button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmDel(n.id)}
+                  className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -313,6 +425,7 @@ export default function ClientsPage() {
           email: p.email, adresse: p.adresse,
           prestations: [], totalCA: 0, derniere: p.date,
           tags: p.tags ?? [], clientId: p.clientId,
+          notes: p.clientNotes ?? [],
         });
       }
       const c = map.get(key)!;
@@ -321,6 +434,8 @@ export default function ClientsPage() {
       if (p.date > c.derniere) c.derniere = p.date;
       // Merge tags from any prestation (they're all the same client)
       if (p.tags?.length && c.tags.length === 0) c.tags = p.tags;
+      // Merge notes from any prestation (they're all the same client)
+      if (p.clientNotes?.length && c.notes.length === 0) c.notes = p.clientNotes;
     }
     return Array.from(map.values()).sort((a, b) => b.prestations.length - a.prestations.length);
   }, [data]);
@@ -377,6 +492,33 @@ export default function ClientsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clientId: c.clientId, tags: next }),
     });
+  };
+
+  const persistNotes = async (c: Client, notes: ClientNote[]) => {
+    // Optimistic update sur toutes les prestations du client
+    setData(prev => prev.map(p =>
+      p.clientId === c.clientId ? { ...p, clientNotes: notes } : p
+    ));
+    await fetch("/api/clients", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: c.clientId, notes }),
+    });
+  };
+
+  const handleAddNote = (c: Client, texte: string, type: string) => {
+    if (!texte.trim() || !c.clientId) return;
+    const note: ClientNote = {
+      id: crypto.randomUUID(),
+      date: new Date().toISOString(),
+      texte: texte.trim(),
+      type,
+    };
+    persistNotes(c, [note, ...(c.notes ?? [])]);
+  };
+
+  const handleDeleteNote = (c: Client, noteId: string) => {
+    persistNotes(c, (c.notes ?? []).filter(n => n.id !== noteId));
   };
 
   const handleArchiveConfirm = async () => {
@@ -614,6 +756,12 @@ export default function ClientsPage() {
                           Devis disponible
                         </span>
                       )}
+                      {(c.notes?.length ?? 0) > 0 && (
+                        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
+                          <MessageCircle size={11} />
+                          {c.notes.length} suivi{c.notes.length > 1 ? "s" : ""}
+                        </span>
+                      )}
                       {c.derniere && (
                         <p className="text-xs text-gray-400">
                           Dernière intervention : {c.derniere}
@@ -656,9 +804,16 @@ export default function ClientsPage() {
                     )}
                   </button>
 
-                  {/* Détail des prestations */}
+                  {/* Détail des prestations + journal */}
                   {isExpanded && (
                     <div className="p-4 space-y-3 border-t border-gray-100 bg-white">
+                      {c.clientId && (
+                        <ClientJournal
+                          notes={c.notes ?? []}
+                          onAdd={(texte, type) => handleAddNote(c, texte, type)}
+                          onDelete={(noteId) => handleDeleteNote(c, noteId)}
+                        />
+                      )}
                       {c.prestations.length === 0 ? (
                         <p className="text-xs text-gray-400 text-center py-2">Aucune prestation</p>
                       ) : (

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { appendPrestation, updatePrestation, deleteClient, updateClientTags } from "@/lib/sheets";
+import { appendPrestation, updatePrestation, deleteClient, updateClientTags, updateClientNotes } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +81,11 @@ export async function PATCH(req: Request) {
     // Tags update: { clientId, tags }
     if (body.clientId && body.tags !== undefined) {
       await updateClientTags(body.clientId, body.tags);
+      return NextResponse.json({ success: true });
+    }
+    // Notes / journal de suivi update: { clientId, notes }
+    if (body.clientId && body.notes !== undefined) {
+      await updateClientNotes(body.clientId, body.notes);
       return NextResponse.json({ success: true });
     }
     // Client info update: { rows, updates }
