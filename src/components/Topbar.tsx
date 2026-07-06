@@ -14,10 +14,11 @@ interface TopbarProps {
 }
 
 interface SearchResult {
-  type: "client" | "prestation";
+  type: "client" | "prestation" | "prospect";
   label: string;
   sub: string;
   href: string;
+  status?: string | null;
 }
 
 function GlobalSearch() {
@@ -113,11 +114,13 @@ function GlobalSearch() {
                 className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0"
               >
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium mt-0.5 flex-shrink-0 ${
-                  r.type === "client" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
+                  r.type === "client"     ? "bg-blue-100 text-blue-700"
+                  : r.type === "prospect" ? "bg-orange-100 text-orange-700"
+                  : "bg-purple-100 text-purple-700"
                 }`}>
-                  {r.type === "client" ? "Client" : "Prestation"}
+                  {r.type === "client" ? "Client" : r.type === "prospect" ? "Prospect" : "RDV"}
                 </span>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-900">{r.label}</p>
                   <p className="text-xs text-gray-500">{r.sub}</p>
                 </div>
