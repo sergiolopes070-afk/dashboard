@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import { getPrestations, updatePrestation, deletePrestation } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   try {
     const data = await getPrestations();
     return NextResponse.json(data);
@@ -14,6 +17,8 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   try {
     const body = await req.json();
     const { row, updates } = body as {
@@ -33,6 +38,8 @@ export async function PUT(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   try {
     const { id } = await req.json() as { id: string };
     if (!id) return NextResponse.json({ error: "id requis" }, { status: 400 });

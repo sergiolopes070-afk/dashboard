@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { appendPrestation } from "@/lib/sheets";
 
@@ -6,6 +7,8 @@ export const dynamic = "force-dynamic";
 
 // ─── PATCH — mettre à jour un prospect ────────────────────────────────────────
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 500 });
   const { id } = params;
   const body = await req.json();
@@ -59,6 +62,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
 // ─── DELETE — supprimer un prospect ───────────────────────────────────────────
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 500 });
   const { error } = await supabase.from("prospects").delete().eq("id", params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -67,6 +72,8 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
 
 // ─── POST — convertir en client ───────────────────────────────────────────────
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 500 });
   const { id } = params;
   const body = await req.json();

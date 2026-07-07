@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import { getDepenses, createDepense } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   try {
     const data = await getDepenses();
     return NextResponse.json(data);
@@ -14,6 +17,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   try {
     const body = await req.json();
     await createDepense(body);

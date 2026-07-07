@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +51,8 @@ function rowToProspect(r: Record<string, any>) {
 }
 
 export async function GET() {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   if (!supabase) return NextResponse.json([]);
   const { data, error } = await supabase
     .from("prospects")
@@ -60,6 +63,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 500 });
   const body = await req.json();
   const { genre, prenom, nom, tel, email, source, typePresta, adresse, budget, notes } = body;

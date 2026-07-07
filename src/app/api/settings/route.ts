@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   const fromEnv: Record<string, string> = {};
   if (process.env.GMAIL_USER)             fromEnv.gmail_user             = process.env.GMAIL_USER;
   if (process.env.GMAIL_APP_PASSWORD)     fromEnv.gmail_app_password     = "***";
@@ -30,6 +33,8 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   if (!supabase) {
     return NextResponse.json({ error: "Supabase non configuré — ajoutez SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY dans .env.local" }, { status: 500 });
   }

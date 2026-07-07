@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import Anthropic from "@anthropic-ai/sdk";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: "ANTHROPIC_API_KEY non configurée" }, { status: 503 });
   }

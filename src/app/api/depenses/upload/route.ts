@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   try {
     if (!supabase) throw new Error("Supabase non configuré");
     const formData = await req.formData();

@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   const q = new URL(req.url).searchParams.get("q")?.trim() ?? "";
   if (!q || q.length < 2) return NextResponse.json([]);
   if (!supabase) return NextResponse.json([]);

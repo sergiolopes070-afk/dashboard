@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import Stripe from "stripe";
 import { supabase } from "@/lib/supabase";
 
@@ -21,6 +22,8 @@ async function getStripeKey(): Promise<string | null> {
 }
 
 export async function POST(req: NextRequest) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   try {
     const { prestationId, amount, description, clientName, clientEmail } =
       await req.json() as {

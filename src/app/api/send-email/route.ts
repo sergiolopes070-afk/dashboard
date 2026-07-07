@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import { supabase } from "@/lib/supabase";
@@ -152,6 +153,8 @@ function buildEmailHtml(data: {
 }
 
 export async function POST(req: Request) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   try {
     const body = await req.json();
     const { email, prenom, typePresta, quantite, adresse, date, heure, prix } = body;

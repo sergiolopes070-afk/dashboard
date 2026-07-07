@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
 import { appendPrestation, updatePrestation, deleteClient, updateClientTags, updateClientNotes } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 
 // POST : ajouter un nouveau client / prestation
 export async function POST(req: Request) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   try {
     const body = await req.json();
     const prestationId = await appendPrestation({
@@ -63,6 +66,8 @@ export async function POST(req: Request) {
 
 // DELETE : supprimer un client et toutes ses prestations
 export async function DELETE(req: Request) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   try {
     const { clientId } = await req.json() as { clientId: string };
     if (!clientId) return NextResponse.json({ error: "clientId requis" }, { status: 400 });
@@ -76,6 +81,8 @@ export async function DELETE(req: Request) {
 
 // PATCH : modifier les infos client ou les tags
 export async function PATCH(req: Request) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
   try {
     const body = await req.json();
     // Tags update: { clientId, tags }
