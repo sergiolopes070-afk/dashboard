@@ -6,6 +6,7 @@ import {
   MessageCircle, Send, AlertTriangle, Calendar, Trash2, Download, Archive, X, Star,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import { SkeletonCards } from "@/components/Skeleton";
 import ClientModal from "@/components/ClientModal";
 import NewClientModal from "@/components/NewClientModal";
 import { Prestation, Prestataire, ClientNote, STATUT_COLORS } from "@/lib/constants";
@@ -577,9 +578,7 @@ export default function ClientsPage() {
         </div>
 
         {loading && data.length === 0 ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-          </div>
+          <SkeletonCards count={6} />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((c) => {

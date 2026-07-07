@@ -6,6 +6,7 @@ import {
   Star, X, CheckCircle2, ExternalLink, Trash2, CreditCard, Filter,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import { SkeletonCards } from "@/components/Skeleton";
 import NewClientModal from "@/components/NewClientModal";
 import { Prestation, Prestataire } from "@/lib/constants";
 
@@ -689,9 +690,7 @@ export default function ArchivePage() {
 
         {/* Liste fiches */}
         {loading && data.length === 0 ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-10 h-10 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
-          </div>
+          <SkeletonCards count={6} />
         ) : filtered.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center text-gray-400">
             <Archive size={40} className="mx-auto mb-3 opacity-20" />

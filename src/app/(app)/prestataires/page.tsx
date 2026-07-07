@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Phone, Mail, Wrench, UserPlus, Pencil, Trash2, X, Save, Loader2, BarChart2, Euro, CheckCircle2, XCircle, CalendarOff } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import { SkeletonCards } from "@/components/Skeleton";
 import NewPrestataireModal from "@/components/NewPrestataireModal";
 import { Prestataire, Prestation } from "@/lib/constants";
 
@@ -253,9 +254,7 @@ export default function PrestatairesPage() {
         )}
 
         {loading && data.length === 0 ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-          </div>
+          <SkeletonCards count={6} />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {data.map((p) => {

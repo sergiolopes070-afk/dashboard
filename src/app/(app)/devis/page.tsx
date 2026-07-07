@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { FileText, ExternalLink, Search, Download, Plus, X, Trash2 } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import { SkeletonTable } from "@/components/Skeleton";
 import { Prestation } from "@/lib/constants";
 
 // ─── Modal de personnalisation ─────────────────────────────────────────────────
@@ -337,9 +338,7 @@ export default function DevisPage() {
 
         {/* Devis déjà générés */}
         {loading && data.length === 0 ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-          </div>
+          <SkeletonTable rows={6} cols={4} />
         ) : (
           <>
             {filtered.length > 0 && (

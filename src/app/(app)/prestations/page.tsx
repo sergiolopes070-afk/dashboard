@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Search, Filter, Archive, X, Download, Trash2, Loader2 } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import { Skeleton } from "@/components/Skeleton";
 import PrestationTable from "@/components/PrestationTable";
 import EditPrestationModal from "@/components/EditPrestationModal";
 import { Prestation, Prestataire } from "@/lib/constants";
@@ -166,8 +167,10 @@ export default function PrestationsPage() {
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           {loading && data.length === 0 ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+            <div className="space-y-3" aria-busy="true" aria-label="Chargement en cours">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-11 w-full" />
+              ))}
             </div>
           ) : (
             <PrestationTable

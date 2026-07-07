@@ -6,6 +6,7 @@ import {
   TrendingUp, BadgeEuro,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import { SkeletonList } from "@/components/Skeleton";
 import { Depense, Prestation, CATEGORIES_DEPENSES } from "@/lib/constants";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -630,9 +631,7 @@ export default function DepensesPage() {
 
         {/* Liste */}
         {loading ? (
-          <div className="flex justify-center py-16">
-            <div className="w-8 h-8 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
-          </div>
+          <SkeletonList count={6} />
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400">
             <Receipt size={40} className="mb-3 opacity-30" />

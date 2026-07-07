@@ -6,6 +6,7 @@ import {
   Users, TrendingUp, Clock, CheckCircle2, Pencil, Check,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import { SkeletonList } from "@/components/Skeleton";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -945,9 +946,7 @@ export default function ProspectsPage() {
 
         {/* ── Liste triée par urgence ── */}
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 size={24} className="animate-spin text-blue-400" />
-          </div>
+          <SkeletonList count={6} />
         ) : sorted.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
             <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
