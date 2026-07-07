@@ -182,6 +182,7 @@ function DepenseModal({ initial, onClose, onSave }: ModalProps) {
             <div className="col-span-2">
               <label className="block text-xs font-medium text-gray-600 mb-1">Libellé *</label>
               <input
+                autoFocus
                 value={nom} onChange={e => setNom(e.target.value)} required
                 placeholder="Ex: Abonnement Notion, Achat aspirateur…"
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
