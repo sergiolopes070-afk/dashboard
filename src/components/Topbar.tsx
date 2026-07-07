@@ -165,7 +165,7 @@ export default function Topbar({ title, subtitle, onRefresh, loading, alerts, ac
         {action}
         {alerts && alerts > 0 ? (
           <div className="relative">
-            <button className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
+            <button aria-label={`${alerts} alerte${alerts > 1 ? "s" : ""}`} className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
               <Bell size={18} />
             </button>
             <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
@@ -178,6 +178,7 @@ export default function Topbar({ title, subtitle, onRefresh, loading, alerts, ac
           <button
             onClick={handleRefresh}
             disabled={loading}
+            aria-label="Actualiser les données"
             className="flex items-center gap-2 px-2 py-2 sm:px-4 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
             <RefreshCw size={15} className={spinning || loading ? "animate-spin" : ""} />
