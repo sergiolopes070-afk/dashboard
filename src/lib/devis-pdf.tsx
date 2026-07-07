@@ -1,7 +1,7 @@
 import React from "react";
 import {
   Document, Page, Text, View, StyleSheet,
-  Svg, Circle, Line, Path, Rect, Text as SvgText,
+  Svg, Circle, Line, Path,
 } from "@react-pdf/renderer";
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -68,6 +68,153 @@ function computeTotaux(d: DevisData) {
   return { qty, mainHT, mainPU, suppHT, htTotal, tva, ttcTotal };
 }
 
+// États multiples : "Taches, Odeurs" → ["Taches", "Odeurs"]
+function parseEtats(etat?: string): string[] {
+  if (!etat) return [];
+  return etat.split(",").map(e => e.trim()).filter(Boolean);
+}
+
+// ─── Descriptions adaptatives par type de prestation ───────────────────────────
+interface PrestaStep { title: string; desc: string }
+interface PrestaTemplate {
+  steps: PrestaStep[];
+  duree: string;
+  sechage: string;
+  prepa: string;
+}
+
+const DEFAULT_TEMPLATE: PrestaTemplate = {
+  steps: [
+    { title: "Préparation", desc: "Inspection de la zone, protection des surfaces sensibles et préparation du matériel professionnel adapté." },
+    { title: "Traitement", desc: "Nettoyage en profondeur avec produits professionnels sélectionnés selon la nature des surfaces et le niveau de salissure." },
+    { title: "Finition & contrôle", desc: "Désinfection, contrôle qualité et vérification finale de l'ensemble de la prestation." },
+  ],
+  duree: "Variable selon la prestation",
+  sechage: "Selon la prestation",
+  prepa: "Libérer l'accès à la zone d'intervention",
+};
+
+const PRESTATION_TEMPLATES: { keywords: string[]; tpl: PrestaTemplate }[] = [
+  {
+    keywords: ["canapé", "canape", "fauteuil", "tissu", "salon"],
+    tpl: {
+      steps: [
+        { title: "Diagnostic & préparation", desc: "Inspection visuelle complète du tissu, identification des zones tachées et sources d'odeurs. Aspiration minutieuse — assise, dossier, accoudoirs et recoins." },
+        { title: "Traitement ciblé", desc: "Pré-traitement des taches avec détachant professionnel adapté à la nature du tissu. Nettoyage par extraction eau chaude (HWE) en profondeur. Traitement enzymatique neutralisant les odeurs à la source." },
+        { title: "Finition & protection", desc: "Désinfection complète, déodorisation et protection textile post-nettoyage. Séchage accéléré." },
+      ],
+      duree: "1h00 – 1h30", sechage: "2 à 3h — ventilation conseillée", prepa: "Libérer l'accès autour du canapé",
+    },
+  },
+  {
+    keywords: ["matelas", "literie", "sommier"],
+    tpl: {
+      steps: [
+        { title: "Diagnostic & aspiration", desc: "Inspection du matelas et aspiration profonde des acariens et poussières sur les deux faces." },
+        { title: "Traitement anti-acariens", desc: "Pré-traitement des taches, nettoyage par injection-extraction eau chaude, traitement anti-acariens et anti-bactérien." },
+        { title: "Désinfection & séchage", desc: "Désinfection vapeur, neutralisation des odeurs et séchage accéléré." },
+      ],
+      duree: "45 min – 1h par matelas", sechage: "3 à 4h — ventilation conseillée", prepa: "Retirer draps et protège-matelas",
+    },
+  },
+  {
+    keywords: ["tapis", "moquette", "carpette"],
+    tpl: {
+      steps: [
+        { title: "Diagnostic & dépoussiérage", desc: "Analyse de la nature des fibres, battage et aspiration en profondeur." },
+        { title: "Shampooing & extraction", desc: "Shampooing par injection-extraction, détachage ciblé et traitement des fibres." },
+        { title: "Séchage & finition", desc: "Brossage de relevage des fibres et séchage ventilé." },
+      ],
+      duree: "Variable selon la surface", sechage: "4 à 6h — ventilation conseillée", prepa: "Dégager le tapis et la zone autour",
+    },
+  },
+  {
+    keywords: ["vitre", "vitrerie", "fenêtre", "fenetre", "baie", "véranda", "veranda"],
+    tpl: {
+      steps: [
+        { title: "Préparation", desc: "Protection des rebords et encadrements, dépoussiérage des châssis et menuiseries." },
+        { title: "Nettoyage sans traces", desc: "Lavage à la raclette professionnelle avec produits sans traces, nettoyage des cadres, rebords et petits bois." },
+        { title: "Finition & contrôle", desc: "Contrôle anti-traces, essuyage des montants et vérification finale à la lumière." },
+      ],
+      duree: "Variable selon le nombre de vitres", sechage: "Immédiat", prepa: "Dégager l'accès aux fenêtres",
+    },
+  },
+  {
+    keywords: ["ménage", "menage", "nettoyage maison", "entretien", "récurrent", "recurrent"],
+    tpl: {
+      steps: [
+        { title: "Préparation", desc: "Aération, rangement de surface et protection des zones sensibles." },
+        { title: "Nettoyage complet", desc: "Dépoussiérage, nettoyage des sols, sanitaires et cuisine, désinfection des points de contact (poignées, interrupteurs)." },
+        { title: "Finition & contrôle", desc: "Contrôle qualité pièce par pièce et parfum d'ambiance." },
+      ],
+      duree: "Selon la surface", sechage: "—", prepa: "Dégager les surfaces à nettoyer",
+    },
+  },
+  {
+    keywords: ["repassage", "linge"],
+    tpl: {
+      steps: [
+        { title: "Tri du linge", desc: "Tri par type de textile et température de repassage adaptée." },
+        { title: "Repassage professionnel", desc: "Repassage soigné, pliage ou mise sur cintre selon la nature du vêtement." },
+        { title: "Finition & rangement", desc: "Rangement ordonné et contrôle qualité de chaque pièce." },
+      ],
+      duree: "Selon le volume", sechage: "—", prepa: "Fournir le linge propre et sec",
+    },
+  },
+  {
+    keywords: ["après travaux", "apres travaux", "chantier", "rénovation", "renovation", "fin de chantier"],
+    tpl: {
+      steps: [
+        { title: "Évacuation & dépoussiérage", desc: "Retrait des gravats de surface et dépoussiérage complet (murs, plafonds, sols)." },
+        { title: "Nettoyage en profondeur", desc: "Décapage des traces de peinture, plâtre et ciment, nettoyage des vitres et menuiseries." },
+        { title: "Finition & désinfection", desc: "Désinfection, nettoyage final des sols et contrôle qualité." },
+      ],
+      duree: "Selon la surface", sechage: "—", prepa: "Chantier terminé, accès dégagé",
+    },
+  },
+  {
+    keywords: ["bureau", "local", "professionnel", "commerce", "entreprise"],
+    tpl: {
+      steps: [
+        { title: "Préparation", desc: "Organisation des zones et protection du matériel bureautique." },
+        { title: "Entretien des espaces", desc: "Nettoyage des postes de travail, désinfection des points de contact, sols, sanitaires et espaces communs." },
+        { title: "Finition & contrôle", desc: "Vidage des corbeilles, contrôle qualité et parfum d'ambiance." },
+      ],
+      duree: "Selon la surface", sechage: "—", prepa: "Accès aux locaux",
+    },
+  },
+  {
+    keywords: ["véhicule", "vehicule", "voiture", "auto", "car", "intérieur voiture"],
+    tpl: {
+      steps: [
+        { title: "Extérieur", desc: "Prélavage, lavage de la carrosserie, des jantes et des vitres." },
+        { title: "Intérieur", desc: "Aspiration complète, nettoyage des plastiques et shampooing des sièges si nécessaire." },
+        { title: "Finition", desc: "Lustrage, protection et désodorisation de l'habitacle." },
+      ],
+      duree: "1h – 2h", sechage: "1h", prepa: "Vider les effets personnels du véhicule",
+    },
+  },
+  {
+    keywords: ["débarras", "debarras", "encombrant", "évacuation", "evacuation"],
+    tpl: {
+      steps: [
+        { title: "État des lieux", desc: "Évaluation du volume et tri des encombrants à évacuer." },
+        { title: "Enlèvement", desc: "Évacuation des encombrants et déchets vers les filières adaptées." },
+        { title: "Nettoyage", desc: "Nettoyage de la zone débarrassée." },
+      ],
+      duree: "Selon le volume", sechage: "—", prepa: "Indiquer les éléments à débarrasser",
+    },
+  },
+];
+
+function getTemplate(typePresta: string): PrestaTemplate {
+  const t = (typePresta || "").toLowerCase();
+  for (const { keywords, tpl } of PRESTATION_TEMPLATES) {
+    if (keywords.some(k => t.includes(k))) return tpl;
+  }
+  return DEFAULT_TEMPLATE;
+}
+
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   page: { fontFamily: "Helvetica", fontSize: 9, color: GRAY1, backgroundColor: WHITE, paddingBottom: 52 },
@@ -122,6 +269,14 @@ const s = StyleSheet.create({
   tdMain: { fontSize: 9, fontFamily: "Helvetica-Bold", color: GRAY1 },
   tdSub:  { fontSize: 8, color: GRAY2, lineHeight: 1.4 },
   tdNum:  { fontSize: 9, color: GRAY1, lineHeight: 1.5 },
+
+  // Étapes détaillées de la prestation
+  stepBlock:  { marginTop: 5 },
+  stepHeader: { flexDirection: "row", alignItems: "center", marginTop: 5, marginBottom: 1.5 },
+  stepBadge:  { width: 12, height: 12, borderRadius: 6, backgroundColor: ACCENT, alignItems: "center", justifyContent: "center", marginRight: 5 },
+  stepNum:    { fontSize: 7, fontFamily: "Helvetica-Bold", color: WHITE },
+  stepTitle:  { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: BRAND, textTransform: "uppercase" as const, letterSpacing: 0.4 },
+  stepDesc:   { fontSize: 8, color: GRAY2, lineHeight: 1.45, marginLeft: 17 },
 
   // État tag
   etatTag: { backgroundColor: ORANGE_LIGHT, borderRadius: 3, paddingHorizontal: 5, paddingVertical: 1.5, marginLeft: 6 },
@@ -190,34 +345,28 @@ const s = StyleSheet.create({
 // ─── Logo SVG ─────────────────────────────────────────────────────────────────
 function KinoucleanLogo() {
   const c = "#ffffff";
-  const sw = 2.2;
+  const sw = 2.4;
   return (
-    <View>
-      <Svg width={130} height={30} viewBox="0 0 390 80">
-        <Rect x="2" y="42" width="38" height="22" rx="4" stroke={c} strokeWidth={sw} fill="none" />
-        <Rect x="0" y="36" width="8" height="12" rx="3" stroke={c} strokeWidth={sw} fill="none" />
-        <Rect x="32" y="36" width="8" height="12" rx="3" stroke={c} strokeWidth={sw} fill="none" />
-        <Line x1="8" y1="64" x2="8" y2="70" stroke={c} strokeWidth={sw} />
-        <Line x1="32" y1="64" x2="32" y2="70" stroke={c} strokeWidth={sw} />
-        <Circle cx="52" cy="14" r="9" stroke={c} strokeWidth={sw} fill="none" />
-        <Line x1="52" y1="23" x2="49" y2="46" stroke={c} strokeWidth={sw} />
-        <Line x1="50" y1="33" x2="30" y2="42" stroke={c} strokeWidth={sw} />
-        <Rect x="20" y="39" width="14" height="7" rx="3" stroke={c} strokeWidth={1.8} fill="none" transform="rotate(15 27 42)" />
-        <Line x1="50" y1="33" x2="64" y2="40" stroke={c} strokeWidth={sw} />
-        <Line x1="49" y1="46" x2="40" y2="60" stroke={c} strokeWidth={sw} />
-        <Line x1="40" y1="60" x2="33" y2="66" stroke={c} strokeWidth={sw} />
-        <Line x1="33" y1="66" x2="46" y2="68" stroke={c} strokeWidth={sw} />
-        <Line x1="49" y1="46" x2="58" y2="58" stroke={c} strokeWidth={sw} />
-        <Line x1="58" y1="58" x2="66" y2="56" stroke={c} strokeWidth={sw} />
-        <Path d="M68 10 L69.5 6 L71 10 L75 11.5 L71 13 L69.5 17 L68 13 L64 11.5 Z" fill={ACCENT} />
-        <Path d="M14 28 L15.5 24 L17 28 L21 29.5 L17 31 L15.5 35 L14 31 L10 29.5 Z" fill={ACCENT} />
-        <SvgText x="85" y="56" style={{ fontSize: 46, fontFamily: "Helvetica-Bold", fill: c } as object}>
-          KinouClean
-        </SvgText>
-      </Svg>
-      <Text style={{ fontSize: 7, color: "rgba(255,255,255,0.55)", letterSpacing: 2.5, marginTop: 2 }}>
-        NETTOYAGE PROFESSIONNEL À DOMICILE
-      </Text>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+      {/* Icône seule (pas de texte dans le SVG pour éviter tout doublon) */}
+      <View style={{ width: 38, height: 38, borderRadius: 9, backgroundColor: "rgba(255,255,255,0.12)", alignItems: "center", justifyContent: "center" }}>
+        <Svg width={26} height={26} viewBox="0 0 80 80">
+          <Circle cx="40" cy="20" r="11" stroke={c} strokeWidth={sw} fill="none" />
+          <Line x1="40" y1="31" x2="40" y2="52" stroke={c} strokeWidth={sw} />
+          <Line x1="40" y1="38" x2="22" y2="46" stroke={c} strokeWidth={sw} />
+          <Line x1="40" y1="38" x2="58" y2="46" stroke={c} strokeWidth={sw} />
+          <Line x1="40" y1="52" x2="30" y2="68" stroke={c} strokeWidth={sw} />
+          <Line x1="40" y1="52" x2="50" y2="68" stroke={c} strokeWidth={sw} />
+          <Path d="M62 14 L63.5 9 L65 14 L70 15.5 L65 17 L63.5 22 L62 17 L57 15.5 Z" fill={ACCENT} />
+        </Svg>
+      </View>
+      {/* Wordmark en Text natif (rendu fiable, une seule fois) */}
+      <View>
+        <Text style={{ fontSize: 20, fontFamily: "Helvetica-Bold", color: c, letterSpacing: 0.3 }}>KinouClean</Text>
+        <Text style={{ fontSize: 6.5, color: "rgba(255,255,255,0.55)", letterSpacing: 2, marginTop: 2 }}>
+          NETTOYAGE PROFESSIONNEL À DOMICILE
+        </Text>
+      </View>
     </View>
   );
 }
@@ -303,8 +452,8 @@ export function DevisPDF({ d }: { d: DevisData }) {
               <Text style={s.infoVal}>{d.adresse || "À compléter"}</Text>
             </View>
             <View style={s.infoItem}>
-              <Text style={s.infoKey}>État</Text>
-              <Text style={s.infoVal}>{d.etat || "—"}</Text>
+              <Text style={s.infoKey}>État du bien</Text>
+              <Text style={s.infoVal}>{parseEtats(d.etat).join(" · ") || "—"}</Text>
             </View>
             <View style={s.infoItemLast}>
               <Text style={s.infoKey}>Avance Immédiate</Text>
@@ -337,22 +486,37 @@ export function DevisPDF({ d }: { d: DevisData }) {
             <Text style={[s.thText, s.cTotal]}>Total HT</Text>
           </View>
 
-          {/* Ligne prestation principale */}
+          {/* Ligne prestation principale — avec étapes détaillées adaptatives */}
           <View style={s.tableRow}>
             <View style={s.cDesc}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap" }}>
                 <Text style={s.tdMain}>{d.typePresta}</Text>
-                {d.etat ? (
-                  <View style={s.etatTag}>
-                    <Text style={s.etatText}>{d.etat}</Text>
+                {parseEtats(d.etat).map((e, i) => (
+                  <View key={i} style={s.etatTag}>
+                    <Text style={s.etatText}>{e}</Text>
                   </View>
-                ) : null}
+                ))}
               </View>
               {d.dateInter ? (
                 <Text style={[s.tdSub, { marginTop: 2 }]}>
                   Intervention : {d.dateInter}{d.heureInter ? ` à ${d.heureInter}` : ""}
                 </Text>
               ) : null}
+
+              {/* Étapes du protocole adaptées au type de prestation */}
+              <View style={s.stepBlock}>
+                {getTemplate(d.typePresta).steps.map((st, i) => (
+                  <View key={i}>
+                    <View style={s.stepHeader}>
+                      <View style={s.stepBadge}>
+                        <Text style={s.stepNum}>{i + 1}</Text>
+                      </View>
+                      <Text style={s.stepTitle}>{st.title}</Text>
+                    </View>
+                    <Text style={s.stepDesc}>{st.desc}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
             <Text style={[s.tdNum, s.cQty]}>{qty}</Text>
             <Text style={[s.tdNum, s.cPU]}>{fmt(mainPU)}</Text>
@@ -510,11 +674,11 @@ export function DevisPDF({ d }: { d: DevisData }) {
             <View style={s.condCol}>
               <Text style={s.condTitle}>Protocole</Text>
               <Text style={s.condKey}>Préparation</Text>
-              <Text style={s.condVal}>Libérer l&apos;accès à la zone d&apos;intervention</Text>
+              <Text style={s.condVal}>{getTemplate(d.typePresta).prepa}</Text>
               <Text style={s.condKey}>Durée estimée</Text>
-              <Text style={s.condVal}>Variable selon la prestation</Text>
+              <Text style={s.condVal}>{getTemplate(d.typePresta).duree}</Text>
               <Text style={s.condKey}>Séchage</Text>
-              <Text style={s.condVal}>2 à 3h selon la prestation — ventilation conseillée</Text>
+              <Text style={s.condVal}>{getTemplate(d.typePresta).sechage}</Text>
             </View>
             <View style={s.condCol}>
               <Text style={s.condTitle}>Agréments</Text>

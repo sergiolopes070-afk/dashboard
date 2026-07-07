@@ -7,13 +7,24 @@ import { Prestation } from "@/lib/constants";
 // ─── Modal de personnalisation ─────────────────────────────────────────────────
 interface LigneSupp { label: string; quantite: number; prixHT: number }
 interface DevisOptions {
-  etat:            string;
+  etats:           string[];
   avanceImmediate: boolean;
   creditImpot:     boolean;
   lignesSupp:      LigneSupp[];
 }
 
-const ETATS_SUGGESTS = ["Taches & Odeurs", "Taches sèches", "Odeurs seules", "État normal", "Très encrassé"];
+const ETATS_OPTIONS = [
+  "Rafraîchissement",
+  "Entretien régulier",
+  "Taches",
+  "Odeurs",
+  "Taches & Odeurs",
+  "Taches incrustées",
+  "Très encrassé",
+  "Désinfection",
+  "Anti-acariens",
+  "État normal",
+];
 
 function DevisCustomizeModal({
   presta,
@@ -23,11 +34,18 @@ function DevisCustomizeModal({
   onClose: () => void;
 }) {
   const [opts, setOpts] = useState<DevisOptions>({
-    etat: "",
+    etats: [],
     avanceImmediate: false,
     creditImpot: false,
     lignesSupp: [],
   });
+
+  function toggleEtat(e: string) {
+    setOpts(o => ({
+      ...o,
+      etats: o.etats.includes(e) ? o.etats.filter(x => x !== e) : [...o.etats, e],
+    }));
+  }
 
   function addLigne() {
     setOpts(o => ({ ...o, lignesSupp: [...o.lignesSupp, { label: "", quantite: 1, prixHT: 0 }] }));
@@ -48,7 +66,7 @@ function DevisCustomizeModal({
   function buildUrl(download = false) {
     const params = new URLSearchParams();
     if (download) params.set("download", "1");
-    if (opts.etat) params.set("etat", opts.etat);
+    if (opts.etats.length) params.set("etat", opts.etats.join(", "));
     if (opts.avanceImmediate) params.set("avance", "1");
     if (opts.creditImpot) params.set("credit", "1");
     const validSupp = opts.lignesSupp.filter(l => l.label.trim());
@@ -78,33 +96,34 @@ function DevisCustomizeModal({
 
         <div className="p-5 space-y-5">
 
-          {/* État du bien */}
+          {/* État du bien — multi-sélection */}
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">
-              État du bien (optionnel)
+              État du bien <span className="text-gray-300 normal-case font-normal">(plusieurs choix possibles)</span>
             </label>
-            <input
-              type="text"
-              value={opts.etat}
-              onChange={e => setOpts(o => ({ ...o, etat: e.target.value }))}
-              placeholder="ex: Taches & Odeurs"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 mb-2"
-            />
             <div className="flex flex-wrap gap-1.5">
-              {ETATS_SUGGESTS.map(e => (
-                <button
-                  key={e}
-                  onClick={() => setOpts(o => ({ ...o, etat: e }))}
-                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                    opts.etat === e
-                      ? "bg-orange-500 text-white border-orange-500"
-                      : "bg-orange-50 text-orange-700 border-orange-100 hover:bg-orange-100"
-                  }`}
-                >
-                  {e}
-                </button>
-              ))}
+              {ETATS_OPTIONS.map(e => {
+                const active = opts.etats.includes(e);
+                return (
+                  <button
+                    key={e}
+                    onClick={() => toggleEtat(e)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                      active
+                        ? "bg-orange-500 text-white border-orange-500"
+                        : "bg-orange-50 text-orange-700 border-orange-100 hover:bg-orange-100"
+                    }`}
+                  >
+                    {active ? "✓ " : ""}{e}
+                  </button>
+                );
+              })}
             </div>
+            {opts.etats.length > 0 && (
+              <p className="text-xs text-gray-400 mt-1.5">
+                Sélectionnés : {opts.etats.join(", ")}
+              </p>
+            )}
           </div>
 
           {/* Avantages fiscaux */}
