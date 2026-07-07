@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createSessionToken, sessionCookieOptions, SESSION_COOKIE } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   const { email, password } = await request.json();
@@ -21,14 +22,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Cookie = jeton signé (HMAC-SHA256) avec expiration intégrée dans la charge signée.
+  const token = await createSessionToken(secret);
   const response = NextResponse.json({ success: true });
-  response.cookies.set("auth_session", secret, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    // Pas de maxAge → cookie de session (expire à la fermeture du navigateur)
-  });
+  response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
 
   return response;
 }

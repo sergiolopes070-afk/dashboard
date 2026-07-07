@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SESSION_COOKIE, verifySessionToken, createSessionToken, sessionCookieOptions } from "@/lib/auth";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const session = request.cookies.get("auth_session")?.value;
+  const session = request.cookies.get(SESSION_COOKIE)?.value;
   const secret = process.env.AUTH_SECRET;
-
-  console.log("[MIDDLEWARE]", pathname, "| session:", session ? "EXISTS" : "NONE", "| secret:", secret ? "SET" : "NOT SET");
 
   // Laisser passer les assets statiques et les routes d'auth API
   if (
@@ -18,7 +17,8 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const isAuthenticated = session && secret && session === secret;
+  // Vérifie la signature HMAC + l'expiration du jeton.
+  const isAuthenticated = !!secret && await verifySessionToken(session, secret);
 
   // Pas connecté → rediriger vers /login
   if (!isAuthenticated && pathname !== "/login") {
@@ -30,7 +30,14 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  return NextResponse.next();
+  // Session glissante : ré-émettre un jeton frais à chaque requête active,
+  // pour ne pas déconnecter l'utilisateur en pleine session de travail.
+  const response = NextResponse.next();
+  if (isAuthenticated && secret) {
+    const fresh = await createSessionToken(secret);
+    response.cookies.set(SESSION_COOKIE, fresh, sessionCookieOptions());
+  }
+  return response;
 }
 
 export const config = {
