@@ -3,6 +3,16 @@ import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+// Échappe les données dynamiques avant injection dans le HTML (anti-XSS).
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function page(title: string, icon: string, color: string, message: string, detail: string) {
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -86,11 +96,11 @@ export async function GET(req: Request) {
   const heureStr    = (presta.heure_intervention || "").substring(0, 5) || "—";
 
   const detail = [
-    `👤 <strong>Client :</strong> ${client.prenom || ""} ${client.nom || ""}`,
-    `🧹 <strong>Prestation :</strong> ${presta.type_prestation || "—"}`,
-    `📍 <strong>Adresse :</strong> ${presta.adresse || "—"}`,
-    `📅 <strong>Date :</strong> ${dateStr} à ${heureStr}`,
-    `💶 <strong>Prix :</strong> ${presta.prix != null ? `${presta.prix} €` : "—"}`,
+    `👤 <strong>Client :</strong> ${escapeHtml(client.prenom || "")} ${escapeHtml(client.nom || "")}`,
+    `🧹 <strong>Prestation :</strong> ${escapeHtml(presta.type_prestation || "—")}`,
+    `📍 <strong>Adresse :</strong> ${escapeHtml(presta.adresse || "—")}`,
+    `📅 <strong>Date :</strong> ${escapeHtml(dateStr)} à ${escapeHtml(heureStr)}`,
+    `💶 <strong>Prix :</strong> ${presta.prix != null ? `${escapeHtml(String(presta.prix))} €` : "—"}`,
   ].join("<br/>");
 
   if (action === "accepter") {
@@ -111,7 +121,7 @@ export async function GET(req: Request) {
         "Mission acceptée ✅",
         "✅",
         "#22c55e",
-        `Merci <strong>${prestataire.nom || ""}!</strong> Vous avez accepté cette mission. La fiche client a été mise à jour automatiquement.`,
+        `Merci <strong>${escapeHtml(prestataire.nom || "")}!</strong> Vous avez accepté cette mission. La fiche client a été mise à jour automatiquement.`,
         detail,
       ),
       { headers: { "Content-Type": "text/html; charset=utf-8" } },
