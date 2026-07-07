@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { SkeletonList } from "@/components/Skeleton";
+import { useToast } from "@/components/Toast";
 import { Depense, Prestation, CATEGORIES_DEPENSES } from "@/lib/constants";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -290,6 +291,7 @@ function DepenseModal({ initial, onClose, onSave }: ModalProps) {
 type Preset = "semaine" | "mois" | "trimestre" | "annee" | "tout" | "custom";
 
 export default function DepensesPage() {
+  const toast = useToast();
   const [depenses,    setDepenses]    = useState<Depense[]>([]);
   const [prestations, setPrestations] = useState<Prestation[]>([]);
   const [loading,     setLoading]     = useState(true);
@@ -435,15 +437,33 @@ export default function DepensesPage() {
   const totalMensuel = depenses.filter(d => d.type === "mensuel").reduce((s, d) => s + d.montant, 0);
   const totalMois    = depenses.filter(d => d.date?.startsWith(currentMonth)).reduce((s, d) => s + d.montant, 0);
 
-  async function handleDelete(id: string) {
-    if (!confirm("Supprimer cette dépense ?")) return;
-    setDeleting(id);
-    try {
-      await fetch(`/api/depenses/${id}`, { method: "DELETE" });
-      setDepenses(prev => prev.filter(d => d.id !== id));
-    } finally {
-      setDeleting(null);
-    }
+  function handleDelete(id: string) {
+    const item = depenses.find(d => d.id === id);
+    if (!item) return;
+
+    // Suppression optimiste : retrait immédiat de l'UI + possibilité d'annuler.
+    setDepenses(prev => prev.filter(d => d.id !== id));
+    let undone = false;
+
+    toast.info("Dépense supprimée", {
+      action: {
+        label: "Annuler",
+        onClick: () => { undone = true; setDepenses(prev => [item, ...prev]); },
+      },
+      duration: 5000,
+    });
+
+    // Suppression réelle différée : si l'utilisateur annule, on ne supprime rien.
+    setTimeout(async () => {
+      if (undone) return;
+      try {
+        await fetch(`/api/depenses/${id}`, { method: "DELETE" });
+      } catch {
+        // Échec réseau → on restaure et on prévient.
+        setDepenses(prev => [item, ...prev]);
+        toast.error("Échec de la suppression, dépense restaurée");
+      }
+    }, 5200);
   }
 
   const cats = ["tous", ...Array.from(new Set(depenses.map(d => d.categorie)))];

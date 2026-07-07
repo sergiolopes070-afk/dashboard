@@ -2,6 +2,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, SlidersHorizontal, Download, CheckCircle2, MapPin, Loader2 } from "lucide-react";
 import { Prestation, Prestataire, StatutClient } from "@/lib/constants";
+import { useToast } from "@/components/Toast";
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const PALETTE = [
@@ -604,6 +605,7 @@ function QuickCreateModal({
 
 // ─── Page principale ──────────────────────────────────────────────────────────
 export default function AgendaPage() {
+  const toast = useToast();
   const [prestations,  setPrestations]  = useState<Prestation[]>([]);
   const [prestataires, setPrestataires] = useState<Prestataire[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -789,8 +791,9 @@ export default function AgendaPage() {
       setArchivePayment("");
       setArchiveComment("");
       loadData();
+      toast.success("Prestation archivée");
     } catch {
-      alert("Erreur lors de l'archivage. Réessayez.");
+      toast.error("Erreur lors de l'archivage. Réessayez.");
     } finally {
       setArchiving(false);
     }
@@ -823,9 +826,10 @@ export default function AgendaPage() {
       setSelectedEvent(updated);
       setEditMode(false);
       setEditCp(""); setEditVille("");
+      toast.success("Modifications enregistrées");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erreur inconnue";
-      alert(`Erreur lors de la sauvegarde : ${msg}`);
+      toast.error(`Erreur lors de la sauvegarde : ${msg}`);
     } finally {
       setEditSaving(false);
     }
