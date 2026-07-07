@@ -57,15 +57,22 @@ function fmt(n: number): string {
   return n.toFixed(2).replace(".", ",") + " €";
 }
 
+// Les prix saisis (prestation + services supp) sont des montants TTC.
+// On calcule le HT et la TVA à l'envers (TVA 20%) : HT = TTC / 1,2.
+const TVA_RATE = 0.2;
+const htFromTtc = (ttc: number) => ttc / (1 + TVA_RATE);
+
 function computeTotaux(d: DevisData) {
-  const qty    = parseInt(d.quantite) || 1;
-  const mainHT = parseFloat(d.prix) || 0;
-  const mainPU = qty > 1 ? mainHT / qty : mainHT;
-  const suppHT = (d.lignesSupp ?? []).reduce((s, l) => s + l.prixHT * l.quantite, 0);
-  const htTotal  = mainHT + suppHT;
-  const tva      = htTotal * 0.2;
-  const ttcTotal = htTotal + tva;
-  return { qty, mainHT, mainPU, suppHT, htTotal, tva, ttcTotal };
+  const qty     = parseInt(d.quantite) || 1;
+  const mainTTC = parseFloat(d.prix) || 0;                                             // prix presta = TTC
+  const suppTTC = (d.lignesSupp ?? []).reduce((s, l) => s + l.prixHT * l.quantite, 0); // services supp = TTC
+  const ttcTotal = mainTTC + suppTTC;
+  const htTotal  = htFromTtc(ttcTotal);
+  const tva      = ttcTotal - htTotal;
+  // Valeurs HT pour l'affichage des lignes du tableau
+  const mainHT   = htFromTtc(mainTTC);
+  const mainPU   = qty > 1 ? mainHT / qty : mainHT;
+  return { qty, mainTTC, mainHT, mainPU, suppTTC, htTotal, tva, ttcTotal };
 }
 
 // États multiples : "Taches, Odeurs" → ["Taches", "Odeurs"]
@@ -523,15 +530,15 @@ export function DevisPDF({ d }: { d: DevisData }) {
             <Text style={[s.tdNum, s.cTotal]}>{fmt(mainHT)}</Text>
           </View>
 
-          {/* Lignes supplémentaires */}
+          {/* Lignes supplémentaires (prix saisis en TTC → affichés en HT) */}
           {(d.lignesSupp ?? []).map((l, i) => (
             <View key={i} style={[s.tableRow, i % 2 === 0 ? s.tableRowAlt : {}]}>
               <View style={s.cDesc}>
                 <Text style={s.tdMain}>{l.label}</Text>
               </View>
               <Text style={[s.tdNum, s.cQty]}>{l.quantite}</Text>
-              <Text style={[s.tdNum, s.cPU]}>{fmt(l.prixHT)}</Text>
-              <Text style={[s.tdNum, s.cTotal]}>{fmt(l.prixHT * l.quantite)}</Text>
+              <Text style={[s.tdNum, s.cPU]}>{fmt(htFromTtc(l.prixHT))}</Text>
+              <Text style={[s.tdNum, s.cTotal]}>{fmt(htFromTtc(l.prixHT * l.quantite))}</Text>
             </View>
           ))}
 

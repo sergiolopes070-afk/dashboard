@@ -74,10 +74,12 @@ function DevisCustomizeModal({
     return `/api/devis/${presta.row}?${params.toString()}`;
   }
 
-  const mainHT    = parseFloat(presta.prix) || 0;
-  const suppHT    = opts.lignesSupp.reduce((s, l) => s + (l.prixHT || 0) * (l.quantite || 1), 0);
-  const totalHT   = mainHT + suppHT;
-  const totalTTC  = totalHT * 1.2;
+  // Les prix saisis sont des TTC. On calcule le HT à l'envers (TVA 20%).
+  const mainTTC   = parseFloat(presta.prix) || 0;
+  const suppTTC   = opts.lignesSupp.reduce((s, l) => s + (l.prixHT || 0) * (l.quantite || 1), 0);
+  const totalTTC  = mainTTC + suppTTC;
+  const totalHT   = totalTTC / 1.2;
+  const totalTVA  = totalTTC - totalHT;
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -203,10 +205,10 @@ function DevisCustomizeModal({
                         min={0}
                         step={0.01}
                         onChange={e => updateLigne(i, "prixHT", parseFloat(e.target.value) || 0)}
-                        className="w-20 bg-white border border-gray-200 rounded-lg pl-2 pr-5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300"
-                        title="Prix HT"
+                        className="w-24 bg-white border border-gray-200 rounded-lg pl-2 pr-7 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300"
+                        title="Prix TTC"
                       />
-                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">€HT</span>
+                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">€TTC</span>
                     </div>
                     <button onClick={() => removeLigne(i)} className="text-red-400 hover:text-red-600 transition-colors">
                       <Trash2 size={14} />
@@ -217,7 +219,7 @@ function DevisCustomizeModal({
             )}
           </div>
 
-          {/* Récap totaux */}
+          {/* Récap totaux (prix saisis = TTC) */}
           <div className="bg-gray-50 rounded-xl p-4 space-y-1.5">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Sous-total HT</span>
@@ -225,14 +227,15 @@ function DevisCustomizeModal({
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">TVA (20%)</span>
-              <span className="font-medium">{(totalHT * 0.2).toFixed(2)} €</span>
+              <span className="font-medium">{totalTVA.toFixed(2)} €</span>
             </div>
             <div className="flex justify-between text-sm font-bold text-gray-900 pt-1 border-t border-gray-200">
-              <span>Total TTC</span>
+              <span>Total TTC à payer</span>
               <span>{totalTTC.toFixed(2)} €</span>
             </div>
+            <p className="text-[11px] text-gray-400 pt-0.5">Le prix saisi est le montant TTC — le HT et la TVA sont calculés automatiquement.</p>
             {(opts.avanceImmediate || opts.creditImpot) && (
-              <div className="flex justify-between text-sm text-blue-600 font-semibold">
+              <div className="flex justify-between text-sm text-blue-600 font-semibold pt-1">
                 <span>Après avantage fiscal (50%)</span>
                 <span>{(totalTTC * 0.5).toFixed(2)} €</span>
               </div>
