@@ -72,15 +72,16 @@ function GlobalSearch() {
     <div ref={ref} className="relative">
       <button
         onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 50); }}
-        className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-400 hover:border-gray-300 transition-colors bg-white min-w-[200px]"
+        aria-label="Rechercher"
+        className="flex items-center gap-2 px-2 sm:px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-400 hover:border-gray-300 transition-colors bg-white sm:min-w-[200px]"
       >
         <Search size={14} />
-        <span>Rechercher…</span>
-        <span className="ml-auto text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono">/</span>
+        <span className="hidden sm:inline">Rechercher…</span>
+        <span className="hidden sm:inline ml-auto text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono">/</span>
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-2 w-screen max-w-sm sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
+        <div className="absolute top-full right-0 md:right-auto md:left-0 mt-2 w-[calc(100vw-2rem)] max-w-sm sm:w-96 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
             <Search size={15} className="text-gray-400" />
             <input
@@ -158,7 +159,7 @@ export default function Topbar({ title, subtitle, onRefresh, loading, alerts, ac
         <h1 className="text-base sm:text-xl font-bold text-gray-900 truncate">{title}</h1>
         {subtitle && <p className="text-xs sm:text-sm text-gray-400 mt-0.5 hidden sm:block">{subtitle}</p>}
       </div>
-      <div className="flex-1 hidden md:flex">
+      <div className="flex-1 flex justify-end md:justify-start">
         <GlobalSearch />
       </div>
       <div className="flex items-center gap-2 shrink-0">

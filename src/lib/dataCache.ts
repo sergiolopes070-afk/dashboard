@@ -25,6 +25,29 @@ export function cacheSet<T>(key: string, value: T): void {
 }
 
 // Clés de cache centralisées (évite les fautes de frappe).
+// Prefetch : réchauffe le cache (ex. au survol d'un lien) si pas déjà présent.
+// Ne relance pas un fetch déjà en cours. Silencieux en cas d'échec.
+const inflight = new Set<string>();
+export async function cachePrefetch(
+  key: string,
+  url: string,
+  transform?: (data: unknown) => unknown,
+): Promise<void> {
+  if (cacheHas(key) || inflight.has(key)) return;
+  inflight.add(key);
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      cacheSet(key, transform ? transform(data) : data);
+    }
+  } catch {
+    /* prefetch best-effort : on ignore les erreurs */
+  } finally {
+    inflight.delete(key);
+  }
+}
+
 export const CACHE_KEYS = {
   prestations : "prestations",
   prestataires: "prestataires",
