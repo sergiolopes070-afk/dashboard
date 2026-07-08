@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { SkeletonCards } from "@/components/Skeleton";
+import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import NewClientModal from "@/components/NewClientModal";
 import { Prestation, Prestataire } from "@/lib/constants";
 
@@ -489,9 +490,9 @@ function CarteArchive({ p, onClick, onDelete }: { p: Prestation; onClick: () => 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ArchivePage() {
-  const [data, setData]                 = useState<Prestation[]>([]);
-  const [prestataires, setPrestataires] = useState<Prestataire[]>([]);
-  const [loading, setLoading]           = useState(true);
+  const [data, setData]                 = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.archive) ?? []);
+  const [prestataires, setPrestataires] = useState<Prestataire[]>(() => cacheGet<Prestataire[]>(CACHE_KEYS.prestataires) ?? []);
+  const [loading, setLoading]           = useState(() => !cacheHas(CACHE_KEYS.archive));
   const [search, setSearch]             = useState("");
   const [filterPaiement, setFilterPaiement] = useState("");
   const [filterPeriode, setFilterPeriode]   = useState("");
@@ -518,8 +519,9 @@ export default function ArchivePage() {
       ]);
       if (!archiveRes.ok) throw new Error((await archiveRes.json()).error);
       const raw: Prestation[] = await archiveRes.json();
-      setData([...raw].reverse());
-      if (prestataireRes.ok) setPrestataires(await prestataireRes.json());
+      const reversed = [...raw].reverse();
+      setData(reversed); cacheSet(CACHE_KEYS.archive, reversed);
+      if (prestataireRes.ok) { const d = await prestataireRes.json(); setPrestataires(d); cacheSet(CACHE_KEYS.prestataires, d); }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur");
     } finally {

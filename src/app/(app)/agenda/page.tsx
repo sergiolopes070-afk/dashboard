@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, SlidersHorizontal, Download, CheckCircle2, MapPin, Loader2 } from "lucide-react";
 import { Prestation, Prestataire, StatutClient } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
+import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const PALETTE = [
@@ -606,9 +607,9 @@ function QuickCreateModal({
 // ─── Page principale ──────────────────────────────────────────────────────────
 export default function AgendaPage() {
   const toast = useToast();
-  const [prestations,  setPrestations]  = useState<Prestation[]>([]);
-  const [prestataires, setPrestataires] = useState<Prestataire[]>([]);
-  const [loading,      setLoading]      = useState(true);
+  const [prestations,  setPrestations]  = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.agenda) ?? []);
+  const [prestataires, setPrestataires] = useState<Prestataire[]>(() => cacheGet<Prestataire[]>(CACHE_KEYS.prestataires) ?? []);
+  const [loading,      setLoading]      = useState(() => !cacheHas(CACHE_KEYS.agenda));
   const [weekStart,    setWeekStart]    = useState<Date>(() => getMondayOfWeek(new Date()));
   const [monthDate,    setMonthDate]    = useState<Date>(() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; });
   const [viewMode,     setViewMode]     = useState<"week"|"month">("week");
@@ -668,8 +669,9 @@ export default function AgendaPage() {
       const archivedMarked = (Array.isArray(archived) ? archived : [])
         .map((p: Prestation) => ({ ...p, _archived: true }));
       const all = [...(Array.isArray(prestas) ? prestas : []), ...archivedMarked];
-      setPrestations(all);
-      setPrestataires(Array.isArray(prestas2) ? prestas2 : []);
+      setPrestations(all); cacheSet(CACHE_KEYS.agenda, all);
+      const prestataireList = Array.isArray(prestas2) ? prestas2 : [];
+      setPrestataires(prestataireList); cacheSet(CACHE_KEYS.prestataires, prestataireList);
       setChecked(prev => {
         const next = { ...prev };
         (Array.isArray(prestas2) ? prestas2 : []).forEach((p: Prestataire) => {

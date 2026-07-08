@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { SkeletonCards } from "@/components/Skeleton";
+import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import ClientModal from "@/components/ClientModal";
 import NewClientModal from "@/components/NewClientModal";
 import { Prestation, Prestataire, ClientNote, STATUT_COLORS } from "@/lib/constants";
@@ -385,9 +386,9 @@ function PrestationRow({
 }
 
 export default function ClientsPage() {
-  const [data, setData]               = useState<Prestation[]>([]);
-  const [prestataires, setPrestataires] = useState<Prestataire[]>([]);
-  const [loading, setLoading]         = useState(true);
+  const [data, setData]               = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.prestations) ?? []);
+  const [prestataires, setPrestataires] = useState<Prestataire[]>(() => cacheGet<Prestataire[]>(CACHE_KEYS.prestataires) ?? []);
+  const [loading, setLoading]         = useState(() => !cacheHas(CACHE_KEYS.prestations));
   const [search, setSearch]           = useState("");
   const [modal, setModal]             = useState<{ mode: "add" | "edit"; client?: Client } | null>(null);
   const [expanded, setExpanded]       = useState<Set<string>>(new Set());
@@ -406,8 +407,8 @@ export default function ClientsPage() {
         fetch(`/api/prestations?t=${Date.now()}`, { cache: "no-store" }),
         fetch("/api/prestataires"),
       ]);
-      if (resPres.ok) setData(await resPres.json());
-      if (resPresta.ok) setPrestataires(await resPresta.json());
+      if (resPres.ok) { const d = await resPres.json(); setData(d); cacheSet(CACHE_KEYS.prestations, d); }
+      if (resPresta.ok) { const d = await resPresta.json(); setPrestataires(d); cacheSet(CACHE_KEYS.prestataires, d); }
     } finally {
       setLoading(false);
     }

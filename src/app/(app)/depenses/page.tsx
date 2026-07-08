@@ -8,6 +8,7 @@ import {
 import Topbar from "@/components/Topbar";
 import { SkeletonList } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
+import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import { Depense, Prestation, CATEGORIES_DEPENSES } from "@/lib/constants";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -293,9 +294,9 @@ type Preset = "semaine" | "mois" | "trimestre" | "annee" | "tout" | "custom";
 
 export default function DepensesPage() {
   const toast = useToast();
-  const [depenses,    setDepenses]    = useState<Depense[]>([]);
-  const [prestations, setPrestations] = useState<Prestation[]>([]);
-  const [loading,     setLoading]     = useState(true);
+  const [depenses,    setDepenses]    = useState<Depense[]>(() => cacheGet<Depense[]>(CACHE_KEYS.depenses) ?? []);
+  const [prestations, setPrestations] = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.prestations) ?? []);
+  const [loading,     setLoading]     = useState(() => !cacheHas(CACHE_KEYS.depenses));
   const [error,       setError]       = useState<string | null>(null);
   const [modal,       setModal]       = useState<"new" | Depense | null>(null);
   const [filterType,  setFilterType]  = useState<"tous" | "ponctuel" | "mensuel">("tous");
@@ -327,8 +328,8 @@ export default function DepensesPage() {
       ]);
       if (!resD.ok) throw new Error((await resD.json()).error);
       if (!resP.ok) throw new Error((await resP.json()).error);
-      setDepenses(await resD.json());
-      setPrestations(await resP.json());
+      { const d = await resD.json(); setDepenses(d); cacheSet(CACHE_KEYS.depenses, d); }
+      { const d = await resP.json(); setPrestations(d); cacheSet(CACHE_KEYS.prestations, d); }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur inconnue");
     } finally {

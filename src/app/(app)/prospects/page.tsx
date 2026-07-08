@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { SkeletonList } from "@/components/Skeleton";
+import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -754,8 +755,8 @@ function ProspectModal({
 
 // ─── Page principale ───────────────────────────────────────────────────────────
 export default function ProspectsPage() {
-  const [prospects, setProspects] = useState<Prospect[]>([]);
-  const [loading, setLoading]     = useState(true);
+  const [prospects, setProspects] = useState<Prospect[]>(() => cacheGet<Prospect[]>(CACHE_KEYS.prospects) ?? []);
+  const [loading, setLoading]     = useState(() => !cacheHas(CACHE_KEYS.prospects));
   const [search, setSearch]       = useState("");
   const [filterRelance, setFilterRelance] = useState<string>("urgent");
   const [filterStatut,  setFilterStatut]  = useState<string>("ACTIFS");
@@ -766,7 +767,7 @@ export default function ProspectsPage() {
     setLoading(true);
     try {
       const res = await fetch("/api/prospects");
-      if (res.ok) setProspects(await res.json());
+      if (res.ok) { const d = await res.json(); setProspects(d); cacheSet(CACHE_KEYS.prospects, d); }
     } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, []);

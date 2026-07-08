@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { Phone, Mail, Wrench, UserPlus, Pencil, Trash2, X, Save, Loader2, BarChart2, Euro, CheckCircle2, XCircle, CalendarOff } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { SkeletonCards } from "@/components/Skeleton";
+import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import NewPrestataireModal from "@/components/NewPrestataireModal";
 import { Prestataire, Prestation } from "@/lib/constants";
 
@@ -103,10 +104,10 @@ function EditPrestataireModal({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PrestatairesPage() {
-  const [data, setData]             = useState<Prestataire[]>([]);
-  const [prestations, setPrestations] = useState<Prestation[]>([]);
-  const [archive, setArchive]       = useState<Prestation[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const [data, setData]             = useState<Prestataire[]>(() => cacheGet<Prestataire[]>(CACHE_KEYS.prestataires) ?? []);
+  const [prestations, setPrestations] = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.prestations) ?? []);
+  const [archive, setArchive]       = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.archive) ?? []);
+  const [loading, setLoading]       = useState(() => !cacheHas(CACHE_KEYS.prestataires));
   const [error, setError]           = useState<string | null>(null);
   const [showNew, setShowNew]       = useState(false);
   const [editing, setEditing]       = useState<Prestataire | null>(null);
@@ -126,9 +127,9 @@ export default function PrestatairesPage() {
       ]);
       if (!resPrest.ok) throw new Error((await resPrest.json()).error);
       const prestataireData: Prestataire[] = await resPrest.json();
-      setData(prestataireData);
-      if (resPrestations.ok) setPrestations(await resPrestations.json());
-      if (resArchive.ok) setArchive(await resArchive.json());
+      setData(prestataireData); cacheSet(CACHE_KEYS.prestataires, prestataireData);
+      if (resPrestations.ok) { const d = await resPrestations.json(); setPrestations(d); cacheSet(CACHE_KEYS.prestations, d); }
+      if (resArchive.ok) { const d = await resArchive.json(); setArchive(d); cacheSet(CACHE_KEYS.archive, d); }
       // Load stored dispos from localStorage
       const stored = localStorage.getItem("prestataires_dispos");
       if (stored) setDispos(JSON.parse(stored));

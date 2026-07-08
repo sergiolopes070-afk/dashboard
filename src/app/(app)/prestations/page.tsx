@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { Search, Filter, Archive, X, Download, Trash2, Loader2 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { Skeleton } from "@/components/Skeleton";
+import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import PrestationTable from "@/components/PrestationTable";
 import EditPrestationModal from "@/components/EditPrestationModal";
 import { Prestation, Prestataire } from "@/lib/constants";
@@ -10,9 +11,9 @@ import { Prestation, Prestataire } from "@/lib/constants";
 const STATUTS = ["Tous", "À affecter", "EMAIL ENVOYÉ", "CONFIRMÉ", "EN ATTENTE PRESTA", "PRESTATAIRE REFUSÉ – À RÉAFFECTER", "TERMINÉ", "ANNULÉ"];
 
 export default function PrestationsPage() {
-  const [data, setData]                   = useState<Prestation[]>([]);
-  const [prestataires, setPrestataires]   = useState<Prestataire[]>([]);
-  const [loading, setLoading]             = useState(true);
+  const [data, setData]                   = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.prestations) ?? []);
+  const [prestataires, setPrestataires]   = useState<Prestataire[]>(() => cacheGet<Prestataire[]>(CACHE_KEYS.prestataires) ?? []);
+  const [loading, setLoading]             = useState(() => !cacheHas(CACHE_KEYS.prestations));
   const [error, setError]                 = useState<string | null>(null);
   const [search, setSearch]               = useState("");
   const [statut, setStatut]               = useState("Tous");
@@ -33,8 +34,8 @@ export default function PrestationsPage() {
         fetch("/api/prestataires"),
       ]);
       if (!resPres.ok) throw new Error((await resPres.json()).error);
-      setData(await resPres.json());
-      if (resPresta.ok) setPrestataires(await resPresta.json());
+      { const d = await resPres.json(); setData(d); cacheSet(CACHE_KEYS.prestations, d); }
+      if (resPresta.ok) { const d = await resPresta.json(); setPrestataires(d); cacheSet(CACHE_KEYS.prestataires, d); }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur");
     } finally {
