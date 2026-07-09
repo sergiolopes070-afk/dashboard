@@ -28,8 +28,18 @@ function daysSince(value: string | null): number | null {
   return Math.floor((Date.now() - d.getTime()) / 86_400_000);
 }
 
+// Récupère le secret du cron, en tolérant une casse différente du nom de variable
+// (ex. "CrON_secret") — évite les blocages de config sur Vercel.
+function getCronSecret(): string | undefined {
+  if (process.env.CRON_SECRET) return process.env.CRON_SECRET;
+  for (const [k, v] of Object.entries(process.env)) {
+    if (/^cron_?secret$/i.test(k) && v) return v;
+  }
+  return undefined;
+}
+
 function authorize(req: Request): { ok: boolean; reason?: string } {
-  const secret = process.env.CRON_SECRET;
+  const secret = getCronSecret();
   if (!secret) return { ok: false, reason: "CRON_SECRET non configuré sur Vercel" };
   const auth = req.headers.get("authorization");
   const key  = new URL(req.url).searchParams.get("key");
