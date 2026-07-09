@@ -69,10 +69,13 @@ export async function GET(req: Request) {
     const email  = client.email || null;
     const prix   = parseFloat(p.prix);
 
-    // ── Relance devis : montant renseigné, pas encore répondu ──
+    // ── Relance devis : montant renseigné ET pas de date d'intervention ──
+    // Règle métier (validée) : un devis accepté = une date d'intervention posée.
+    // Donc "sans réponse / pas accepté" = montant renseigné + AUCUNE date.
     const devisExiste = !isNaN(prix) && prix > 0;
-    const repondu     = DONE_STATUTS.includes(p.statut) || p.statut === "ANNULÉ";
-    if (devisExiste && !repondu) {
+    const aUneDate    = !!(p.date_intervention && String(p.date_intervention).trim());
+    const clos        = DONE_STATUTS.includes(p.statut) || p.statut === "ANNULÉ";
+    if (devisExiste && !aUneDate && !clos) {
       const age = daysSince(p.created_at);
       if (age != null && RELANCE_JOURS.includes(age)) {
         relanceDevis.push({
