@@ -6,10 +6,11 @@ export async function middleware(request: NextRequest) {
   const session = request.cookies.get(SESSION_COOKIE)?.value;
   const secret = process.env.AUTH_SECRET;
 
-  // Laisser passer les assets statiques et les routes d'auth API
+  // Laisser passer les assets statiques et les routes publiques / à secret propre.
   if (
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/avis") ||
+    pathname.startsWith("/api/cron") ||        // cron : protégé par CRON_SECRET, pas par la session
     pathname.startsWith("/avis") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon")
