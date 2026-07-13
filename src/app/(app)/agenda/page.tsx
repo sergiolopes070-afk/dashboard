@@ -1599,11 +1599,12 @@ export default function AgendaPage() {
                         </a>
                       )}
 
-                      {/* ── WhatsApp prestataire ── */}
-                      {(() => {
+                      {/* ── WhatsApp prestataire : envoyer la mission (avec réponse directe) ── */}
+                      {ev.prestataire && (() => {
                         const prestataireObj = prestataires.find(p => p.nom === ev.prestataire);
-                        if (!prestataireObj?.tel) return null;
-                        const prestaTel = prestataireObj.tel.replace(/\s/g, "").replace(/^0/, "33");
+                        const baseUrl   = typeof window !== "undefined" ? window.location.origin : "";
+                        const acceptUrl = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=accepter`;
+                        const refusUrl  = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=refuser`;
                         const msg = encodeURIComponent(
                           `Bonjour ${ev.prestataire} 👋,\n\nUne mission vous a été proposée chez KinouClean :\n\n` +
                           `👤 Client : ${ev.prenom} ${ev.nom}\n` +
@@ -1614,8 +1615,20 @@ export default function AgendaPage() {
                           `💶 Prix : ${ev.prix && ev.prix !== "0" ? ev.prix + " €" : "À définir"}` +
                           (ev.message?.trim() ? `\n\n💬 Message client :\n${ev.message.trim()}` : "") +
                           (ev.commentaire?.trim() ? `\n\n📝 Note interne :\n${ev.commentaire.trim()}` : "") +
-                          `\n\nMerci 🙏`
+                          `\n\nMerci de répondre directement via ces liens :\n\n` +
+                          `✅ ACCEPTER la mission :\n${acceptUrl}\n\n` +
+                          `❌ REFUSER la mission :\n${refusUrl}\n\n` +
+                          `Votre réponse met à jour la fiche automatiquement 🙏`
                         );
+                        // Pas de numéro enregistré pour ce prestataire → on l'indique au lieu de masquer.
+                        if (!prestataireObj?.tel) {
+                          return (
+                            <div className="w-full py-2 rounded-xl border border-dashed border-gray-200 text-gray-400 text-xs text-center px-2">
+                              📱 Ajoute un n° à <span className="font-medium">{ev.prestataire}</span> (fiche Prestataires) pour lui envoyer la mission
+                            </div>
+                          );
+                        }
+                        const prestaTel = prestataireObj.tel.replace(/\s/g, "").replace(/^0/, "33");
                         return (
                           <a
                             href={`https://wa.me/${prestaTel}?text=${msg}`}
