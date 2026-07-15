@@ -64,6 +64,27 @@ function authorize(req: Request): { ok: boolean; reason?: string } {
   return { ok: false, reason: "Non autorisé" };
 }
 
+// ─── Suivi anti-doublon (stocké dans la table `settings` déjà existante) ──────
+// Aucun changement de structure de base n'est nécessaire : on garde l'état dans
+// une seule ligne settings (clé `emails_auto_etat`, valeur = JSON).
+//   { "<id prestation>": { relance: 0-3, avisEnvoye: bool, avisAnnule: bool } }
+const ETAT_KEY = "emails_auto_etat";
+type EtatPresta = { relance?: number; avisEnvoye?: boolean; avisAnnule?: boolean };
+type Etat = Record<string, EtatPresta>;
+
+async function lireEtat(): Promise<Etat> {
+  if (!supabase) return {};
+  const { data } = await supabase.from("settings").select("value").eq("key", ETAT_KEY).maybeSingle();
+  try { return data?.value ? (JSON.parse(data.value as string) as Etat) : {}; }
+  catch { return {}; }
+}
+
+async function ecrireEtat(etat: Etat): Promise<string | null> {
+  if (!supabase) return "Supabase non configuré";
+  const { error } = await supabase.from("settings").upsert({ key: ETAT_KEY, value: JSON.stringify(etat) }, { onConflict: "key" });
+  return error ? error.message : null;
+}
+
 // ─── Envoi Gmail ──────────────────────────────────────────────────────────────
 async function getSetting(key: string, envFallback?: string): Promise<string | null> {
   if (envFallback) return envFallback;
@@ -150,17 +171,14 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabase
     .from("prestations")
-    .select("id, prix, statut, created_at, date_intervention, type_prestation, relance_devis_niveau, clients(prenom, nom, email)")
+    .select("id, prix, statut, created_at, date_intervention, type_prestation, clients(prenom, nom, email)")
     .eq("archive", false);
 
-  if (error) {
-    const manqueColonne = /relance_devis_niveau/.test(error.message);
-    return NextResponse.json({
-      error: manqueColonne
-        ? "Colonnes manquantes : exécute d'abord le SQL supabase/migrations/002_emails_auto.sql dans Supabase."
-        : error.message,
-    }, { status: 500 });
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // État anti-doublon (aucune colonne à créer : stocké dans `settings`).
+  const etat = await lireEtat();
+  let etatModifie = false;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows: any[] = data || [];
@@ -195,7 +213,7 @@ export async function GET(req: Request) {
         aAppeler.push({ nom, email, prix, ageJours: age });
       } else if (age != null && age >= RELANCE_JOURS[0]) {
         const cible  = niveauCible(age);
-        const actuel = Number(p.relance_devis_niveau ?? 0);
+        const actuel = Number(etat[p.id]?.relance ?? 0);
         if (cible > actuel) {
           const cible_ = cible;
           const info = { nom, email, prix, ageJours: age, niveau: cible_ };
@@ -215,7 +233,8 @@ export async function GET(req: Request) {
               });
               // En mode test on NE marque PAS comme envoyé (pour pouvoir retester).
               if (mode === "reel") {
-                await supabase.from("prestations").update({ relance_devis_niveau: cible_ }).eq("id", p.id);
+                etat[p.id] = { ...(etat[p.id] ?? {}), relance: cible_ };
+                etatModifie = true;
               }
               envoyes.push({ ...info, envoyeA: dest });
             } catch (e: unknown) {
@@ -233,6 +252,12 @@ export async function GET(req: Request) {
         demandeAvis.push({ nom, email, prestation: p.type_prestation || "—", dateIntervention: p.date_intervention });
       }
     }
+  }
+
+  // Persiste l'état anti-doublon (une seule écriture, en fin de traitement).
+  if (etatModifie) {
+    const errEtat = await ecrireEtat(etat);
+    if (errEtat) erreurs.push({ erreur: `Sauvegarde du suivi anti-doublon impossible : ${errEtat}` });
   }
 
   const report = {
