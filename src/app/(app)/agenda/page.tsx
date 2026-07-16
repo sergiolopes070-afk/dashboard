@@ -640,6 +640,39 @@ export default function AgendaPage() {
   // ── Avis depuis l'agenda ───────────────────────────────────────────────────
   const [avisLinkCopied, setAvisLinkCopied] = useState(false);
   const [avisMsgCopied,  setAvisMsgCopied]  = useState(false);
+  // Avis auto désactivé pour la prestation sélectionnée
+  const [avisAnnule, setAvisAnnule]         = useState(false);
+  const [avisAnnuleSaving, setAvisAnnuleSaving] = useState(false);
+
+  // Charge l'état "avis auto" quand on ouvre une prestation.
+  useEffect(() => {
+    if (!selectedEvent?.row) return;
+    setAvisAnnule(false);
+    fetch(`/api/emails/avis-auto?id=${selectedEvent.row}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setAvisAnnule(!!d.avisAnnule); })
+      .catch(() => {});
+  }, [selectedEvent?.row]);
+
+  async function toggleAvisAuto(prestationId: string) {
+    const next = !avisAnnule;
+    setAvisAnnule(next); // optimiste
+    setAvisAnnuleSaving(true);
+    try {
+      const res = await fetch("/api/emails/avis-auto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prestationId, annule: next }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success(next ? "Avis auto désactivé pour ce client" : "Avis auto réactivé");
+    } catch {
+      setAvisAnnule(!next); // rollback
+      toast.error("Erreur, réessaie");
+    } finally {
+      setAvisAnnuleSaving(false);
+    }
+  }
 
   // ── Archive depuis l'agenda ────────────────────────────────────────────────
   const [archiveEv,      setArchiveEv]      = useState<Prestation | null>(null);
@@ -1686,6 +1719,19 @@ export default function AgendaPage() {
                           }`}
                         >
                           💬 {avisMsgCopied ? "Message copié !" : "Copier message fin de prestation"}
+                        </button>
+                        {/* Désactiver la demande d'avis automatique (email J+2) pour ce client */}
+                        <button
+                          onClick={() => toggleAvisAuto(ev.row)}
+                          disabled={avisAnnuleSaving}
+                          className={`w-full py-2 rounded-xl border text-xs font-medium transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 ${
+                            avisAnnule
+                              ? "bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200"
+                              : "bg-white text-gray-400 border-gray-200 hover:bg-gray-50"
+                          }`}
+                          title="Empêcher l'email de demande d'avis automatique (48h) pour ce client"
+                        >
+                          {avisAnnule ? "🔕 Avis auto désactivé — réactiver" : "🔔 Avis auto activé — désactiver pour ce client"}
                         </button>
                       </div>
                     )}
