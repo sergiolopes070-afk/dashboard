@@ -640,45 +640,13 @@ export default function AgendaPage() {
   // ── Avis depuis l'agenda ───────────────────────────────────────────────────
   const [avisLinkCopied, setAvisLinkCopied] = useState(false);
   const [avisMsgCopied,  setAvisMsgCopied]  = useState(false);
-  // Avis auto désactivé pour la prestation sélectionnée
-  const [avisAnnule, setAvisAnnule]         = useState(false);
-  const [avisAnnuleSaving, setAvisAnnuleSaving] = useState(false);
-
-  // Charge l'état "avis auto" quand on ouvre une prestation.
-  useEffect(() => {
-    if (!selectedEvent?.row) return;
-    setAvisAnnule(false);
-    fetch(`/api/emails/avis-auto?id=${selectedEvent.row}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setAvisAnnule(!!d.avisAnnule); })
-      .catch(() => {});
-  }, [selectedEvent?.row]);
-
-  async function toggleAvisAuto(prestationId: string) {
-    const next = !avisAnnule;
-    setAvisAnnule(next); // optimiste
-    setAvisAnnuleSaving(true);
-    try {
-      const res = await fetch("/api/emails/avis-auto", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prestationId, annule: next }),
-      });
-      if (!res.ok) throw new Error();
-      toast.success(next ? "Avis auto désactivé pour ce client" : "Avis auto réactivé");
-    } catch {
-      setAvisAnnule(!next); // rollback
-      toast.error("Erreur, réessaie");
-    } finally {
-      setAvisAnnuleSaving(false);
-    }
-  }
 
   // ── Archive depuis l'agenda ────────────────────────────────────────────────
   const [archiveEv,      setArchiveEv]      = useState<Prestation | null>(null);
   const [archiveReason,  setArchiveReason]  = useState("");
   const [archivePayment, setArchivePayment] = useState("");
   const [archiveComment, setArchiveComment] = useState("");
+  const [archiveSendAvis, setArchiveSendAvis] = useState(true); // demander un avis au client à l'archivage
   const [archiving,      setArchiving]      = useState(false);
 
   // ── Édition inline depuis le modal ────────────────────────────────────────
@@ -815,18 +783,37 @@ export default function AgendaPage() {
     if (!archiveEv) return;
     setArchiving(true);
     const fullReason = archiveReason + (archiveComment.trim() ? ` — ${archiveComment.trim()}` : "");
+    const prestationId = archiveEv.row;
+    const envoyerAvis  = archiveSendAvis && !isCancellationReason(archiveReason);
     try {
       await fetch("/api/archive", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: archiveEv.row, reason: fullReason, modePaiement: archivePayment }),
+        body: JSON.stringify({ id: prestationId, reason: fullReason, modePaiement: archivePayment }),
       });
       setArchiveEv(null);
       setArchiveReason("");
       setArchivePayment("");
       setArchiveComment("");
+      setArchiveSendAvis(true);
       loadData();
       toast.success("Prestation archivée");
+
+      // Envoi de la demande d'avis (si coché et prestation réalisée)
+      if (envoyerAvis) {
+        try {
+          const res = await fetch("/api/emails/send-avis", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prestationId }),
+          });
+          const d = await res.json().catch(() => ({}));
+          if (res.ok) toast.success("Demande d'avis envoyée au client ⭐");
+          else toast.error(d.error || "Avis non envoyé");
+        } catch {
+          toast.error("Avis non envoyé (réseau)");
+        }
+      }
     } catch {
       toast.error("Erreur lors de l'archivage. Réessayez.");
     } finally {
@@ -1720,19 +1707,6 @@ export default function AgendaPage() {
                         >
                           💬 {avisMsgCopied ? "Message copié !" : "Copier message fin de prestation"}
                         </button>
-                        {/* Désactiver la demande d'avis automatique (email J+2) pour ce client */}
-                        <button
-                          onClick={() => toggleAvisAuto(ev.row)}
-                          disabled={avisAnnuleSaving}
-                          className={`w-full py-2 rounded-xl border text-xs font-medium transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 ${
-                            avisAnnule
-                              ? "bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200"
-                              : "bg-white text-gray-400 border-gray-200 hover:bg-gray-50"
-                          }`}
-                          title="Empêcher l'email de demande d'avis automatique (48h) pour ce client"
-                        >
-                          {avisAnnule ? "🔕 Avis auto désactivé — réactiver" : "🔔 Avis auto activé — désactiver pour ce client"}
-                        </button>
                       </div>
                     )}
                   </div>}
@@ -1846,10 +1820,26 @@ export default function AgendaPage() {
             <textarea
               rows={2}
               placeholder="Note interne…"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none mb-4 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none mb-3 focus:outline-none focus:ring-2 focus:ring-orange-400"
               value={archiveComment}
               onChange={e => setArchiveComment(e.target.value)}
             />
+
+            {/* Demande d'avis — proposée seulement si prestation réalisée (pas une annulation) */}
+            {!isCancellationReason(archiveReason) && (
+              <label className="flex items-start gap-2.5 p-3 mb-4 rounded-xl border border-amber-200 bg-amber-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={archiveSendAvis}
+                  onChange={e => setArchiveSendAvis(e.target.checked)}
+                  className="w-4 h-4 accent-amber-500 mt-0.5"
+                />
+                <span className="text-xs text-amber-800 leading-snug">
+                  <strong>⭐ Envoyer la demande d&apos;avis à ce client</strong><br/>
+                  <span className="text-amber-600">Décoche si le client n&apos;était pas satisfait (aucun email ne partira).</span>
+                </span>
+              </label>
+            )}
 
             {/* Actions */}
             <div className="flex gap-2">

@@ -33,6 +33,11 @@ const DONE_STATUTS     = ["CONFIRMÉ", "PAYÉ", "TERMINÉ"];
 // On le passera à true une fois le rendu validé (étape 2 bis).
 const ENVOI_AUTO_ACTIF = false;
 
+// La demande d'avis N'EST PAS automatique : elle se décide manuellement à
+// l'archivage (via /api/emails/send-avis), pour ne jamais solliciter un client
+// mécontent. Le cron ne s'occupe donc que des relances devis.
+const AVIS_AUTO_ACTIF = false;
+
 function daysSince(value: string | null): number | null {
   if (!value) return null;
   const d = new Date(value);
@@ -281,8 +286,8 @@ export async function GET(req: Request) {
       }
     }
 
-    // ── Demande d'avis (48h après la prestation terminée) ──
-    if (DONE_STATUTS.includes(p.statut)) {
+    // ── Demande d'avis : désactivée dans le cron (décidée à l'archivage) ──
+    if (AVIS_AUTO_ACTIF && DONE_STATUTS.includes(p.statut)) {
       const age = daysSince(p.date_intervention);
       const dejaEnvoye = !!etat[p.id]?.avisEnvoye;
       const annule     = !!etat[p.id]?.avisAnnule;
