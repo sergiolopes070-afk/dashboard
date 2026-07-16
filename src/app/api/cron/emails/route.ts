@@ -25,7 +25,8 @@ export const dynamic = "force-dynamic";
 
 const RELANCE_JOURS    = [3, 5, 7]; // relances devis à J+3, J+5, J+7
 const RELANCE_AGE_MAX  = 10;        // au-delà : plus aucun email auto → "à appeler"
-const AVIS_JOURS       = 2;         // demande d'avis à J+2 (48h) — armée à l'étape 3
+const AVIS_JOURS       = 2;         // demande d'avis à partir de J+2 (48h)
+const AVIS_AGE_MAX     = 15;        // garde-fou : pas de demande d'avis sur une presta de plus de 15 j
 const DONE_STATUTS     = ["CONFIRMÉ", "PAYÉ", "TERMINÉ"];
 
 // Le cron quotidien reste en simulation tant que ce drapeau est false.
@@ -152,13 +153,47 @@ function buildRelanceHtml(d: { prenom: string; typePresta: string; prix: string;
 </body></html>`;
 }
 
+function buildAvisHtml(d: { prenom: string; typePresta: string; lien: string }): string {
+  return `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+<body style="margin:0;padding:0;background:#f4f4f7;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+        <tr><td style="background:#1C3557;padding:28px 32px;">
+          <div style="color:#ffffff;font-size:20px;font-weight:bold;">KinouClean</div>
+          <div style="color:rgba(255,255,255,0.6);font-size:11px;letter-spacing:2px;margin-top:4px;">NETTOYAGE PROFESSIONNEL À DOMICILE</div>
+        </td></tr>
+        <tr><td style="padding:32px;">
+          <p style="font-size:16px;color:#1F2937;margin:0 0 16px;">Bonjour ${d.prenom || ""},</p>
+          <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0 0 20px;">
+            Merci de votre confiance pour votre prestation${d.typePresta ? ` de ${d.typePresta.toLowerCase()}` : ""} ✨.
+            Votre satisfaction est notre priorité — auriez-vous un instant pour partager votre avis ?
+          </p>
+          <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:8px 0 24px;">
+            <a href="${d.lien}" style="display:inline-block;background:#F97316;color:#ffffff;text-decoration:none;font-size:16px;font-weight:bold;padding:14px 32px;border-radius:10px;">⭐ Laisser mon avis</a>
+          </td></tr></table>
+          <p style="font-size:13px;color:#9CA3AF;line-height:1.6;margin:0 0 20px;text-align:center;">Cela ne prend qu'une minute et nous aide énormément 🙏</p>
+          <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0;">À très bientôt,<br/><strong>L'équipe KinouClean</strong></p>
+        </td></tr>
+        <tr><td style="background:#1C3557;padding:16px 32px;text-align:center;">
+          <div style="color:rgba(255,255,255,0.6);font-size:11px;">KinouClean · Organisme agréé SAP n° D3289580</div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export async function GET(req: Request) {
   const auth = authorize(req);
   if (!auth.ok) return NextResponse.json({ error: auth.reason }, { status: 401 });
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
 
-  const params   = new URL(req.url).searchParams;
+  const reqUrl   = new URL(req.url);
+  const params   = reqUrl.searchParams;
+  const baseUrl  = process.env.NEXT_PUBLIC_BASE_URL || reqUrl.origin;
   const mode: "simulation" | "test" | "reel" =
     params.get("test") === "1" ? "test"
     : params.get("send") === "1" ? "reel"
@@ -171,7 +206,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabase
     .from("prestations")
-    .select("id, prix, statut, created_at, date_intervention, type_prestation, clients(prenom, nom, email)")
+    .select("id, prix, statut, created_at, date_intervention, type_prestation, client_id, clients(id, prenom, nom, email)")
     .eq("archive", false);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -186,7 +221,8 @@ export async function GET(req: Request) {
   const envoyes:  unknown[] = [];
   const aEnvoyer: unknown[] = [];
   const aAppeler: unknown[] = [];
-  const demandeAvis: unknown[] = [];
+  const demandeAvis: unknown[] = [];   // avis à envoyer (mode simulation) / bloqués
+  const avisEnvoyes: unknown[] = [];   // avis réellement envoyés (test/réel)
   const erreurs:  unknown[] = [];
 
   const gmail = mode === "simulation" ? null : await getGmailTransporter();
@@ -245,11 +281,40 @@ export async function GET(req: Request) {
       }
     }
 
-    // ── Demande d'avis (armée à l'étape 3 — listée seulement) ──
+    // ── Demande d'avis (48h après la prestation terminée) ──
     if (DONE_STATUTS.includes(p.statut)) {
       const age = daysSince(p.date_intervention);
-      if (age != null && age === AVIS_JOURS) {
-        demandeAvis.push({ nom, email, prestation: p.type_prestation || "—", dateIntervention: p.date_intervention });
+      const dejaEnvoye = !!etat[p.id]?.avisEnvoye;
+      const annule     = !!etat[p.id]?.avisAnnule;
+      if (age != null && age >= AVIS_JOURS && age <= AVIS_AGE_MAX && !dejaEnvoye && !annule) {
+        const clientId = client.id || p.client_id;
+        const info = { nom, email, prestation: p.type_prestation || "—", dateIntervention: p.date_intervention };
+
+        if (!email || !clientId) {
+          demandeAvis.push({ ...info, bloque: !email ? "pas d'email" : "client sans id" });
+        } else if (mode === "simulation") {
+          demandeAvis.push(info);
+        } else {
+          const dest = mode === "test" ? testEmail! : email;
+          const lienParams = new URLSearchParams({ nom });
+          if (p.type_prestation) lienParams.set("prestation", p.type_prestation);
+          const lien = `${baseUrl}/avis/${clientId}?${lienParams.toString()}`;
+          try {
+            await gmail!.transporter.sendMail({
+              from   : `"KinouClean" <${gmail!.user}>`,
+              to     : dest,
+              subject: "Votre avis compte pour nous ⭐" + (mode === "test" ? ` [TEST — destiné à ${email}]` : ""),
+              html   : buildAvisHtml({ prenom: client.prenom || "", typePresta: p.type_prestation || "", lien }),
+            });
+            if (mode === "reel") {
+              etat[p.id] = { ...(etat[p.id] ?? {}), avisEnvoye: true };
+              etatModifie = true;
+            }
+            avisEnvoyes.push({ ...info, envoyeA: dest });
+          } catch (e: unknown) {
+            erreurs.push({ ...info, type: "avis", erreur: e instanceof Error ? e.message : "Erreur envoi" });
+          }
+        }
       }
     }
   }
@@ -266,16 +331,17 @@ export async function GET(req: Request) {
       : mode === "test"     ? `✉️ TEST — tout est envoyé à ${testEmail} (aucun client contacté, rien n'est marqué comme envoyé)`
       :                       "🚀 RÉEL — emails envoyés aux clients",
     executeLe: new Date().toISOString(),
-    reglages: { relanceJours: RELANCE_JOURS, relanceAgeMax: RELANCE_AGE_MAX, avisJours: AVIS_JOURS, envoiAutoQuotidien: ENVOI_AUTO_ACTIF },
+    reglages: { relanceJours: RELANCE_JOURS, relanceAgeMax: RELANCE_AGE_MAX, avisJours: AVIS_JOURS, avisAgeMax: AVIS_AGE_MAX, envoiAutoQuotidien: ENVOI_AUTO_ACTIF },
     resume:
       mode === "simulation"
-        ? `${aEnvoyer.length} relance(s) partiraient. ${aAppeler.length} devis à appeler (>J+${RELANCE_AGE_MAX}). ${demandeAvis.length} demande(s) d'avis (non armées).`
-        : `${envoyes.length} relance(s) envoyée(s), ${erreurs.length} erreur(s). ${aAppeler.length} devis à appeler.`,
+        ? `${aEnvoyer.length} relance(s) + ${demandeAvis.length} demande(s) d'avis partiraient. ${aAppeler.length} devis à appeler (>J+${RELANCE_AGE_MAX}).`
+        : `${envoyes.length} relance(s) + ${avisEnvoyes.length} avis envoyé(s), ${erreurs.length} erreur(s). ${aAppeler.length} devis à appeler.`,
     relancesEnvoyees: envoyes,
     relancesAEnvoyer: aEnvoyer,
+    avisEnvoyes,
+    demandeAvis,
     erreurs,
     aAppeler,
-    demandeAvis,
   };
 
   console.log("[CRON emails]", mode, "|", report.resume);
