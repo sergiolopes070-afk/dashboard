@@ -122,8 +122,18 @@ const ACCROCHE: Record<number, { objet: string; intro: string }> = {
   },
 };
 
-function buildRelanceHtml(d: { prenom: string; typePresta: string; prix: string; niveau: number }): string {
+const FISCAL_BLOC: Record<string, string> = {
+  avance: `<table width="100%" cellpadding="0" cellspacing="0" style="background:#EFF6FF;border-radius:10px;padding:14px 16px;margin:0 0 20px;"><tr><td style="font-size:14px;color:#1E40AF;line-height:1.6;">
+    💡 <strong>Avance immédiate</strong> — vous ne réglez que <strong>50 %</strong> du montant : l'État prend l'autre moitié en charge, sans avance de trésorerie de votre part.
+  </td></tr></table>`,
+  credit: `<table width="100%" cellpadding="0" cellspacing="0" style="background:#FFF7ED;border-radius:10px;padding:14px 16px;margin:0 0 20px;"><tr><td style="font-size:14px;color:#9A3412;line-height:1.6;">
+    💡 <strong>Crédit d'impôt 50 %</strong> — cette prestation à domicile ouvre droit au crédit d'impôt (art. 199 sexdecies du CGI) : votre coût réel est divisé par deux.
+  </td></tr></table>`,
+};
+
+function buildRelanceHtml(d: { prenom: string; typePresta: string; prix: string; niveau: number; fiscal?: string }): string {
   const { intro } = ACCROCHE[d.niveau] ?? ACCROCHE[1];
+  const fiscalBloc = (d.fiscal && FISCAL_BLOC[d.fiscal]) || "";
   return `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f7;font-family:Arial,Helvetica,sans-serif;">
@@ -143,6 +153,7 @@ function buildRelanceHtml(d: { prenom: string; typePresta: string; prix: string;
               💶 <strong>Montant :</strong> ${d.prix ? `${d.prix} €` : "—"}
             </td></tr>
           </table>
+          ${fiscalBloc}
           <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0 0 20px;">
             Si vous souhaitez avancer, répondez simplement à cet email ou appelez-nous : nous fixerons une date qui vous arrange.
             Une question, un ajustement du devis ? Nous sommes à votre écoute.
@@ -220,6 +231,12 @@ export async function GET(req: Request) {
   const etat = await lireEtat();
   let etatModifie = false;
 
+  // Préférence fiscale par client (avance immédiate / crédit d'impôt).
+  const fiscalClients: Record<string, string> = await (async () => {
+    const { data } = await supabase.from("settings").select("value").eq("key", "fiscal_clients").maybeSingle();
+    try { return data?.value ? JSON.parse(data.value as string) : {}; } catch { return {}; }
+  })();
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows: any[] = data || [];
 
@@ -270,7 +287,7 @@ export async function GET(req: Request) {
                 from   : `"KinouClean" <${gmail!.user}>`,
                 to     : dest,
                 subject: (ACCROCHE[cible_] ?? ACCROCHE[1]).objet + (mode === "test" ? ` [TEST — destiné à ${email}]` : ""),
-                html   : buildRelanceHtml({ prenom: client.prenom || "", typePresta: p.type_prestation || "", prix: p.prix, niveau: cible_ }),
+                html   : buildRelanceHtml({ prenom: client.prenom || "", typePresta: p.type_prestation || "", prix: p.prix, niveau: cible_, fiscal: fiscalClients[client.id || p.client_id] }),
               });
               // En mode test on NE marque PAS comme envoyé (pour pouvoir retester).
               if (mode === "reel") {

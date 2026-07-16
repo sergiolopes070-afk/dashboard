@@ -641,6 +641,43 @@ export default function AgendaPage() {
   const [avisLinkCopied, setAvisLinkCopied] = useState(false);
   const [avisMsgCopied,  setAvisMsgCopied]  = useState(false);
 
+  // Préférence fiscale du client sélectionné (avance immédiate / crédit d'impôt)
+  const [fiscal, setFiscal] = useState<"" | "avance" | "credit">("");
+  const [fiscalSaving, setFiscalSaving] = useState(false);
+
+  useEffect(() => {
+    const cid = selectedEvent?.clientId;
+    if (!cid) { setFiscal(""); return; }
+    setFiscal("");
+    fetch(`/api/clients/fiscal?clientId=${cid}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setFiscal(d.fiscal || ""); })
+      .catch(() => {});
+  }, [selectedEvent?.clientId]);
+
+  async function setFiscalPref(clientId: string, val: "" | "avance" | "credit") {
+    const next = fiscal === val ? "" : val; // re-cliquer = désélectionner
+    const prev = fiscal;
+    setFiscal(next); // optimiste
+    setFiscalSaving(true);
+    try {
+      const res = await fetch("/api/clients/fiscal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, fiscal: next }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success(next === "avance" ? "Avance immédiate — noté pour ce client"
+        : next === "credit" ? "Crédit d'impôt — noté pour ce client"
+        : "Fiscalité remise à zéro");
+    } catch {
+      setFiscal(prev);
+      toast.error("Erreur, réessaie");
+    } finally {
+      setFiscalSaving(false);
+    }
+  }
+
   // ── Archive depuis l'agenda ────────────────────────────────────────────────
   const [archiveEv,      setArchiveEv]      = useState<Prestation | null>(null);
   const [archiveReason,  setArchiveReason]  = useState("");
@@ -1544,6 +1581,39 @@ export default function AgendaPage() {
                           </div>
                         );
                       })()}
+
+                      {/* ── Fiscalité du client (pense-bête + adapte les relances) ── */}
+                      {ev.clientId && (
+                        <div className="mt-4 border-t border-gray-100 pt-3">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                            Avantage fiscal du client
+                          </p>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {[
+                              { val: "" as const,        label: "Aucun",           icon: "—"  },
+                              { val: "avance" as const,  label: "Avance imméd.",   icon: "⚡" },
+                              { val: "credit" as const,  label: "Crédit d'impôt",  icon: "🧾" },
+                            ].map(({ val, label, icon }) => (
+                              <button key={label} type="button"
+                                disabled={fiscalSaving}
+                                onClick={() => setFiscalPref(ev.clientId, val)}
+                                className={`px-2 py-2 rounded-lg text-xs font-medium border transition-colors flex flex-col items-center gap-0.5 ${
+                                  fiscal === val
+                                    ? "bg-indigo-600 text-white border-indigo-600"
+                                    : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"
+                                } disabled:opacity-50`}>
+                                <span>{icon}</span>
+                                <span className="truncate text-[11px]">{label}</span>
+                              </button>
+                            ))}
+                          </div>
+                          {fiscal && (
+                            <p className="text-[11px] text-indigo-500 mt-1.5">
+                              💡 {fiscal === "avance" ? "Ses relances mentionnent l'avance immédiate (−50%)." : "Ses relances mentionnent le crédit d'impôt (−50%)."}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </>
                   )}
                   {!editMode && <div className="mt-4 flex flex-col gap-2">
