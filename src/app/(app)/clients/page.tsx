@@ -31,6 +31,7 @@ interface Client {
   prestations: Prestation[];
   totalCA: number;
   derniere: string;
+  creeLe: string;
   tags: string[];
   clientId: string;
   notes: ClientNote[];
@@ -425,7 +426,7 @@ export default function ClientsPage() {
         map.set(key, {
           nom: p.nom, prenom: p.prenom, tel: p.tel,
           email: p.email, adresse: p.adresse,
-          prestations: [], totalCA: 0, derniere: p.date,
+          prestations: [], totalCA: 0, derniere: p.date, creeLe: p.timestamp || "",
           tags: p.tags ?? [], clientId: p.clientId,
           notes: p.clientNotes ?? [],
         });
@@ -434,6 +435,8 @@ export default function ClientsPage() {
       c.prestations.push(p);
       c.totalCA += parseFloat(p.prix) || 0;
       if (p.date > c.derniere) c.derniere = p.date;
+      // Date de création de la fiche = plus ancienne prestation
+      if (p.timestamp && (!c.creeLe || p.timestamp < c.creeLe)) c.creeLe = p.timestamp;
       // Merge tags from any prestation (they're all the same client)
       if (p.tags?.length && c.tags.length === 0) c.tags = p.tags;
       // Merge notes from any prestation (they're all the same client)
@@ -765,6 +768,11 @@ export default function ClientsPage() {
                       {c.derniere && (
                         <p className="text-xs text-gray-400">
                           Dernière intervention : {c.derniere}
+                        </p>
+                      )}
+                      {c.creeLe && (
+                        <p className="text-xs text-gray-400">
+                          Fiche créée le {new Date(c.creeLe).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}
                         </p>
                       )}
                     </div>

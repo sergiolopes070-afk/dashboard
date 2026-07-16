@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
-import { appendPrestation, updatePrestation, deleteClient, updateClientTags, updateClientNotes } from "@/lib/sheets";
+import { appendPrestation, updatePrestation, deleteClient, updateClientTags, updateClientNotes, insertPrestationForClient, getClientIdOfPrestation } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +31,25 @@ export async function POST(req: Request) {
       commentaire    : body.commentaire    || "",
       modePaiement   : body.modePaiement   || "",
     });
+
+    // Articles supplémentaires : prestations additionnelles rattachées au MÊME client.
+    if (Array.isArray(body.articlesSupp) && body.articlesSupp.length > 0) {
+      const clientId = await getClientIdOfPrestation(prestationId);
+      if (clientId) {
+        for (const art of body.articlesSupp) {
+          if (!art || (!art.typePresta && !art.prix)) continue;
+          await insertPrestationForClient(clientId, {
+            typePresta: art.typePresta || "",
+            quantite  : art.quantite   || "1",
+            prix      : art.prix       || "",
+            message   : art.message    || "",
+            adresse   : body.adresse   || "",
+            date      : body.date      || "",
+            heure     : body.heure     || "",
+          });
+        }
+      }
+    }
 
     // Envoyer l'email de confirmation si l'adresse email est renseignée
     if (body.email) {

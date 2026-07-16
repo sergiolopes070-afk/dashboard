@@ -297,6 +297,37 @@ export async function appendPrestation(fields: {
   return result.data.id as string;
 }
 
+// Ajoute une prestation supplémentaire à un client EXISTANT (articles multiples
+// à la création). Ne crée pas de client → pas de doublon de fiche.
+export async function insertPrestationForClient(clientId: string, f: {
+  typePresta: string; quantite?: string; prix?: string; message?: string;
+  adresse?: string; date?: string; heure?: string;
+}): Promise<string> {
+  if (!supabase) throw new Error("Supabase non configuré");
+  const payload = {
+    client_id         : clientId,
+    type_prestation   : f.typePresta,
+    quantite          : parseInt(f.quantite || "1") || 1,
+    adresse           : f.adresse || "",
+    date_intervention : f.date ? frToIso(f.date) : null,
+    heure_intervention: f.heure || null,
+    message           : f.message || "",
+    prix              : f.prix ? parseFloat(f.prix) : null,
+    statut            : "",
+    archive           : false,
+  };
+  const { data, error } = await supabase.from("prestations").insert(payload).select("id").single();
+  if (error) throw new Error(error.message);
+  return data.id as string;
+}
+
+// Récupère le client_id d'une prestation (pour rattacher les articles supp).
+export async function getClientIdOfPrestation(prestationId: string): Promise<string | null> {
+  if (!supabase) return null;
+  const { data } = await supabase.from("prestations").select("client_id").eq("id", prestationId).maybeSingle();
+  return (data?.client_id as string) || null;
+}
+
 export async function archivePrestation(id: string, reason: string, modePaiement = ""): Promise<void> {
   if (!supabase) return;
   const patch: Record<string, unknown> = { archive: true, archive_reason: reason };

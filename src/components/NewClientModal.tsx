@@ -204,6 +204,12 @@ const EMPTY = {
 
 export default function NewClientModal({ prestataires, onClose, onSaved, initialValues }: Props) {
   const [form, setForm]                   = useState({ ...EMPTY, ...initialValues });
+  // Articles / prestations supplémentaires (canapé + matelas + tapis en une fois…)
+  const [articlesSupp, setArticlesSupp] = useState<{ typePresta: string; quantite: string; prix: string }[]>([]);
+  const addArticle    = () => setArticlesSupp(a => [...a, { typePresta: "", quantite: "1", prix: "" }]);
+  const removeArticle = (i: number) => setArticlesSupp(a => a.filter((_, j) => j !== i));
+  const updateArticle = (i: number, k: "typePresta" | "quantite" | "prix", v: string) =>
+    setArticlesSupp(a => { const c = [...a]; c[i] = { ...c[i], [k]: v }; return c; });
   const [saving, setSaving]               = useState(false);
   const [error, setError]                 = useState<string | null>(null);
   const [savedPrestataire, setSavedPrestataire] = useState<Prestataire | null>(null);
@@ -273,6 +279,7 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
         adresse     : fullAdresse,
         statut      : hasPrestataire ? "EMAIL ENVOYÉ" : "",
         statutPresta: hasPrestataire ? "EN ATTENTE PRESTA" : "",
+        articlesSupp: articlesSupp.filter(a => a.typePresta || a.prix),
       };
       const res = await fetch("/api/clients", {
         method : "POST",
@@ -598,6 +605,44 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
                 rows={3} className={`${inputCls} resize-none`}
                 placeholder="Informations complémentaires sur la prestation..." />
             </Field>
+
+            {/* Autres prestations / articles (canapé + matelas + tapis en une fois) */}
+            <div className="pt-1">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-500">Autres prestations pour ce client (optionnel)</span>
+                <button type="button" onClick={addArticle}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium">+ Ajouter un article</button>
+              </div>
+              {articlesSupp.length === 0 ? (
+                <p className="text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl py-2.5 text-center">
+                  Ex : Lavage canapé + Lavage matelas dans la même fiche
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {articlesSupp.map((art, i) => (
+                    <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded-xl">
+                      <select value={art.typePresta} onChange={e => updateArticle(i, "typePresta", e.target.value)}
+                        className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300">
+                        <option value="">— Type —</option>
+                        {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <input type="number" value={art.quantite} min={1}
+                        onChange={e => updateArticle(i, "quantite", e.target.value)}
+                        className="w-12 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-300" title="Quantité" />
+                      <div className="relative">
+                        <input type="number" value={art.prix} min={0} step="0.01"
+                          onChange={e => updateArticle(i, "prix", e.target.value)}
+                          placeholder="0"
+                          className="w-20 bg-white border border-gray-200 rounded-lg pl-2 pr-6 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300" title="Prix TTC" />
+                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">€</span>
+                      </div>
+                      <button type="button" onClick={() => removeArticle(i)}
+                        className="text-red-400 hover:text-red-600 transition-colors text-lg leading-none px-1" title="Retirer">×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </Section>
 
           {/* Affectation prestataire */}
