@@ -31,7 +31,7 @@ const DONE_STATUTS     = ["CONFIRMÉ", "PAYÉ", "TERMINÉ"];
 
 // Le cron quotidien reste en simulation tant que ce drapeau est false.
 // On le passera à true une fois le rendu validé (étape 2 bis).
-const ENVOI_AUTO_ACTIF = false;
+const ENVOI_AUTO_ACTIF = true;
 
 // La demande d'avis N'EST PAS automatique : elle se décide manuellement à
 // l'archivage (via /api/emails/send-avis), pour ne jamais solliciter un client
