@@ -9,6 +9,7 @@ import Topbar from "@/components/Topbar";
 import { SkeletonCards } from "@/components/Skeleton";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import ClientModal from "@/components/ClientModal";
+import ClientFiche from "@/components/ClientFiche";
 import NewClientModal from "@/components/NewClientModal";
 import { Prestation, Prestataire, ClientNote, STATUT_COLORS } from "@/lib/constants";
 
@@ -396,6 +397,7 @@ export default function ClientsPage() {
     typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("q") || "") : ""
   );
   const [modal, setModal]             = useState<{ mode: "add" | "edit"; client?: Client } | null>(null);
+  const [ficheClient, setFicheClient] = useState<Client | null>(null);
   const [expanded, setExpanded]       = useState<Set<string>>(new Set());
   const [confirmClientDel, setConfirmClientDel] = useState<string | null>(null);
   const [archiveModal, setArchiveModal] = useState<{ ids: string[]; label: string } | null>(null);
@@ -605,7 +607,13 @@ export default function ClientsPage() {
                   <div className="p-5">
                     <div className="flex items-start justify-between mb-3">
                       <div>
-                        <p className="font-semibold text-gray-900">{c.prenom} {c.nom}</p>
+                        <button
+                          onClick={() => setFicheClient(c)}
+                          className="font-semibold text-gray-900 hover:text-blue-600 transition-colors text-left"
+                          title="Ouvrir la fiche complète"
+                        >
+                          {c.prenom} {c.nom}
+                        </button>
                         <p className="text-xs text-gray-400 mt-0.5">
                           {c.prestations.length} prestation{c.prestations.length > 1 ? "s" : ""}
                         </p>
@@ -849,6 +857,14 @@ export default function ClientsPage() {
           </div>
         )}
       </div>
+
+      {ficheClient && (
+        <ClientFiche
+          client={ficheClient}
+          onClose={() => setFicheClient(null)}
+          onChanged={load}
+        />
+      )}
 
       {modal && modal.mode === "add" && (
         <NewClientModal
