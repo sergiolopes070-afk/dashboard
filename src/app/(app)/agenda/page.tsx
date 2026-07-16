@@ -84,6 +84,7 @@ const PAYMENT_ICONS: Record<string, string> = {
   "Lien de paiement" : "🔗",
   "Chèque"           : "📄",
   "Carte sur place"  : "💳",
+  "Avance immédiate" : "⚡",
 };
 const PAYMENT_SHORT: Record<string, string> = {
   "Espèces"          : "Espèces",
@@ -91,6 +92,7 @@ const PAYMENT_SHORT: Record<string, string> = {
   "Lien de paiement" : "Lien",
   "Chèque"           : "Chèque",
   "Carte sur place"  : "Carte",
+  "Avance immédiate" : "Av. imm.",
 };
 
 // ─── Options prestation ───────────────────────────────────────────────────────
@@ -572,6 +574,7 @@ function QuickCreateModal({
                 { label: "Lien de paiement",  icon: "🔗" },
                 { label: "Chèque",            icon: "📄" },
                 { label: "Carte sur place",   icon: "💳" },
+                { label: "Avance immédiate", icon: "⚡" },
               ].map(({ label, icon }) => (
                 <button key={label} type="button"
                   onClick={() => set("modePaiement", form.modePaiement === label ? "" : label)}
@@ -1503,6 +1506,7 @@ export default function AgendaPage() {
                             { label: "Lien de paiement",   icon: "🔗" },
                             { label: "Chèque",             icon: "📄" },
                             { label: "Carte sur place",    icon: "💳" },
+                            { label: "Avance immédiate", icon: "⚡" },
                           ].map(({ label, icon }) => (
                             <button key={label} type="button"
                               onClick={() => setEditForm(f => ({ ...f, modePaiement: f.modePaiement === label ? undefined : label as Prestation["modePaiement"] }))}
@@ -1556,6 +1560,7 @@ export default function AgendaPage() {
                           { label: "Lien de paiement",   icon: "🔗" },
                           { label: "Chèque",             icon: "📄" },
                           { label: "Carte sur place",    icon: "💳" },
+                          { label: "Avance immédiate", icon: "⚡" },
                         ];
                         return (
                           <div className="mt-4 border-t border-gray-100 pt-3">
@@ -1870,6 +1875,7 @@ export default function AgendaPage() {
                     { label: "Lien de paiement", icon: "🔗" },
                     { label: "Chèque", icon: "📄" },
                     { label: "Carte sur place", icon: "💳" },
+                    { label: "Avance immédiate", icon: "⚡" },
                   ].map(({ label, icon }) => (
                     <button key={label} type="button"
                       onClick={() => setArchivePayment(label)}

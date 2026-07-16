@@ -23,6 +23,7 @@ export type ModePaiement =
   | "Virement bancaire"
   | "Chèque"
   | "Carte sur place"
+  | "Avance immédiate"
   | "";
 
 export const MODES_PAIEMENT: ModePaiement[] = [
@@ -32,6 +33,7 @@ export const MODES_PAIEMENT: ModePaiement[] = [
   "Virement bancaire",
   "Chèque",
   "Carte sur place",
+  "Avance immédiate",
 ];
 
 export const MODE_PAIEMENT_ICONS: Record<string, string> = {
@@ -40,6 +42,7 @@ export const MODE_PAIEMENT_ICONS: Record<string, string> = {
   "Virement bancaire": "🏦",
   "Chèque"           : "📝",
   "Carte sur place"  : "💳",
+  "Avance immédiate" : "⚡",
 };
 
 export interface ClientNote {

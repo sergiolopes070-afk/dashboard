@@ -390,7 +390,11 @@ export default function ClientsPage() {
   const [data, setData]               = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.prestations) ?? []);
   const [prestataires, setPrestataires] = useState<Prestataire[]>(() => cacheGet<Prestataire[]>(CACHE_KEYS.prestataires) ?? []);
   const [loading, setLoading]         = useState(() => !cacheHas(CACHE_KEYS.prestations));
-  const [search, setSearch]           = useState("");
+  // Pré-remplit la recherche depuis l'URL (?q=…) → arrivée directe sur une fiche
+  // depuis la recherche globale. Lu côté client uniquement (pas de Suspense requis).
+  const [search, setSearch]           = useState(() =>
+    typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("q") || "") : ""
+  );
   const [modal, setModal]             = useState<{ mode: "add" | "edit"; client?: Client } | null>(null);
   const [expanded, setExpanded]       = useState<Set<string>>(new Set());
   const [confirmClientDel, setConfirmClientDel] = useState<string | null>(null);
@@ -420,7 +424,9 @@ export default function ClientsPage() {
   const clients = useMemo<Client[]>(() => {
     const map = new Map<string, Client>();
     for (const p of data) {
-      const key = p.email || `${p.nom}-${p.prenom}-${p.tel}`;
+      // Groupe par identifiant client réel en priorité → évite les doublons
+      // quand un RDV a été reprogrammé (ex. "Sakina").
+      const key = p.clientId || p.email || `${p.nom}-${p.prenom}-${p.tel}`;
       if (!key) continue;
       if (!map.has(key)) {
         map.set(key, {
@@ -904,28 +910,35 @@ export default function ClientsPage() {
                 className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
               />
             </div>
-            {/* Mode de paiement — obligatoire */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-600">
-                Mode de paiement <span className="text-red-400">*</span>
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {["Espèces", "Virement bancaire", "Lien de paiement", "Chèque", "Carte sur place"].map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setArchivePayment(m)}
-                    className={`text-xs px-3 py-2 rounded-xl border transition-colors text-left ${
-                      archivePayment === m
-                        ? "border-blue-400 bg-blue-50 text-blue-700 font-medium"
-                        : "border-gray-200 hover:border-gray-300 text-gray-600"
-                    }`}
-                  >
-                    {m === "Espèces" ? "💵 " : m === "Virement bancaire" ? "🏦 " : m === "Lien de paiement" ? "🔗 " : m === "Chèque" ? "📄 " : "💳 "}
-                    {m}
-                  </button>
-                ))}
+            {/* Mode de paiement — masqué pour les annulations (archivage simple) */}
+            {["Annulation client", "Client injoignable", "Doublon"].some(r => archiveReason.startsWith(r)) ? (
+              <div className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 flex items-center gap-2">
+                <span className="text-lg">🚫</span>
+                <p className="text-xs text-gray-500">Pas de paiement pour une annulation — non comptabilisé dans le CA</p>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-600">
+                  Mode de paiement <span className="text-red-400">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {["Espèces", "Virement bancaire", "Lien de paiement", "Chèque", "Carte sur place", "Avance immédiate"].map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setArchivePayment(m)}
+                      className={`text-xs px-3 py-2 rounded-xl border transition-colors text-left ${
+                        archivePayment === m
+                          ? "border-blue-400 bg-blue-50 text-blue-700 font-medium"
+                          : "border-gray-200 hover:border-gray-300 text-gray-600"
+                      }`}
+                    >
+                      {m === "Espèces" ? "💵 " : m === "Virement bancaire" ? "🏦 " : m === "Lien de paiement" ? "🔗 " : m === "Chèque" ? "📄 " : m === "Avance immédiate" ? "⚡ " : "💳 "}
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-600">Commentaire <span className="text-gray-400 font-normal">(optionnel)</span></label>
               <textarea
@@ -945,7 +958,7 @@ export default function ClientsPage() {
               </button>
               <button
                 onClick={handleArchiveConfirm}
-                disabled={!archiveReason.trim() || !archivePayment || archiving}
+                disabled={!archiveReason.trim() || (!archivePayment && !["Annulation client", "Client injoignable", "Doublon"].some(r => archiveReason.startsWith(r))) || archiving}
                 className="flex-1 py-2 rounded-xl bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors disabled:opacity-50"
               >
                 {archiving ? "Archivage…" : "Archiver"}
