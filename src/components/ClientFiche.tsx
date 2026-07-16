@@ -10,8 +10,22 @@ import { useState, useEffect } from "react";
 import {
   X, Phone, Mail, MapPin, Send, Trash2, Calendar, Euro, MessageCircle, Star,
 } from "lucide-react";
-import { Prestation, ClientNote, STATUT_COLORS } from "@/lib/constants";
+import { ClientNote, STATUT_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
+
+// Forme minimale d'une prestation affichée dans la fiche (compatible avec le type
+// Prestation complet ET avec les données renvoyées par /api/clients/[id]).
+export interface FichePrestation {
+  row        : string;
+  typePresta : string;
+  date       : string;
+  heure      : string;
+  prix       : string;
+  prestataire: string;
+  modePaiement?: string;
+  statut     : string;
+  archived?  : boolean;
+}
 
 export interface ClientFicheData {
   clientId   : string;
@@ -20,7 +34,7 @@ export interface ClientFicheData {
   tel        : string;
   email      : string;
   adresse    : string;
-  prestations: Prestation[];
+  prestations: FichePrestation[];
   totalCA    : number;
   derniere   : string;
   creeLe     : string;
@@ -248,6 +262,7 @@ export default function ClientFiche({
                         {p.prestataire && <span>👤 {p.prestataire}</span>}
                         {p.modePaiement && <span className="flex items-center gap-1"><Euro size={11} />{p.modePaiement}</span>}
                         {p.statut && <span className={`px-1.5 py-0.5 rounded-full font-medium ${cls}`}>{p.statut}</span>}
+                        {p.archived && <span className="px-1.5 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">📦 Archivé</span>}
                       </div>
                     </div>
                   );
@@ -271,6 +286,41 @@ export default function ClientFiche({
             </button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Variante : charge la fiche par clientId (ouvrable depuis n'importe où) ────
+export function ClientFicheById({
+  clientId, onClose, onChanged,
+}: {
+  clientId: string;
+  onClose: () => void;
+  onChanged?: () => void;
+}) {
+  const [data, setData] = useState<ClientFicheData | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let actif = true;
+    setData(null); setError(false);
+    fetch(`/api/clients/${clientId}`)
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => { if (actif) setData(d); })
+      .catch(() => { if (actif) setError(true); });
+    return () => { actif = false; };
+  }, [clientId]);
+
+  if (data) return <ClientFiche client={data} onClose={onClose} onChanged={onChanged} />;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative bg-white w-full max-w-md h-full shadow-2xl flex items-center justify-center" onClick={e => e.stopPropagation()}>
+        {error
+          ? <p className="text-sm text-gray-400">Fiche introuvable.</p>
+          : <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />}
       </div>
     </div>
   );

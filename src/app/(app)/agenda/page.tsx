@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, SlidersHorizontal, Download, CheckCircle2, MapPin, Loader2 } from "lucide-react";
 import { Prestation, Prestataire, StatutClient } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
+import { ClientFicheById } from "@/components/ClientFiche";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
@@ -643,6 +644,7 @@ export default function AgendaPage() {
   // ── Avis depuis l'agenda ───────────────────────────────────────────────────
   const [avisLinkCopied, setAvisLinkCopied] = useState(false);
   const [avisMsgCopied,  setAvisMsgCopied]  = useState(false);
+  const [ficheClientId, setFicheClientId] = useState<string | null>(null);
 
   // Préférence fiscale du client sélectionné (avance immédiate / crédit d'impôt)
   const [fiscal, setFiscal] = useState<"" | "avance" | "credit">("");
@@ -1353,6 +1355,10 @@ export default function AgendaPage() {
       </div>
 
       {/* ── Modal détail event ───────────────────────────────────────────── */}
+      {ficheClientId && (
+        <ClientFicheById clientId={ficheClientId} onClose={() => setFicheClientId(null)} onChanged={loadData} />
+      )}
+
       {selectedEvent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
           onClick={() => { setSelectedEvent(null); setCancelConfirm(false); }}>
@@ -1532,7 +1538,15 @@ export default function AgendaPage() {
                   ) : (
                     /* ── Mode affichage ── */
                     <>
-                      <h3 className={`font-bold text-base mb-1 ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</h3>
+                      {ev.clientId ? (
+                        <button onClick={() => setFicheClientId(ev.clientId)}
+                          className={`font-bold text-base mb-1 text-left hover:text-blue-600 transition-colors ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}
+                          title="Ouvrir la fiche client">
+                          {ev.prenom} {ev.nom}
+                        </button>
+                      ) : (
+                        <h3 className={`font-bold text-base mb-1 ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</h3>
+                      )}
                       <p className="text-sm text-gray-500 mb-3">{ev.typePresta}</p>
                       <div className="space-y-1.5 text-sm text-gray-700">
                         {([

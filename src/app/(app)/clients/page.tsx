@@ -9,7 +9,7 @@ import Topbar from "@/components/Topbar";
 import { SkeletonCards } from "@/components/Skeleton";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import ClientModal from "@/components/ClientModal";
-import ClientFiche from "@/components/ClientFiche";
+import ClientFiche, { ClientFicheById } from "@/components/ClientFiche";
 import NewClientModal from "@/components/NewClientModal";
 import { Prestation, Prestataire, ClientNote, STATUT_COLORS } from "@/lib/constants";
 
@@ -398,6 +398,10 @@ export default function ClientsPage() {
   );
   const [modal, setModal]             = useState<{ mode: "add" | "edit"; client?: Client } | null>(null);
   const [ficheClient, setFicheClient] = useState<Client | null>(null);
+  // Ouverture directe d'une fiche depuis la recherche globale (?fiche=<clientId>)
+  const [ficheById, setFicheById] = useState<string | null>(() =>
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("fiche") : null
+  );
   const [expanded, setExpanded]       = useState<Set<string>>(new Set());
   const [confirmClientDel, setConfirmClientDel] = useState<string | null>(null);
   const [archiveModal, setArchiveModal] = useState<{ ids: string[]; label: string } | null>(null);
@@ -862,6 +866,13 @@ export default function ClientsPage() {
         <ClientFiche
           client={ficheClient}
           onClose={() => setFicheClient(null)}
+          onChanged={load}
+        />
+      )}
+      {ficheById && (
+        <ClientFicheById
+          clientId={ficheById}
+          onClose={() => setFicheById(null)}
           onChanged={load}
         />
       )}

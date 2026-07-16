@@ -41,7 +41,7 @@ export async function GET(req: Request) {
       type   : "client",
       label  : `${c.prenom ?? ""} ${c.nom ?? ""}`.trim(),
       sub    : [c.email, c.tel].filter(Boolean).join(" · "),
-      href   : `/clients?q=${encodeURIComponent(`${c.prenom ?? ""} ${c.nom ?? ""}`.trim() || c.email || c.tel || "")}`,
+      href   : `/clients?fiche=${c.id}`,
       status : null,
     })),
     ...(prospects ?? []).map((p: ProspectRow) => ({

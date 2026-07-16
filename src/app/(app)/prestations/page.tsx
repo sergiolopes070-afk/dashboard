@@ -5,6 +5,7 @@ import Topbar from "@/components/Topbar";
 import { Skeleton } from "@/components/Skeleton";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import PrestationTable from "@/components/PrestationTable";
+import { ClientFicheById } from "@/components/ClientFiche";
 import EditPrestationModal from "@/components/EditPrestationModal";
 import { Prestation, Prestataire } from "@/lib/constants";
 
@@ -16,6 +17,7 @@ export default function PrestationsPage() {
   const [loading, setLoading]             = useState(() => !cacheHas(CACHE_KEYS.prestations));
   const [error, setError]                 = useState<string | null>(null);
   const [search, setSearch]               = useState("");
+  const [ficheClientId, setFicheClientId] = useState<string | null>(null);
   const [statut, setStatut]               = useState("Tous");
   const [editing, setEditing]             = useState<Prestation | null>(null);
   const [archiveModal, setArchiveModal]       = useState<{ id: string; label: string } | null>(null);
@@ -179,10 +181,15 @@ export default function PrestationsPage() {
               onEdit={setEditing}
               onArchive={(id, label) => { setArchiveModal({ id, label }); setArchiveReason(""); setArchivePayment(""); }}
               onDelete={(id, label) => setDeleteModal({ id, label })}
+              onClientClick={setFicheClientId}
             />
           )}
         </div>
       </div>
+
+      {ficheClientId && (
+        <ClientFicheById clientId={ficheClientId} onClose={() => setFicheClientId(null)} onChanged={load} />
+      )}
 
       {editing && (
         <EditPrestationModal

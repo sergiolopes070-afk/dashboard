@@ -250,9 +250,10 @@ interface PrestationTableProps {
   onEdit?: (p: Prestation) => void;
   onArchive?: (id: string, label: string) => void;
   onDelete?: (id: string, label: string) => void;
+  onClientClick?: (clientId: string) => void;
 }
 
-export default function PrestationTable({ prestations, showActions = true, onEdit, onArchive, onDelete }: PrestationTableProps) {
+export default function PrestationTable({ prestations, showActions = true, onEdit, onArchive, onDelete, onClientClick }: PrestationTableProps) {
   if (prestations.length === 0) {
     return (
       <div className="text-center py-12 text-gray-400">
@@ -289,7 +290,13 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
               onClick={() => onEdit?.(p)}
             >
               <td className="py-3 px-4">
-                <div className="font-medium text-gray-900">{p.prenom} {p.nom}</div>
+                {onClientClick && p.clientId ? (
+                  <button onClick={() => onClientClick(p.clientId)} className="font-medium text-gray-900 hover:text-blue-600 transition-colors text-left" title="Ouvrir la fiche client">
+                    {p.prenom} {p.nom}
+                  </button>
+                ) : (
+                  <div className="font-medium text-gray-900">{p.prenom} {p.nom}</div>
+                )}
                 <div className="text-xs text-gray-400">{p.tel}</div>
               </td>
               <td className="py-3 px-4">
