@@ -10,6 +10,7 @@ import { SkeletonCards } from "@/components/Skeleton";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import ClientModal from "@/components/ClientModal";
 import ClientFiche, { ClientFicheById } from "@/components/ClientFiche";
+import { useToast } from "@/components/Toast";
 import NewClientModal from "@/components/NewClientModal";
 import { Prestation, Prestataire, ClientNote, STATUT_COLORS } from "@/lib/constants";
 
@@ -388,6 +389,8 @@ function PrestationRow({
 }
 
 export default function ClientsPage() {
+  const toast = useToast();
+  const [merging, setMerging] = useState(false);
   const [data, setData]               = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.prestations) ?? []);
   const [prestataires, setPrestataires] = useState<Prestataire[]>(() => cacheGet<Prestataire[]>(CACHE_KEYS.prestataires) ?? []);
   const [loading, setLoading]         = useState(() => !cacheHas(CACHE_KEYS.prestations));
@@ -468,6 +471,43 @@ export default function ClientsPage() {
       [c.nom, c.prenom, c.email, c.tel, c.adresse].join(" ").toLowerCase().includes(q)
     );
   }, [clients, search]);
+
+  // Détecte les fiches en double : même identité (email, sinon nom+prénom+tél)
+  // mais clientId différents. Ce sont des fiches à fusionner.
+  const doublons = useMemo(() => {
+    const map = new Map<string, Client[]>();
+    for (const c of clients) {
+      if (!c.clientId) continue;
+      const cle = (c.email || `${c.nom}|${c.prenom}|${c.tel}`).toLowerCase().trim();
+      if (!cle || cle === "||") continue;
+      const arr = map.get(cle) ?? [];
+      arr.push(c);
+      map.set(cle, arr);
+    }
+    return Array.from(map.values()).filter(g => g.length > 1);
+  }, [clients]);
+
+  async function mergeGroup(group: Client[]) {
+    if (group.length < 2) return;
+    // Fiche maître = celle qui a le plus de prestations (à défaut, la 1re)
+    const master = [...group].sort((a, b) => b.prestations.length - a.prestations.length)[0];
+    const mergeIds = group.filter(c => c.clientId !== master.clientId).map(c => c.clientId);
+    setMerging(true);
+    try {
+      const res = await fetch("/api/clients/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keepId: master.clientId, mergeIds }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Erreur");
+      toast.success(`${master.prenom} ${master.nom} : ${mergeIds.length + 1} fiches fusionnées en une`);
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Fusion impossible");
+    } finally {
+      setMerging(false);
+    }
+  }
 
   const toggleExpanded = (key: string) => {
     setExpanded((prev) => {
@@ -596,6 +636,39 @@ export default function ClientsPage() {
             </button>
           </div>
         </div>
+
+        {/* Bandeau doublons détectés */}
+        {doublons.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={16} className="text-amber-600" />
+              <p className="text-sm font-semibold text-amber-800">
+                {doublons.length} client{doublons.length > 1 ? "s" : ""} en double détecté{doublons.length > 1 ? "s" : ""}
+              </p>
+            </div>
+            <p className="text-xs text-amber-700">
+              Plusieurs fiches existent pour la même personne (souvent après une reprogrammation de RDV).
+              Fusionner rassemble tout l&apos;historique dans une seule fiche.
+            </p>
+            <div className="space-y-1.5">
+              {doublons.map((g, i) => (
+                <div key={i} className="flex items-center justify-between gap-2 bg-white rounded-xl px-3 py-2 border border-amber-100">
+                  <span className="text-sm text-gray-700 truncate">
+                    <strong>{g[0].prenom} {g[0].nom}</strong>
+                    <span className="text-gray-400"> · {g.length} fiches ({g.reduce((s, c) => s + c.prestations.length, 0)} prestations)</span>
+                  </span>
+                  <button
+                    onClick={() => mergeGroup(g)}
+                    disabled={merging}
+                    className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-colors disabled:opacity-50"
+                  >
+                    {merging ? "Fusion…" : "Fusionner"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {loading && data.length === 0 ? (
           <SkeletonCards count={6} />
