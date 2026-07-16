@@ -36,8 +36,18 @@ export async function GET(req: Request) {
   type PrestaRow = { id: string; type_prestation: string; adresse: string; date_intervention: string; clients: { nom: string; prenom: string }[] | null };
   type ProspectRow = { id: string; nom: string; prenom: string; tel: string; email: string; statut: string };
 
+  // Dédoublonnage : une même personne peut avoir plusieurs fiches en base
+  // (RDV reprogrammé → nouvelle fiche). On n'en garde qu'une par identité.
+  const vus = new Set<string>();
+  const clientsUniques = (clients ?? []).filter((c: ClientRow) => {
+    const cle = (c.email || `${c.nom}|${c.prenom}|${c.tel}`).toLowerCase().trim();
+    if (!cle || vus.has(cle)) return false;
+    vus.add(cle);
+    return true;
+  });
+
   const results = [
-    ...(clients ?? []).map((c: ClientRow) => ({
+    ...clientsUniques.map((c: ClientRow) => ({
       type   : "client",
       label  : `${c.prenom ?? ""} ${c.nom ?? ""}`.trim(),
       sub    : [c.email, c.tel].filter(Boolean).join(" · "),

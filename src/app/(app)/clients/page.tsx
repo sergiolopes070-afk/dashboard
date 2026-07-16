@@ -398,10 +398,14 @@ export default function ClientsPage() {
   );
   const [modal, setModal]             = useState<{ mode: "add" | "edit"; client?: Client } | null>(null);
   const [ficheClient, setFicheClient] = useState<Client | null>(null);
-  // Ouverture directe d'une fiche depuis la recherche globale (?fiche=<clientId>)
-  const [ficheById, setFicheById] = useState<string | null>(() =>
-    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("fiche") : null
-  );
+  // Ouverture directe d'une fiche depuis la recherche globale (?fiche=<clientId>).
+  // Lu dans un effet (côté client uniquement) — pas dans un initialiseur useState,
+  // sinon la valeur serveur (null) fige l'état et la fiche ne s'ouvre jamais.
+  const [ficheById, setFicheById] = useState<string | null>(null);
+  useEffect(() => {
+    const f = new URLSearchParams(window.location.search).get("fiche");
+    if (f) setFicheById(f);
+  }, []);
   const [expanded, setExpanded]       = useState<Set<string>>(new Set());
   const [confirmClientDel, setConfirmClientDel] = useState<string | null>(null);
   const [archiveModal, setArchiveModal] = useState<{ ids: string[]; label: string } | null>(null);
