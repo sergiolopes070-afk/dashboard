@@ -524,41 +524,7 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
             {hasSchema && (
               <PrestationFields typePresta={form.typePresta} onDetailChange={(d) => set("quantite", d)} />
             )}
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Date">
-                <input type="date" value={toInputDate(form.date)}
-                  onChange={(e) => set("date", fromInputDate(e.target.value))} className={inputCls} />
-              </Field>
-              <Field label="Heure">
-                <input type="time" value={form.heure}
-                  onChange={(e) => set("heure", e.target.value)} className={inputCls} />
-              </Field>
-              <Field label="Prix (€)">
-                <input type="number" step="0.01" value={form.prix}
-                  onChange={(e) => set("prix", e.target.value)} className={inputCls} placeholder="0.00" />
-              </Field>
-              <Field label="Commission prestataire">
-                <div className="flex gap-2">
-                  <div className="flex gap-0.5 bg-gray-100 rounded-xl p-1 flex-shrink-0">
-                    {(["%", "€"] as const).map(t => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => setForm(f => ({ ...f, commissionType: t }))}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all
-                          ${form.commissionType === t ? "bg-white shadow text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                  <input type="number" min="0" step="0.01" value={form.commission}
-                    onChange={(e) => set("commission", e.target.value)}
-                    className={inputCls} placeholder={form.commissionType === "%" ? "ex: 20" : "ex: 50"} />
-                </div>
-              </Field>
-            </div>
-            {/* Autres articles / prestations — juste sous la 1re prestation */}
+            {/* Autres articles / prestations — juste après le type (fluide sur mobile) */}
             <div className="pt-1">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium text-gray-600">Autres articles / prestations (optionnel)</span>
@@ -603,16 +569,51 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
                   })}
                 </div>
               )}
-
-              {/* Total de la fiche (TVA 10%) */}
-              {totalTTC > 0 && (
-                <div className="mt-3 bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm space-y-1">
-                  <div className="flex justify-between text-gray-600"><span>Total HT</span><span>{totalHT.toFixed(2)} €</span></div>
-                  <div className="flex justify-between text-gray-600"><span>TVA (10 %)</span><span>{totalTVA.toFixed(2)} €</span></div>
-                  <div className="flex justify-between font-bold text-gray-900 pt-1 border-t border-blue-100"><span>Total TTC</span><span>{totalTTC.toFixed(2)} €</span></div>
-                </div>
-              )}
             </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Date">
+                <input type="date" value={toInputDate(form.date)}
+                  onChange={(e) => set("date", fromInputDate(e.target.value))} className={inputCls} />
+              </Field>
+              <Field label="Heure">
+                <input type="time" value={form.heure}
+                  onChange={(e) => set("heure", e.target.value)} className={inputCls} />
+              </Field>
+              <Field label="Prix (€)">
+                <input type="number" step="0.01" value={form.prix}
+                  onChange={(e) => set("prix", e.target.value)} className={inputCls} placeholder="0.00" />
+              </Field>
+              <Field label="Commission prestataire">
+                <div className="flex gap-2">
+                  <div className="flex gap-0.5 bg-gray-100 rounded-xl p-1 flex-shrink-0">
+                    {(["%", "€"] as const).map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, commissionType: t }))}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all
+                          ${form.commissionType === t ? "bg-white shadow text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                  <input type="number" min="0" step="0.01" value={form.commission}
+                    onChange={(e) => set("commission", e.target.value)}
+                    className={inputCls} placeholder={form.commissionType === "%" ? "ex: 20" : "ex: 50"} />
+                </div>
+              </Field>
+            </div>
+
+            {/* Total de la fiche (TVA 10%) */}
+            {totalTTC > 0 && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm space-y-1">
+                <div className="flex justify-between text-gray-600"><span>Total HT</span><span>{totalHT.toFixed(2)} €</span></div>
+                <div className="flex justify-between text-gray-600"><span>TVA (10 %)</span><span>{totalTVA.toFixed(2)} €</span></div>
+                <div className="flex justify-between font-bold text-gray-900 pt-1 border-t border-blue-100"><span>Total TTC</span><span>{totalTTC.toFixed(2)} €</span></div>
+              </div>
+            )}
 
             <Field label="Message / Notes client">
               <textarea value={form.message} onChange={(e) => set("message", e.target.value)}
