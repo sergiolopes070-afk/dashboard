@@ -198,6 +198,7 @@ const EMPTY = {
   commissionType : "%" as "%" | "€",
   prestataire    : "",
   message        : "",
+  commentaire    : "",   // note interne → prestataire, jamais le client
 };
 
 export default function NewClientModal({ prestataires, onClose, onSaved, initialValues }: Props) {
@@ -323,7 +324,9 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
         `🧹 Prestation : ${f.typePresta}${f.quantite ? ` (x${f.quantite})` : ""}\n` +
         `📍 Adresse : ${fullAdresseWA || "—"}\n` +
         `📅 Date : ${f.date || "—"}${f.heure ? ` à ${f.heure}` : ""}\n` +
-        `💶 Prix : ${f.prix || "—"} €\n\n` +
+        `💶 Prix : ${f.prix || "—"} €\n` +
+        (f.commentaire?.trim() ? `📝 Note interne : ${f.commentaire.trim()}\n` : "") +
+        `\n` +
         (acceptUrl
           ? `Merci de répondre directement via ces liens :\n\n✅ ACCEPTER la mission :\n${acceptUrl}\n\n❌ REFUSER la mission :\n${refusUrl}\n\nVotre réponse mettra à jour la fiche client automatiquement 🙏`
           : `Merci de confirmer votre disponibilité en répondant à ce message 🙏`)
@@ -616,10 +619,11 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
               </div>
             )}
 
-            <Field label="Message / Notes client">
-              <textarea value={form.message} onChange={(e) => set("message", e.target.value)}
+            <Field label="Notes interne">
+              <textarea value={form.commentaire} onChange={(e) => set("commentaire", e.target.value)}
                 rows={3} className={`${inputCls} resize-none`}
-                placeholder="Informations complémentaires sur la prestation..." />
+                placeholder="Consignes pour le prestataire (code, étage, animal, précisions…)" />
+              <p className="text-[11px] text-gray-400 mt-1">🔒 Envoyée au prestataire, jamais visible par le client.</p>
             </Field>
           </Section>
 
