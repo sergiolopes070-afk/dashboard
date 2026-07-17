@@ -4,6 +4,7 @@ import { FileText, ExternalLink, Search, Download, Plus, X, Trash2 } from "lucid
 import Topbar from "@/components/Topbar";
 import { SkeletonTable } from "@/components/Skeleton";
 import { Prestation } from "@/lib/constants";
+import { getEntite } from "@/lib/entite";
 
 // ─── Modal de personnalisation ─────────────────────────────────────────────────
 interface LigneSupp { label: string; quantite: number; prixHT: number }
@@ -41,6 +42,10 @@ function DevisCustomizeModal({
     lignesSupp: [],
   });
 
+  // Kinourent (nettoyage véhicules) n'est pas agréé services à la personne :
+  // ni avance immédiate URSSAF ni crédit d'impôt SAP ne s'appliquent.
+  const isKinourent = getEntite(presta.typePresta) === "Kinourent";
+
   function toggleEtat(e: string) {
     setOpts(o => ({
       ...o,
@@ -68,8 +73,8 @@ function DevisCustomizeModal({
     const params = new URLSearchParams();
     if (download) params.set("download", "1");
     if (opts.etats.length) params.set("etat", opts.etats.join(", "));
-    if (opts.avanceImmediate) params.set("avance", "1");
-    if (opts.creditImpot) params.set("credit", "1");
+    if (!isKinourent && opts.avanceImmediate) params.set("avance", "1");
+    if (!isKinourent && opts.creditImpot) params.set("credit", "1");
     const validSupp = opts.lignesSupp.filter(l => l.label.trim());
     if (validSupp.length) params.set("supp", encodeURIComponent(JSON.stringify(validSupp)));
     return `/api/devis/${presta.row}?${params.toString()}`;
@@ -134,6 +139,15 @@ function DevisCustomizeModal({
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-2">
               Avantage fiscal
             </label>
+            {isKinourent ? (
+              <div className="flex items-start gap-3 p-3 rounded-xl border border-amber-200 bg-amber-50">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-amber-200 bg-amber-100 text-amber-700 font-medium shrink-0 mt-0.5">Kinourent</span>
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  Prestation <strong>Kinourent</strong> (nettoyage de véhicules) — non éligible aux services à la personne.
+                  Ni l&apos;avance immédiate URSSAF ni le crédit d&apos;impôt SAP ne s&apos;appliquent. TVA 20 %.
+                </p>
+              </div>
+            ) : (
             <div className="space-y-2">
               <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 cursor-pointer hover:border-blue-200 transition-colors">
                 <input
@@ -160,6 +174,7 @@ function DevisCustomizeModal({
                 </div>
               </label>
             </div>
+            )}
           </div>
 
           {/* Services supplémentaires */}
