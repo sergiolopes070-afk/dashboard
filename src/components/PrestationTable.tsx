@@ -6,6 +6,7 @@ import {
   CreditCard, Copy, Check, X, Loader2, Send, Download,
 } from "lucide-react";
 import { MODE_PAIEMENT_ICONS } from "@/lib/constants";
+import { getEntite, ENTITE_BADGE, ENTITE_SHORT } from "@/lib/entite";
 import { useState } from "react";
 
 // ─── Bouton / Modal paiement Stripe ──────────────────────────────────────────
@@ -300,8 +301,13 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                 <div className="text-xs text-gray-400">{p.tel}</div>
               </td>
               <td className="py-3 px-4">
-                <div className="font-medium text-gray-800">{p.typePresta}</div>
-                {p.quantite && <div className="text-xs text-gray-400">x{p.quantite}</div>}
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium text-gray-800">{p.typePresta}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${ENTITE_BADGE[getEntite(p.typePresta)]}`}>
+                    {ENTITE_SHORT[getEntite(p.typePresta)]}
+                  </span>
+                </div>
+                {p.quantite && <div className="text-xs text-gray-400">{p.quantite}</div>}
               </td>
               <td className="py-3 px-4">
                 <div className="text-gray-700">{p.date || "—"}</div>

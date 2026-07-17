@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { Prestation, Prestataire, Depense, ModePaiement } from "./constants";
+import { getEntite } from "./entite";
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
 
@@ -479,12 +480,19 @@ export async function getDashboardStats() {
   const archiveCA = archivePaid.map((p) => parseFloat(p.prix) || 0).reduce((a, b) => a + b, 0);
   const devisGeneres = [...prestations, ...archive].filter((p) => p.genDevis === "FAIT" || p.devisPDF).length;
 
+  // CA dissocié par entité juridique (Kinouclean SAS / Kinourent)
+  const caParEntite: Record<string, number> = { "Kinouclean SAS": 0, "Kinourent": 0 };
+  for (const p of [...prestations, ...archivePaid]) {
+    caParEntite[getEntite(p.typePresta)] += parseFloat(p.prix) || 0;
+  }
+
   return {
     totalPrestations : prestations.length,
     totalClients     : new Set([...prestations, ...archive].map((p) => p.email).filter(Boolean)).size,
     totalPrestataires: prestataires.length,
     totalCA,
     archiveCA,
+    caParEntite,
     upcoming         : upcoming.length,
     toReassign       : toReassign.length,
     waitingPresta    : waitingPresta.length,

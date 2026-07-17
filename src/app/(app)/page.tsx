@@ -46,6 +46,7 @@ interface Stats {
   totalClients     : number;
   totalPrestataires: number;
   totalCA          : number;
+  caParEntite      : Record<string, number>;
   upcoming         : number;
   toReassign       : number;
   waitingPresta    : number;
@@ -390,7 +391,7 @@ export default function HomePage() {
         })()}
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard title="Chiffre d'affaires" value={stats ? `${stats.totalCA.toFixed(0)} €` : "—"} subtitle="Total toutes prestations" icon={TrendingUp} color="green" href="/prestations" />
+          <StatCard title="Chiffre d'affaires" value={stats ? `${stats.totalCA.toFixed(0)} €` : "—"} subtitle={stats?.caParEntite ? `SAS ${(stats.caParEntite["Kinouclean SAS"] || 0).toFixed(0)}€ · Kinourent ${(stats.caParEntite["Kinourent"] || 0).toFixed(0)}€` : "Total toutes prestations"} icon={TrendingUp} color="green" href="/prestations" />
           <StatCard title="Prestations actives" value={stats?.totalPrestations ?? "—"} subtitle="En cours" icon={Briefcase} color="blue" href="/prestations" />
           <StatCard title="Clients" value={stats?.totalClients ?? "—"} subtitle="Clients uniques" icon={Users} color="purple" href="/clients" />
           <StatCard title="Prestataires" value={stats?.totalPrestataires ?? "—"} subtitle="Équipe active" icon={Wrench} color="orange" href="/prestataires" />

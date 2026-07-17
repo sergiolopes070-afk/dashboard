@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { ClientNote, STATUT_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
+import { getEntite, ENTITE_BADGE, ENTITE_SHORT } from "@/lib/entite";
 
 // Forme minimale d'une prestation affichée dans la fiche (compatible avec le type
 // Prestation complet ET avec les données renvoyées par /api/clients/[id]).
@@ -312,7 +313,12 @@ export default function ClientFiche({
                   return (
                     <div key={p.row} className="border border-gray-100 rounded-xl p-3">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium text-gray-800">{p.typePresta || "—"}</span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-sm font-medium text-gray-800 truncate">{p.typePresta || "—"}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium shrink-0 ${ENTITE_BADGE[getEntite(p.typePresta)]}`}>
+                            {ENTITE_SHORT[getEntite(p.typePresta)]}
+                          </span>
+                        </div>
                         {p.prix && <span className="text-sm font-semibold text-green-700 shrink-0">{p.prix} €</span>}
                       </div>
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-gray-500">
