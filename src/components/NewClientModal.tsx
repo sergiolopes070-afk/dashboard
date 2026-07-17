@@ -511,14 +511,19 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
                   {TYPES_PRESTA.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </Field>
-              {/* Champ "quantité / durée" seulement si aucun champ intelligent pour ce type */}
-              {!hasSchema && (
-                <Field label="Quantité / Durée">
-                  <input type="text" value={form.quantite} onChange={(e) => set("quantite", e.target.value)}
-                    className={inputCls} placeholder="ex: 3h / 1 passage" />
-                </Field>
-              )}
+              <Field label="Prix (€)">
+                <input type="number" step="0.01" value={form.prix}
+                  onChange={(e) => set("prix", e.target.value)} className={inputCls} placeholder="0.00" />
+              </Field>
             </div>
+
+            {/* Quantité / durée seulement si aucun champ intelligent pour ce type */}
+            {!hasSchema && (
+              <Field label="Quantité / Durée">
+                <input type="text" value={form.quantite} onChange={(e) => set("quantite", e.target.value)}
+                  className={inputCls} placeholder="ex: 3h / 1 passage" />
+              </Field>
+            )}
 
             {/* Champs intelligents pilotés par le schéma du type de prestation */}
             {hasSchema && (
@@ -579,10 +584,6 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
               <Field label="Heure">
                 <input type="time" value={form.heure}
                   onChange={(e) => set("heure", e.target.value)} className={inputCls} />
-              </Field>
-              <Field label="Prix (€)">
-                <input type="number" step="0.01" value={form.prix}
-                  onChange={(e) => set("prix", e.target.value)} className={inputCls} placeholder="0.00" />
               </Field>
               <Field label="Commission prestataire">
                 <div className="flex gap-2">
