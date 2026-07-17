@@ -391,6 +391,12 @@ function PrestationRow({
 export default function ClientsPage() {
   const toast = useToast();
   const [merging, setMerging] = useState(false);
+  // Fusion manuelle : sélection de fiches à fusionner (au cas où l'auto-détection
+  // ne les relie pas — ex. 2 fiches sans aucun champ commun).
+  const [selectedMerge, setSelectedMerge] = useState<Set<string>>(new Set());
+  const toggleMergeSel = (clientId: string) => setSelectedMerge(prev => {
+    const n = new Set(prev); if (n.has(clientId)) n.delete(clientId); else n.add(clientId); return n;
+  });
   const [data, setData]               = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.prestations) ?? []);
   const [prestataires, setPrestataires] = useState<Prestataire[]>(() => cacheGet<Prestataire[]>(CACHE_KEYS.prestataires) ?? []);
   const [loading, setLoading]         = useState(() => !cacheHas(CACHE_KEYS.prestations));
@@ -538,6 +544,13 @@ export default function ClientsPage() {
     } finally {
       setMerging(false);
     }
+  }
+
+  async function mergeSelected() {
+    const group = clients.filter(c => selectedMerge.has(c.clientId));
+    if (group.length < 2) return;
+    await mergeGroup(group);
+    setSelectedMerge(new Set());
   }
 
   const toggleExpanded = (key: string) => {
@@ -766,6 +779,16 @@ export default function ClientsPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-1.5">
+                        {c.clientId && (
+                          <label className="flex items-center p-1 cursor-pointer" title="Sélectionner pour fusionner">
+                            <input
+                              type="checkbox"
+                              checked={selectedMerge.has(c.clientId)}
+                              onChange={() => toggleMergeSel(c.clientId)}
+                              className="w-4 h-4 accent-amber-500"
+                            />
+                          </label>
+                        )}
                         <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-1 rounded-lg">
                           {c.totalCA.toFixed(0)} €
                         </span>
@@ -969,6 +992,23 @@ export default function ClientsPage() {
           </div>
         )}
       </div>
+
+      {/* Barre flottante de fusion manuelle */}
+      {selectedMerge.size >= 2 && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 bg-amber-500 text-white rounded-full shadow-2xl pl-5 pr-2.5 py-2.5 flex items-center gap-3">
+          <span className="text-sm font-medium">{selectedMerge.size} fiches sélectionnées</span>
+          <button
+            onClick={mergeSelected}
+            disabled={merging}
+            className="bg-white text-amber-700 rounded-full px-4 py-1.5 text-sm font-bold hover:bg-amber-50 transition-colors disabled:opacity-50"
+          >
+            {merging ? "Fusion…" : "Fusionner en une fiche"}
+          </button>
+          <button onClick={() => setSelectedMerge(new Set())} aria-label="Annuler la sélection" className="text-white/80 hover:text-white p-1">
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {ficheClient && (
         <ClientFiche
