@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
+import { insertPrestationForClient } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 
@@ -68,4 +69,23 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     tags       : Array.isArray(client.tags) ? client.tags : [],
     notes      : Array.isArray(client.notes) ? client.notes : [],
   });
+}
+
+// POST : ajoute un nouveau RDV / prestation à ce client (reprogrammation).
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
+  try {
+    const b = await req.json() as { typePresta?: string; date?: string; heure?: string; prix?: string; message?: string };
+    const id = await insertPrestationForClient(params.id, {
+      typePresta: b.typePresta || "",
+      date      : b.date       || "",
+      heure     : b.heure      || "",
+      prix      : b.prix       || "",
+      message   : b.message    || "",
+    });
+    return NextResponse.json({ success: true, id });
+  } catch (err: unknown) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Erreur" }, { status: 500 });
+  }
 }

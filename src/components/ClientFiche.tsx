@@ -111,6 +111,30 @@ export default function ClientFiche({
     } catch { setFiscal(prev); toast.error("Erreur"); }
   }
 
+  // ── Nouveau RDV / reprogrammation ──
+  const [showRdv, setShowRdv] = useState(false);
+  const [rdv, setRdv] = useState({ typePresta: "", date: "", heure: "", prix: "" });
+  const [rdvSaving, setRdvSaving] = useState(false);
+  async function addRdv() {
+    if (!rdv.typePresta && !rdv.date) { toast.error("Renseigne au moins le type ou la date"); return; }
+    setRdvSaving(true);
+    try {
+      const frDate = rdv.date ? rdv.date.split("-").reverse().join("/") : "";
+      const res = await fetch(`/api/clients/${client.clientId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...rdv, date: frDate }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Nouveau RDV ajouté ✅");
+      setShowRdv(false);
+      setRdv({ typePresta: "", date: "", heure: "", prix: "" });
+      onChanged?.();
+    } catch { toast.error("Erreur lors de l'ajout du RDV"); }
+    finally { setRdvSaving(false); }
+  }
+  const RDV_TYPES = ["Ménage", "Repassage", "Vitres", "Lavage Canapé", "Lavage de matelas", "Lavage tapis", "Lavage véhicule", "Après travaux", "Bureaux", "Débarras", "Autre"];
+
   const fmtDate = (iso: string) => {
     const d = new Date(iso);
     return isNaN(d.getTime()) ? "" : d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }) + " · " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -244,7 +268,41 @@ export default function ClientFiche({
 
           {/* Historique prestations */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Historique des prestations</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Historique des prestations</p>
+              <button onClick={() => setShowRdv(v => !v)}
+                className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1">
+                {showRdv ? "Fermer" : "➕ Nouveau RDV"}
+              </button>
+            </div>
+
+            {/* Formulaire nouveau RDV / reprogrammation */}
+            {showRdv && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-3 space-y-2">
+                <select value={rdv.typePresta} onChange={e => setRdv(r => ({ ...r, typePresta: e.target.value }))}
+                  className="w-full bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+                  <option value="">— Type de prestation —</option>
+                  {RDV_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <div className="grid grid-cols-3 gap-2">
+                  <input type="date" value={rdv.date} onChange={e => setRdv(r => ({ ...r, date: e.target.value }))}
+                    className="bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                  <input type="time" value={rdv.heure} onChange={e => setRdv(r => ({ ...r, heure: e.target.value }))}
+                    className="bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                  <div className="relative">
+                    <input type="number" value={rdv.prix} min={0} step="0.01" placeholder="Prix"
+                      onChange={e => setRdv(r => ({ ...r, prix: e.target.value }))}
+                      className="w-full bg-white border border-gray-200 rounded-lg pl-2 pr-5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                    <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">€</span>
+                  </div>
+                </div>
+                <button onClick={addRdv} disabled={rdvSaving}
+                  className="w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50">
+                  {rdvSaving ? "Ajout…" : "Ajouter le RDV"}
+                </button>
+              </div>
+            )}
+
             {client.prestations.length === 0 ? (
               <p className="text-xs text-gray-400 text-center py-2">Aucune prestation</p>
             ) : (
