@@ -3,6 +3,7 @@ import { RefreshCw, Bell, Search, X, Menu } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import DarkModeToggle from "./DarkModeToggle";
 import { useSidebar } from "./SidebarContext";
+import { ClientFicheById } from "./ClientFiche";
 
 interface TopbarProps {
   title: string;
@@ -18,6 +19,7 @@ interface SearchResult {
   label: string;
   sub: string;
   href: string;
+  clientId?: string;
   status?: string | null;
 }
 
@@ -26,6 +28,7 @@ function GlobalSearch() {
   const [query, setQuery]     = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [ficheClientId, setFicheClientId] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -107,28 +110,44 @@ function GlobalSearch() {
             {!loading && results.length === 0 && !query.trim() && (
               <p className="p-4 text-sm text-gray-400 text-center">Tapez pour rechercher…</p>
             )}
-            {results.map((r, i) => (
-              <a
-                key={i}
-                href={r.href}
-                onClick={() => setOpen(false)}
-                className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0"
-              >
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium mt-0.5 flex-shrink-0 ${
-                  r.type === "client"     ? "bg-blue-100 text-blue-700"
-                  : r.type === "prospect" ? "bg-orange-100 text-orange-700"
-                  : "bg-purple-100 text-purple-700"
-                }`}>
-                  {r.type === "client" ? "Client" : r.type === "prospect" ? "Prospect" : "RDV"}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900">{r.label}</p>
-                  <p className="text-xs text-gray-500">{r.sub}</p>
-                </div>
-              </a>
-            ))}
+            {results.map((r, i) => {
+              const inner = (
+                <>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium mt-0.5 flex-shrink-0 ${
+                    r.type === "client"     ? "bg-blue-100 text-blue-700"
+                    : r.type === "prospect" ? "bg-orange-100 text-orange-700"
+                    : "bg-purple-100 text-purple-700"
+                  }`}>
+                    {r.type === "client" ? "Client" : r.type === "prospect" ? "Prospect" : "RDV"}
+                  </span>
+                  <div className="min-w-0 text-left">
+                    <p className="text-sm font-medium text-gray-900">{r.label}</p>
+                    <p className="text-xs text-gray-500">{r.sub}</p>
+                  </div>
+                </>
+              );
+              const cls = "w-full flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0";
+              // Client → on ouvre la fiche DIRECTEMENT (surimpression, sans navigation).
+              if (r.type === "client" && r.clientId) {
+                return (
+                  <button key={i} className={cls}
+                    onClick={() => { setFicheClientId(r.clientId!); setOpen(false); }}>
+                    {inner}
+                  </button>
+                );
+              }
+              return (
+                <a key={i} href={r.href} onClick={() => setOpen(false)} className={cls}>
+                  {inner}
+                </a>
+              );
+            })}
           </div>
         </div>
+      )}
+
+      {ficheClientId && (
+        <ClientFicheById clientId={ficheClientId} onClose={() => setFicheClientId(null)} />
       )}
     </div>
   );

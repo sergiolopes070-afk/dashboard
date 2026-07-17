@@ -48,11 +48,12 @@ export async function GET(req: Request) {
 
   const results = [
     ...clientsUniques.map((c: ClientRow) => ({
-      type   : "client",
-      label  : `${c.prenom ?? ""} ${c.nom ?? ""}`.trim(),
-      sub    : [c.email, c.tel].filter(Boolean).join(" · "),
-      href   : `/clients?fiche=${c.id}`,
-      status : null,
+      type    : "client",
+      label   : `${c.prenom ?? ""} ${c.nom ?? ""}`.trim(),
+      sub     : [c.email, c.tel].filter(Boolean).join(" · "),
+      href    : `/clients?fiche=${c.id}`,
+      clientId: c.id,          // ← ouverture directe de la fiche (sans navigation)
+      status  : null,
     })),
     ...(prospects ?? []).map((p: ProspectRow) => ({
       type   : "prospect",
