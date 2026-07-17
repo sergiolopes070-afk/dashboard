@@ -5,6 +5,8 @@ import {
   CheckCircle, MessageCircle, Clock, UserCheck,
 } from "lucide-react";
 import { Prestataire } from "@/lib/constants";
+import { getSchema } from "@/lib/prestationSchema";
+import PrestationFields from "@/components/PrestationFields";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -33,10 +35,6 @@ const TYPES_PRESTA = [
   "Autre",
 ];
 
-// Options des champs adaptatifs selon le type de prestation
-const CANAPE_TYPES     = ["Tissu", "Cuir", "Alcantara", "Convertible", "D'angle", "Microfibre"];
-const CANAPE_PLACES    = ["1", "2", "3", "4", "5", "6", "7+"];
-const MATELAS_TAILLES  = ["1 place (90×190)", "2 places (140×190)", "Queen (160×200)", "King (180×200)", "Autre"];
 
 // ─── Hook auto-ville ─────────────────────────────────────────────────────────
 
@@ -219,29 +217,8 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  // ── Champs adaptatifs selon le type de prestation ──
-  const [canapeType,   setCanapeType]   = useState("");
-  const [canapePlaces, setCanapePlaces] = useState("");
-  const [matelasTaille, setMatelasTaille] = useState("");
-  const [tapisDim,     setTapisDim]     = useState("");
-
-  const isCanape  = /canap/i.test(form.typePresta);
-  const isMatelas = /matelas/i.test(form.typePresta);
-  const isTapis   = /tapis/i.test(form.typePresta);
-  const isAdaptive = isCanape || isMatelas || isTapis;
-
-  // Remplit automatiquement le champ "quantité / détail" à partir des champs adaptatifs.
-  useEffect(() => {
-    if (isCanape) {
-      const v = [canapeType && `Canapé ${canapeType}`, canapePlaces && `${canapePlaces} places`].filter(Boolean).join(" · ");
-      setForm(f => ({ ...f, quantite: v }));
-    } else if (isMatelas) {
-      setForm(f => ({ ...f, quantite: matelasTaille ? `Matelas ${matelasTaille}` : "" }));
-    } else if (isTapis) {
-      setForm(f => ({ ...f, quantite: tapisDim ? `Tapis ${tapisDim}` : "" }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCanape, isMatelas, isTapis, canapeType, canapePlaces, matelasTaille, tapisDim]);
+  // Champs adaptatifs pilotés par le schéma (src/lib/prestationSchema).
+  const hasSchema = getSchema(form.typePresta).length > 0;
 
   const { villes: villesCP, loading: cpLoading } = useVilleFromCP(form.codePostal);
   // Auto-sélectionner si une seule ville pour ce CP
@@ -528,26 +505,8 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
                   {TYPES_PRESTA.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </Field>
-              {isCanape ? (
-                <Field label="Type de canapé">
-                  <select value={canapeType} onChange={(e) => setCanapeType(e.target.value)} className={inputCls}>
-                    <option value="">— Type —</option>
-                    {CANAPE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </Field>
-              ) : isMatelas ? (
-                <Field label="Taille du matelas">
-                  <select value={matelasTaille} onChange={(e) => setMatelasTaille(e.target.value)} className={inputCls}>
-                    <option value="">— Taille —</option>
-                    {MATELAS_TAILLES.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </Field>
-              ) : isTapis ? (
-                <Field label="Dimensions du tapis">
-                  <input type="text" value={tapisDim} onChange={(e) => setTapisDim(e.target.value)}
-                    className={inputCls} placeholder="ex: 2×3 m / 6 m²" />
-                </Field>
-              ) : (
+              {/* Champ "quantité / durée" seulement si aucun champ intelligent pour ce type */}
+              {!hasSchema && (
                 <Field label="Quantité / Durée">
                   <input type="text" value={form.quantite} onChange={(e) => set("quantite", e.target.value)}
                     className={inputCls} placeholder="ex: 3h / 1 passage" />
@@ -555,16 +514,9 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
               )}
             </div>
 
-            {/* Nombre de places : uniquement pour le canapé */}
-            {isCanape && (
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Nombre de places">
-                  <select value={canapePlaces} onChange={(e) => setCanapePlaces(e.target.value)} className={inputCls}>
-                    <option value="">— Places —</option>
-                    {CANAPE_PLACES.map((p) => <option key={p} value={p}>{p} place{p !== "1" ? "s" : ""}</option>)}
-                  </select>
-                </Field>
-              </div>
+            {/* Champs intelligents pilotés par le schéma du type de prestation */}
+            {hasSchema && (
+              <PrestationFields typePresta={form.typePresta} onDetailChange={(d) => set("quantite", d)} />
             )}
             <div className="grid grid-cols-3 gap-3">
               <Field label="Date">
