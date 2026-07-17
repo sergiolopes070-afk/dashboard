@@ -472,12 +472,18 @@ export default function ClientsPage() {
     );
   }, [clients, search]);
 
-  // Détecte les fiches en double de façon ROBUSTE : on relie deux fiches dès
-  // qu'elles partagent UN signal fort — même téléphone, OU même email, OU même
-  // nom+prénom. Une fiche de Sakina avec email + une sans email + une avec un
-  // tél identique seront toutes regroupées ensemble (union-find).
+  // Détecte les fiches en double de façon ROBUSTE et SÛRE. On ne se base JAMAIS
+  // sur le nom (deux clients différents peuvent avoir le même nom). On relie deux
+  // fiches uniquement si elles partagent un identifiant qui ne peut appartenir
+  // qu'à une seule personne : même TÉLÉPHONE, OU même EMAIL, OU même ADRESSE
+  // postale. Par chaînage (union-find), toutes les variantes se regroupent.
   const doublons = useMemo(() => {
-    const norm = (s: string) => (s || "").toLowerCase().replace(/\s+/g, "").trim();
+    const norm    = (s: string) => (s || "").toLowerCase().replace(/\s+/g, "").trim();
+    // Téléphone : on ne garde que les chiffres (ignore +33/0, espaces, points…)
+    const normTel = (s: string) => { const d = (s || "").replace(/\D/g, ""); return d.replace(/^0/, "").replace(/^33/, ""); };
+    // Adresse : minuscules, sans espaces ni ponctuation
+    const normAdr = (s: string) => (s || "").toLowerCase().replace(/[\s,.\-]/g, "").trim();
+
     const parent = new Map<string, string>();
     const find = (x: string): string => {
       while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x)!)!); x = parent.get(x)!; }
@@ -491,9 +497,9 @@ export default function ClientsPage() {
     for (const c of clients) {
       if (!c.clientId) continue;
       const signals: string[] = [];
-      const tel = norm(c.tel);   if (tel.length >= 6)            signals.push("t:" + tel);
-      const em  = norm(c.email); if (em)                         signals.push("e:" + em);
-      const nom = norm(c.nom);   if (nom)                        signals.push("n:" + norm(c.prenom) + "|" + nom);
+      const tel = normTel(c.tel);   if (tel.length >= 6)   signals.push("t:" + tel);
+      const em  = norm(c.email);    if (em)                signals.push("e:" + em);
+      const adr = normAdr(c.adresse); if (adr.length >= 8) signals.push("a:" + adr);
       for (const s of signals) {
         const seen = bySignal.get(s);
         if (seen) union(c.clientId, seen);
