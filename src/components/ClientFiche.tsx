@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 import { ClientNote, STATUT_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
-import { getEntite, ENTITE_BADGE, ENTITE_SHORT } from "@/lib/entite";
+import { Entite } from "@/lib/entite";
+import EntiteBadge from "@/components/EntiteBadge";
 
 // Forme minimale d'une prestation affichée dans la fiche (compatible avec le type
 // Prestation complet ET avec les données renvoyées par /api/clients/[id]).
@@ -64,8 +65,29 @@ export default function ClientFiche({
   const [noteTexte, setNoteTexte] = useState("");
   const [noteType,  setNoteType]  = useState(NOTE_TYPES[0].icon);
   const [fiscal, setFiscal] = useState<"" | "avance" | "credit">("");
+  const [entiteOverrides, setEntiteOverrides] = useState<Record<string, Entite>>({});
 
   useEffect(() => { setNotes(client.notes ?? []); }, [client.clientId, client.notes]);
+
+  // Corrections manuelles d'entité (settings/entite_override), chargées une fois.
+  useEffect(() => {
+    fetch("/api/prestations/entite").then(r => r.json()).then(d => setEntiteOverrides(d.overrides || {})).catch(() => {});
+  }, []);
+  async function setEntite(prestationId: string, entite: Entite | null) {
+    setEntiteOverrides(prev => {
+      const next = { ...prev };
+      if (entite) next[prestationId] = entite; else delete next[prestationId];
+      return next;
+    });
+    try {
+      const r = await fetch("/api/prestations/entite", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prestationId, entite }),
+      });
+      const d = await r.json();
+      if (d.overrides) setEntiteOverrides(d.overrides);
+    } catch { /* garde l'état optimiste */ }
+  }
 
   // Charge la préférence fiscale du client
   useEffect(() => {
@@ -315,9 +337,7 @@ export default function ClientFiche({
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="text-sm font-medium text-gray-800 truncate">{p.typePresta || "—"}</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium shrink-0 ${ENTITE_BADGE[getEntite(p.typePresta)]}`}>
-                            {ENTITE_SHORT[getEntite(p.typePresta)]}
-                          </span>
+                          <EntiteBadge prestationId={p.row} typePresta={p.typePresta} overrides={entiteOverrides} onSet={setEntite} className="shrink-0" />
                         </div>
                         {p.prix && <span className="text-sm font-semibold text-green-700 shrink-0">{p.prix} €</span>}
                       </div>

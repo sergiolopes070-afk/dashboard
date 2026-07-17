@@ -6,8 +6,9 @@ import {
   CreditCard, Copy, Check, X, Loader2, Send, Download,
 } from "lucide-react";
 import { MODE_PAIEMENT_ICONS } from "@/lib/constants";
-import { getEntite, ENTITE_BADGE, ENTITE_SHORT } from "@/lib/entite";
-import { useState } from "react";
+import { Entite } from "@/lib/entite";
+import EntiteBadge from "@/components/EntiteBadge";
+import { useState, useEffect } from "react";
 
 // ─── Bouton / Modal paiement Stripe ──────────────────────────────────────────
 
@@ -255,6 +256,28 @@ interface PrestationTableProps {
 }
 
 export default function PrestationTable({ prestations, showActions = true, onEdit, onArchive, onDelete, onClientClick }: PrestationTableProps) {
+  // Corrections manuelles d'entité (settings/entite_override), chargées une fois.
+  const [entiteOverrides, setEntiteOverrides] = useState<Record<string, Entite>>({});
+  useEffect(() => {
+    fetch("/api/prestations/entite").then(r => r.json()).then(d => setEntiteOverrides(d.overrides || {})).catch(() => {});
+  }, []);
+  async function setEntite(prestationId: string, entite: Entite | null) {
+    // Optimiste
+    setEntiteOverrides(prev => {
+      const next = { ...prev };
+      if (entite) next[prestationId] = entite; else delete next[prestationId];
+      return next;
+    });
+    try {
+      const r = await fetch("/api/prestations/entite", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prestationId, entite }),
+      });
+      const d = await r.json();
+      if (d.overrides) setEntiteOverrides(d.overrides);
+    } catch { /* garde l'état optimiste */ }
+  }
+
   if (prestations.length === 0) {
     return (
       <div className="text-center py-12 text-gray-400">
@@ -301,11 +324,9 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                 <div className="text-xs text-gray-400">{p.tel}</div>
               </td>
               <td className="py-3 px-4">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                   <span className="font-medium text-gray-800">{p.typePresta}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${ENTITE_BADGE[getEntite(p.typePresta)]}`}>
-                    {ENTITE_SHORT[getEntite(p.typePresta)]}
-                  </span>
+                  <EntiteBadge prestationId={p.row} typePresta={p.typePresta} overrides={entiteOverrides} onSet={setEntite} />
                 </div>
                 {p.quantite && <div className="text-xs text-gray-400">{p.quantite}</div>}
               </td>

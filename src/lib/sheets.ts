@@ -1,6 +1,14 @@
 import { supabase } from "./supabase";
 import { Prestation, Prestataire, Depense, ModePaiement } from "./constants";
-import { getEntite } from "./entite";
+import { getEntite, resolveEntite, Entite, ENTITE_OVERRIDE_KEY } from "./entite";
+
+// Lit la table de corrections manuelles d'entité (settings/entite_override).
+async function getEntiteOverrides(): Promise<Record<string, Entite>> {
+  if (!supabase) return {};
+  const { data } = await supabase.from("settings").select("value").eq("key", ENTITE_OVERRIDE_KEY).maybeSingle();
+  try { return data?.value ? (JSON.parse(data.value as string) as Record<string, Entite>) : {}; }
+  catch { return {}; }
+}
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
 
@@ -452,10 +460,11 @@ export async function deleteDepense(id: string): Promise<void> {
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 
 export async function getDashboardStats() {
-  const [prestations, prestataires, archive] = await Promise.all([
+  const [prestations, prestataires, archive, entiteOverrides] = await Promise.all([
     getPrestations(),
     getPrestataires(),
     getArchive(),
+    getEntiteOverrides(),
   ]);
 
   const today = new Date();
@@ -483,7 +492,7 @@ export async function getDashboardStats() {
   // CA dissocié par entité juridique (Kinouclean SAS / Kinourent)
   const caParEntite: Record<string, number> = { "Kinouclean SAS": 0, "Kinourent": 0 };
   for (const p of [...prestations, ...archivePaid]) {
-    caParEntite[getEntite(p.typePresta)] += parseFloat(p.prix) || 0;
+    caParEntite[resolveEntite(p.row, p.typePresta, entiteOverrides)] += parseFloat(p.prix) || 0;
   }
 
   return {
@@ -493,6 +502,7 @@ export async function getDashboardStats() {
     totalCA,
     archiveCA,
     caParEntite,
+    entiteOverrides,
     upcoming         : upcoming.length,
     toReassign       : toReassign.length,
     waitingPresta    : waitingPresta.length,
