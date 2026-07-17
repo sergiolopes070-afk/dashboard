@@ -220,6 +220,12 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
   // Champs adaptatifs pilotés par le schéma (src/lib/prestationSchema).
   const hasSchema = getSchema(form.typePresta).length > 0;
 
+  // Total de la fiche (1re prestation + articles). Prix saisis = TTC, TVA 10%.
+  const totalTTC = (parseFloat(form.prix) || 0)
+    + articlesSupp.reduce((s, a) => s + (parseFloat(a.prix) || 0), 0);
+  const totalHT  = totalTTC / 1.10;
+  const totalTVA = totalTTC - totalHT;
+
   const { villes: villesCP, loading: cpLoading } = useVilleFromCP(form.codePostal);
   // Auto-sélectionner si une seule ville pour ce CP
   useEffect(() => {
@@ -552,16 +558,10 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
                 </div>
               </Field>
             </div>
-            <Field label="Message / Notes client">
-              <textarea value={form.message} onChange={(e) => set("message", e.target.value)}
-                rows={3} className={`${inputCls} resize-none`}
-                placeholder="Informations complémentaires sur la prestation..." />
-            </Field>
-
-            {/* Autres prestations / articles (canapé + matelas + tapis en une fois) */}
+            {/* Autres articles / prestations — juste sous la 1re prestation */}
             <div className="pt-1">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-500">Autres prestations pour ce client (optionnel)</span>
+                <span className="text-xs font-medium text-gray-600">Autres articles / prestations (optionnel)</span>
                 <button type="button" onClick={addArticle}
                   className="text-xs text-blue-600 hover:text-blue-700 font-medium">+ Ajouter un article</button>
               </div>
@@ -570,31 +570,55 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
                   Ex : Lavage canapé + Lavage matelas dans la même fiche
                 </p>
               ) : (
-                <div className="space-y-2">
-                  {articlesSupp.map((art, i) => (
-                    <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded-xl">
-                      <select value={art.typePresta} onChange={e => updateArticle(i, "typePresta", e.target.value)}
-                        className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300">
-                        <option value="">— Type —</option>
-                        {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <input type="number" value={art.quantite} min={1}
-                        onChange={e => updateArticle(i, "quantite", e.target.value)}
-                        className="w-12 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-300" title="Quantité" />
-                      <div className="relative">
-                        <input type="number" value={art.prix} min={0} step="0.01"
-                          onChange={e => updateArticle(i, "prix", e.target.value)}
-                          placeholder="0"
-                          className="w-20 bg-white border border-gray-200 rounded-lg pl-2 pr-6 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300" title="Prix TTC" />
-                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">€</span>
+                <div className="space-y-3">
+                  {articlesSupp.map((art, i) => {
+                    const artSchema = getSchema(art.typePresta).length > 0;
+                    return (
+                      <div key={i} className="border border-gray-200 rounded-xl p-3 bg-gray-50 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <select value={art.typePresta} onChange={e => updateArticle(i, "typePresta", e.target.value)}
+                            className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+                            <option value="">— Type de prestation —</option>
+                            {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                          <div className="relative">
+                            <input type="number" value={art.prix} min={0} step="0.01" placeholder="Prix"
+                              onChange={e => updateArticle(i, "prix", e.target.value)}
+                              className="w-24 bg-white border border-gray-200 rounded-lg pl-2 pr-6 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300" title="Prix" />
+                            <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">€</span>
+                          </div>
+                          <button type="button" onClick={() => removeArticle(i)}
+                            className="text-red-400 hover:text-red-600 transition-colors text-xl leading-none px-1" title="Retirer">×</button>
+                        </div>
+                        {/* Champs intelligents de l'article (adaptés à son type) */}
+                        {artSchema ? (
+                          <PrestationFields typePresta={art.typePresta} onDetailChange={d => updateArticle(i, "quantite", d)} />
+                        ) : (
+                          <input type="text" value={art.quantite} onChange={e => updateArticle(i, "quantite", e.target.value)}
+                            placeholder="Quantité / durée (optionnel)"
+                            className="w-full bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                        )}
                       </div>
-                      <button type="button" onClick={() => removeArticle(i)}
-                        className="text-red-400 hover:text-red-600 transition-colors text-lg leading-none px-1" title="Retirer">×</button>
-                    </div>
-                  ))}
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Total de la fiche (TVA 10%) */}
+              {totalTTC > 0 && (
+                <div className="mt-3 bg-blue-50 border border-blue-100 rounded-xl p-3 text-sm space-y-1">
+                  <div className="flex justify-between text-gray-600"><span>Total HT</span><span>{totalHT.toFixed(2)} €</span></div>
+                  <div className="flex justify-between text-gray-600"><span>TVA (10 %)</span><span>{totalTVA.toFixed(2)} €</span></div>
+                  <div className="flex justify-between font-bold text-gray-900 pt-1 border-t border-blue-100"><span>Total TTC</span><span>{totalTTC.toFixed(2)} €</span></div>
                 </div>
               )}
             </div>
+
+            <Field label="Message / Notes client">
+              <textarea value={form.message} onChange={(e) => set("message", e.target.value)}
+                rows={3} className={`${inputCls} resize-none`}
+                placeholder="Informations complémentaires sur la prestation..." />
+            </Field>
           </Section>
 
           {/* Affectation prestataire */}
