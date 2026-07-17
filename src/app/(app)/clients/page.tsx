@@ -472,19 +472,44 @@ export default function ClientsPage() {
     );
   }, [clients, search]);
 
-  // Détecte les fiches en double : même identité (email, sinon nom+prénom+tél)
-  // mais clientId différents. Ce sont des fiches à fusionner.
+  // Détecte les fiches en double de façon ROBUSTE : on relie deux fiches dès
+  // qu'elles partagent UN signal fort — même téléphone, OU même email, OU même
+  // nom+prénom. Une fiche de Sakina avec email + une sans email + une avec un
+  // tél identique seront toutes regroupées ensemble (union-find).
   const doublons = useMemo(() => {
-    const map = new Map<string, Client[]>();
+    const norm = (s: string) => (s || "").toLowerCase().replace(/\s+/g, "").trim();
+    const parent = new Map<string, string>();
+    const find = (x: string): string => {
+      while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x)!)!); x = parent.get(x)!; }
+      return x;
+    };
+    const union = (a: string, b: string) => { parent.set(find(a), find(b)); };
+
+    for (const c of clients) if (c.clientId) parent.set(c.clientId, c.clientId);
+
+    const bySignal = new Map<string, string>();
     for (const c of clients) {
       if (!c.clientId) continue;
-      const cle = (c.email || `${c.nom}|${c.prenom}|${c.tel}`).toLowerCase().trim();
-      if (!cle || cle === "||") continue;
-      const arr = map.get(cle) ?? [];
-      arr.push(c);
-      map.set(cle, arr);
+      const signals: string[] = [];
+      const tel = norm(c.tel);   if (tel.length >= 6)            signals.push("t:" + tel);
+      const em  = norm(c.email); if (em)                         signals.push("e:" + em);
+      const nom = norm(c.nom);   if (nom)                        signals.push("n:" + norm(c.prenom) + "|" + nom);
+      for (const s of signals) {
+        const seen = bySignal.get(s);
+        if (seen) union(c.clientId, seen);
+        else bySignal.set(s, c.clientId);
+      }
     }
-    return Array.from(map.values()).filter(g => g.length > 1);
+
+    const groups = new Map<string, Client[]>();
+    for (const c of clients) {
+      if (!c.clientId) continue;
+      const root = find(c.clientId);
+      const arr = groups.get(root) ?? [];
+      arr.push(c);
+      groups.set(root, arr);
+    }
+    return Array.from(groups.values()).filter(g => g.length > 1);
   }, [clients]);
 
   async function mergeGroup(group: Client[]) {
