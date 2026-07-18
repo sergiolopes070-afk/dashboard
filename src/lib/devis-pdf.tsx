@@ -17,11 +17,56 @@ const BLUE_LIGHT = "#EFF6FF";
 const BLUE_DARK  = "#1E40AF";
 const ORANGE_LIGHT = "#FFF7ED";
 
-// ─── Infos société ────────────────────────────────────────────────────────────
-const SIRET   = "101 607 042 00013";
-const SAP_NUM = "D3289580";
-const EMAIL   = "texticar@gmail.com";
-const REGION  = "Île-de-France";
+// ─── Profils société (par entité juridique) ────────────────────────────────────
+// KinouClean SAS = services à la personne (agréé SAP, crédit d'impôt, avance).
+// Kinourent = nettoyage de véhicules : PAS d'agrément SAP, aucune mention fiscale.
+// Le SIRET propre à Kinourent n'est pas encore renseigné → la ligne est masquée
+// tant qu'il vaut "" (on ne réutilise JAMAIS le SIRET de la SAS sur un devis Kinourent).
+export type EntiteDevis = "Kinouclean SAS" | "Kinourent";
+
+interface EntiteProfile {
+  nom      : string;   // raison sociale affichée
+  wordmark : string;   // texte du logo
+  tagline  : string;   // sous-titre du logo
+  activite : string;   // description d'activité (bloc prestataire)
+  email    : string;
+  region   : string;
+  siret    : string;   // "" → ligne masquée
+  sapNum   : string;   // "" → pas d'agrément SAP
+  showSAP  : boolean;  // bandeau + mentions crédit d'impôt / avance immédiate
+  refPrefix: string;   // préfixe de numérotation (KC / KR)
+}
+
+const PROFILS: Record<EntiteDevis, EntiteProfile> = {
+  "Kinouclean SAS": {
+    nom: "KinouClean SAS",
+    wordmark: "KinouClean",
+    tagline: "NETTOYAGE PROFESSIONNEL À DOMICILE",
+    activite: "Nettoyage professionnel à domicile",
+    email: "texticar@gmail.com",
+    region: "Île-de-France",
+    siret: "101 607 042 00013",
+    sapNum: "D3289580",
+    showSAP: true,
+    refPrefix: "KC",
+  },
+  "Kinourent": {
+    nom: "Kinourent",
+    wordmark: "Kinourent",
+    tagline: "NETTOYAGE DE VÉHICULES",
+    activite: "Nettoyage & detailing de véhicules",
+    email: "texticar@gmail.com",
+    region: "Île-de-France",
+    siret: "", // à compléter : SIRET propre à Kinourent
+    sapNum: "",
+    showSAP: false,
+    refPrefix: "KR",
+  },
+};
+
+export function getProfil(entite?: string): EntiteProfile {
+  return entite && entite in PROFILS ? PROFILS[entite as EntiteDevis] : PROFILS["Kinouclean SAS"];
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface LigneSupp {
@@ -50,6 +95,7 @@ export interface DevisData {
   avanceImmediate?: boolean;
   creditImpot?    : boolean;
   lignesSupp?     : LigneSupp[];
+  entite?         : string;  // "Kinouclean SAS" | "Kinourent" (défaut : SAS)
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -350,7 +396,7 @@ const s = StyleSheet.create({
 });
 
 // ─── Logo SVG ─────────────────────────────────────────────────────────────────
-function KinoucleanLogo() {
+function BrandLogo({ p }: { p: EntiteProfile }) {
   const c = "#ffffff";
   const sw = 2.4;
   return (
@@ -369,9 +415,9 @@ function KinoucleanLogo() {
       </View>
       {/* Wordmark en Text natif (rendu fiable, une seule fois) */}
       <View>
-        <Text style={{ fontSize: 20, fontFamily: "Helvetica-Bold", color: c, letterSpacing: 0.3 }}>KinouClean</Text>
+        <Text style={{ fontSize: 20, fontFamily: "Helvetica-Bold", color: c, letterSpacing: 0.3 }}>{p.wordmark}</Text>
         <Text style={{ fontSize: 6.5, color: "rgba(255,255,255,0.55)", letterSpacing: 2, marginTop: 2 }}>
-          NETTOYAGE PROFESSIONNEL À DOMICILE
+          {p.tagline}
         </Text>
       </View>
     </View>
@@ -379,15 +425,15 @@ function KinoucleanLogo() {
 }
 
 // ─── Footer fixe ──────────────────────────────────────────────────────────────
-function Footer({ refNumber }: { refNumber: string }) {
+function Footer({ refNumber, p }: { refNumber: string; p: EntiteProfile }) {
   return (
     <View style={s.footer} fixed>
       <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-        <Text style={s.footerBrand}>KinouClean SAS</Text>
-        <Text style={s.footerLeft}>· {EMAIL} · SAP N° {SAP_NUM}</Text>
+        <Text style={s.footerBrand}>{p.nom}</Text>
+        <Text style={s.footerLeft}>· {p.email}{p.showSAP && p.sapNum ? ` · SAP N° ${p.sapNum}` : ""}</Text>
       </View>
       <Text style={s.footerLeft}>N° {refNumber}</Text>
-      <Text style={s.footerRight}>SIRET {SIRET}</Text>
+      {p.siret ? <Text style={s.footerRight}>SIRET {p.siret}</Text> : <Text style={s.footerRight}>TVA 20%</Text>}
     </View>
   );
 }
@@ -395,7 +441,10 @@ function Footer({ refNumber }: { refNumber: string }) {
 // ─── Document principal ───────────────────────────────────────────────────────
 export function DevisPDF({ d }: { d: DevisData }) {
   const { qty, mainHT, mainPU, htTotal, tva, ttcTotal } = computeTotaux(d);
-  const hasPage2 = d.avanceImmediate || d.creditImpot;
+  const p = getProfil(d.entite);
+  // Les avantages fiscaux ne s'appliquent qu'aux entités agréées SAP.
+  const avance = p.showSAP && d.avanceImmediate;
+  const credit = p.showSAP && d.creditImpot;
 
   return (
     <Document>
@@ -404,7 +453,7 @@ export function DevisPDF({ d }: { d: DevisData }) {
 
         {/* ── Header ───────────────────────────────────────────────────── */}
         <View style={s.header}>
-          <KinoucleanLogo />
+          <BrandLogo p={p} />
           <View style={{ alignItems: "flex-end" }}>
             <Text style={s.devisTitle}>DEVIS</Text>
             <View style={s.accentBar} />
@@ -414,17 +463,31 @@ export function DevisPDF({ d }: { d: DevisData }) {
         </View>
 
         {/* ── Bandeau orange mentions ───────────────────────────────────── */}
-        <View style={s.banner}>
-          <View style={s.bannerItem}>
-            <Text style={s.bannerText}>✓ ORGANISME AGRÉÉ SAP — N° {SAP_NUM}</Text>
+        {p.showSAP ? (
+          <View style={s.banner}>
+            <View style={s.bannerItem}>
+              <Text style={s.bannerText}>✓ ORGANISME AGRÉÉ SAP — N° {p.sapNum}</Text>
+            </View>
+            <View style={s.bannerItemMid}>
+              <Text style={s.bannerText}>CRÉDIT D&apos;IMPÔT 50% — ART. 199 SEXDECIES CGI</Text>
+            </View>
+            <View style={[s.bannerItem, { paddingLeft: 16 }]}>
+              <Text style={s.bannerText}>AVANCE IMMÉDIATE ÉLIGIBLE — ART. L. 7231-1 C. TRAVAIL</Text>
+            </View>
           </View>
-          <View style={s.bannerItemMid}>
-            <Text style={s.bannerText}>CRÉDIT D&apos;IMPÔT 50% — ART. 199 SEXDECIES CGI</Text>
+        ) : (
+          <View style={s.banner}>
+            <View style={s.bannerItem}>
+              <Text style={s.bannerText}>✓ NETTOYAGE & DETAILING DE VÉHICULES</Text>
+            </View>
+            <View style={s.bannerItemMid}>
+              <Text style={s.bannerText}>PARTICULIERS & PROFESSIONNELS</Text>
+            </View>
+            <View style={[s.bannerItem, { paddingLeft: 16 }]}>
+              <Text style={s.bannerText}>DEVIS GRATUIT — SANS ENGAGEMENT</Text>
+            </View>
           </View>
-          <View style={[s.bannerItem, { paddingLeft: 16 }]}>
-            <Text style={s.bannerText}>AVANCE IMMÉDIATE ÉLIGIBLE — ART. L. 7231-1 C. TRAVAIL</Text>
-          </View>
-        </View>
+        )}
 
         <View style={s.body}>
 
@@ -432,12 +495,12 @@ export function DevisPDF({ d }: { d: DevisData }) {
           <View style={s.parties}>
             <View style={s.partyLeft}>
               <Text style={s.partyLabel}>Prestataire</Text>
-              <Text style={s.partyName}>KinouClean SAS</Text>
-              <Text style={s.partyLine}>Nettoyage professionnel à domicile</Text>
-              <Text style={s.partyLine}>{EMAIL}</Text>
-              <Text style={s.partyLine}>{REGION}</Text>
-              <Text style={s.partyLine}>SIRET : {SIRET}</Text>
-              <Text style={s.partyLine}>N° SAP : {SAP_NUM}</Text>
+              <Text style={s.partyName}>{p.nom}</Text>
+              <Text style={s.partyLine}>{p.activite}</Text>
+              <Text style={s.partyLine}>{p.email}</Text>
+              <Text style={s.partyLine}>{p.region}</Text>
+              {p.siret ? <Text style={s.partyLine}>SIRET : {p.siret}</Text> : null}
+              {p.showSAP && p.sapNum ? <Text style={s.partyLine}>N° SAP : {p.sapNum}</Text> : null}
             </View>
             <View style={s.partyRight}>
               <Text style={s.partyLabel}>Client</Text>
@@ -463,10 +526,19 @@ export function DevisPDF({ d }: { d: DevisData }) {
               <Text style={s.infoVal}>{parseEtats(d.etat).join(" · ") || "—"}</Text>
             </View>
             <View style={s.infoItemLast}>
-              <Text style={s.infoKey}>Avance Immédiate</Text>
-              <Text style={d.avanceImmediate ? s.infoValGreen : s.infoVal}>
-                {d.avanceImmediate ? "✓ Éligible" : "Non demandée"}
-              </Text>
+              {p.showSAP ? (
+                <>
+                  <Text style={s.infoKey}>Avance Immédiate</Text>
+                  <Text style={avance ? s.infoValGreen : s.infoVal}>
+                    {avance ? "✓ Éligible" : "Non demandée"}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={s.infoKey}>TVA</Text>
+                  <Text style={s.infoVal}>20%</Text>
+                </>
+              )}
             </View>
           </View>
 
@@ -561,7 +633,7 @@ export function DevisPDF({ d }: { d: DevisData }) {
           </View>
 
           {/* ── Avance Immédiate intro (si sélectionné) ──────────────── */}
-          {d.avanceImmediate && (
+          {avance && (
             <View style={s.avanceIntroBox}>
               <Text style={s.avanceIntroTitle}>Avance Immédiate — Dispositif URSSAF</Text>
               <Text style={s.avanceIntroText}>
@@ -575,7 +647,7 @@ export function DevisPDF({ d }: { d: DevisData }) {
 
         </View>
 
-        <Footer refNumber={d.refNumber} />
+        <Footer refNumber={d.refNumber} p={p} />
       </Page>
 
       {/* ══════════════════════════════════════════════════════════ PAGE 2 */}
@@ -583,7 +655,7 @@ export function DevisPDF({ d }: { d: DevisData }) {
         <View style={s.body}>
 
           {/* ── Avance Immédiate détail ───────────────────────────────── */}
-          {d.avanceImmediate && (
+          {avance && (
             <View style={s.p2Box}>
               <Text style={{ fontSize: 9, fontFamily: "Helvetica-Bold", color: BLUE_DARK, textTransform: "uppercase" as const, letterSpacing: 0.7, marginBottom: 10 }}>
                 Avance Immédiate — Dispositif URSSAF
@@ -625,14 +697,14 @@ export function DevisPDF({ d }: { d: DevisData }) {
           )}
 
           {/* ── Crédit d'impôt ───────────────────────────────────────── */}
-          {d.creditImpot && (
+          {credit && (
             <View style={s.creditBox}>
               <Text style={s.creditTitle}>Crédit d&apos;impôt SAP — Mentions légales</Text>
               <View style={s.creditGrid}>
                 <View style={s.creditCol}>
                   <Text style={s.creditLabel}>Organisme habilité SAP</Text>
                   <Text style={s.creditText}>
-                    KinouClean — N° {SAP_NUM} (effectif 02/03/2026) — art. L. 7231-1 du Code du travail.
+                    KinouClean — N° {p.sapNum} (effectif 02/03/2026) — art. L. 7231-1 du Code du travail.
                   </Text>
                   <Text style={s.creditLabel}>Base légale</Text>
                   <Text style={s.creditText}>
@@ -676,7 +748,7 @@ export function DevisPDF({ d }: { d: DevisData }) {
               <Text style={s.condKey}>Paiement</Text>
               <Text style={s.condVal}>À réception — Virement, espèces ou CB</Text>
               <Text style={s.condKey}>Régime fiscal</Text>
-              <Text style={s.condVal}>TVA 20% — SIRET {SIRET}</Text>
+              <Text style={s.condVal}>TVA 20%{p.siret ? ` — SIRET ${p.siret}` : ""}</Text>
             </View>
             <View style={s.condCol}>
               <Text style={s.condTitle}>Protocole</Text>
@@ -688,13 +760,27 @@ export function DevisPDF({ d }: { d: DevisData }) {
               <Text style={s.condVal}>{getTemplate(d.typePresta).sechage}</Text>
             </View>
             <View style={s.condCol}>
-              <Text style={s.condTitle}>Agréments</Text>
-              <Text style={s.condKey}>SAP</Text>
-              <Text style={s.condVal}>N° {SAP_NUM} — 02/03/2026</Text>
-              <Text style={s.condKey}>Avance Immédiate</Text>
-              <Text style={s.condVal}>Via app.avance-immediate.fr</Text>
-              <Text style={s.condKey}>RC Pro</Text>
-              <Text style={s.condVal}>Coover x Hiscox</Text>
+              {p.showSAP ? (
+                <>
+                  <Text style={s.condTitle}>Agréments</Text>
+                  <Text style={s.condKey}>SAP</Text>
+                  <Text style={s.condVal}>N° {p.sapNum} — 02/03/2026</Text>
+                  <Text style={s.condKey}>Avance Immédiate</Text>
+                  <Text style={s.condVal}>Via app.avance-immediate.fr</Text>
+                  <Text style={s.condKey}>RC Pro</Text>
+                  <Text style={s.condVal}>Coover x Hiscox</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={s.condTitle}>Garanties</Text>
+                  <Text style={s.condKey}>Prestation</Text>
+                  <Text style={s.condVal}>Nettoyage & detailing de véhicules</Text>
+                  <Text style={s.condKey}>Clientèle</Text>
+                  <Text style={s.condVal}>Particuliers & professionnels (flottes)</Text>
+                  <Text style={s.condKey}>RC Pro</Text>
+                  <Text style={s.condVal}>Coover x Hiscox</Text>
+                </>
+              )}
             </View>
           </View>
 
@@ -708,7 +794,7 @@ export function DevisPDF({ d }: { d: DevisData }) {
           <View style={s.signRow}>
             <View style={s.signBox}>
               <Text style={s.signLabel}>Prestataire</Text>
-              <Text style={s.signName}>KinouClean SAS</Text>
+              <Text style={s.signName}>{p.nom}</Text>
               <View style={s.signLine} />
               <Text style={s.signSub}>Signature &amp; cachet</Text>
             </View>
@@ -722,7 +808,7 @@ export function DevisPDF({ d }: { d: DevisData }) {
 
         </View>
 
-        <Footer refNumber={d.refNumber} />
+        <Footer refNumber={d.refNumber} p={p} />
       </Page>
     </Document>
   );

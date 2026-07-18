@@ -2,9 +2,18 @@ import { NextResponse } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import React from "react";
 import { supabase } from "@/lib/supabase";
-import { DevisPDF, DevisData, LigneSupp } from "@/lib/devis-pdf";
+import { DevisPDF, DevisData, LigneSupp, getProfil } from "@/lib/devis-pdf";
+import { resolveEntite, Entite, ENTITE_OVERRIDE_KEY } from "@/lib/entite";
 
 export const dynamic = "force-dynamic";
+
+// Corrections manuelles d'entité (settings/entite_override).
+async function getEntiteOverrides(): Promise<Record<string, Entite>> {
+  if (!supabase) return {};
+  const { data } = await supabase.from("settings").select("value").eq("key", ENTITE_OVERRIDE_KEY).maybeSingle();
+  try { return data?.value ? (JSON.parse(data.value as string) as Record<string, Entite>) : {}; }
+  catch { return {}; }
+}
 
 function today(): string {
   const d = new Date();
@@ -23,11 +32,11 @@ function isoToFr(s: string | null): string {
   return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : s;
 }
 
-function buildRefNumber(id: string): string {
+function buildRefNumber(id: string, prefix: string): string {
   const d = new Date();
   const dateStr = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
   const seq = String(parseInt(id.replace(/-/g,"").slice(0,3), 16) % 1000).padStart(3,"0");
-  return `KC-${dateStr}-${seq}`;
+  return `${prefix}-${dateStr}-${seq}`;
 }
 
 export async function GET(req: Request, { params }: { params: { id: string } }) {
@@ -59,8 +68,13 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 
     const client = presta.clients || {};
 
+    // Entité juridique (déduite du type, corrigée manuellement si besoin).
+    const overrides = await getEntiteOverrides();
+    const entite = resolveEntite(presta.id, presta.type_prestation || "", overrides);
+    const profil = getProfil(entite);
+
     const devisData: DevisData = {
-      refNumber       : buildRefNumber(presta.id),
+      refNumber       : buildRefNumber(presta.id, profil.refPrefix),
       date            : today(),
       validite        : addDays(30),
       clientNom       : client.nom    || "",
@@ -79,6 +93,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       avanceImmediate : avance || undefined,
       creditImpot     : credit || undefined,
       lignesSupp      : lignesSupp.length ? lignesSupp : undefined,
+      entite          : entite,
     };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
