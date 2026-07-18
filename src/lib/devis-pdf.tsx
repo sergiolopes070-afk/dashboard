@@ -57,7 +57,7 @@ const PROFILS: Record<EntiteDevis, EntiteProfile> = {
     activite: "Nettoyage & detailing de véhicules",
     email: "texticar@gmail.com",
     region: "Île-de-France",
-    siret: "", // à compléter : SIRET propre à Kinourent
+    siret: "991 918 822 00016", // SIRET propre à Kinourent
     sapNum: "",
     showSAP: false,
     refPrefix: "KR",
