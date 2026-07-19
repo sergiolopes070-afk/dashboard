@@ -153,7 +153,7 @@ export default function EditPrestationModal({
             {onViewClient && prestation.clientId && (
               <button
                 type="button"
-                onClick={() => { onClose(); onViewClient(prestation.clientId); }}
+                onClick={() => onViewClient(prestation.clientId)}
                 className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline"
               >
                 <User size={13} /> Voir la fiche client
