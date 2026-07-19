@@ -87,7 +87,7 @@ function buildPrestataireEmail(d: {
 
             <hr style="border:none;border-top:1px solid #2a3694;margin:28px 0;"/>
             <p style="margin:0;color:#a0a0b0;font-size:13px;text-align:center;">
-              KinouClean · Tél. 01 70 25 39 85 · 200 Rue de la Croix Nivert, 75015 Paris
+              KinouClean · Tél. 06 20 79 97 47 · 200 Rue de la Croix Nivert, 75015 Paris
             </p>
           </td>
         </tr>

@@ -134,7 +134,7 @@ function buildEmailHtml(data: {
                   <td style="border-left:3px solid #2a3694;padding-left:20px;vertical-align:middle;">
                     <p style="margin:0;color:#ffffff;font-weight:700;font-size:14px;">Gomes Lopes Sergio</p>
                     <p style="margin:2px 0 8px;color:#4a7fd4;font-size:13px;font-weight:600;">KinouClean</p>
-                    <p style="margin:0;color:#a0a0b0;font-size:13px;">Tél. : 01 70 25 39 85</p>
+                    <p style="margin:0;color:#a0a0b0;font-size:13px;">Tél. : 06 20 79 97 47</p>
                     <p style="margin:2px 0;color:#a0a0b0;font-size:13px;">200 Rue de la Croix Nivert, 75015 Paris</p>
                     <p style="margin:2px 0;color:#a0a0b0;font-size:13px;">Île-de-France</p>
                   </td>

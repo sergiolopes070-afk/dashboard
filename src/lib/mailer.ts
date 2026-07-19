@@ -23,8 +23,8 @@ export async function getGmailTransporter() {
 }
 
 // ─── Relance devis (ton commercial, concis, orienté conversion) ─────────────────
-const TEL = "01 70 25 39 85";
-const TEL_LINK = "tel:0170253985";
+const TEL = "06 20 79 97 47";
+const TEL_LINK = "tel:0620799747";
 
 export const ACCROCHE: Record<number, { objet: string; intro: string }> = {
   1: {
@@ -126,7 +126,7 @@ export function buildBesoinInfosHtml(d: { prenom: string; typePresta: string }):
     </p>
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
       <tr><td style="font-size:15px;color:#1C3557;line-height:1.8;font-weight:bold;">
-        📞 01 70 25 39 85
+        📞 06 20 79 97 47
       </td></tr>
     </table>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 4px;">
