@@ -31,7 +31,7 @@ export async function GET(req: Request) {
   const dry = url.searchParams.get("dry") === "1";
   const debug = url.searchParams.get("debug") === "1";
   const res = await importInbox({ dry: dry || debug, debug });
-  if (debug) return NextResponse.json({ mode: "DEBUG", debugSample: res.debugSample, erreurs: res.errors.slice(0, 3) });
+  if (debug) return NextResponse.json({ mode: "DEBUG", totalTrouves: res.totalTrouves, debugSample: res.debugSample, erreurs: res.errors.slice(0, 3) });
   return NextResponse.json({
     mode: dry ? "SIMULATION (aucune création)" : "IMPORT",
     crees: res.imported.length,

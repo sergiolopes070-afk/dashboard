@@ -98,7 +98,8 @@ export interface ImportResult {
   skipped: number;
   errors: string[];
   dry: boolean;
-  debugSample?: { subject: string; text: string; htmlStripped: string; parsed: DemandeParsee }[];
+  debugSample?: { from: string; subject: string; text: string; htmlStripped: string; parsed: DemandeParsee }[];
+  totalTrouves?: number;
 }
 
 export async function importInbox(opts: { dry?: boolean; debug?: boolean } = {}): Promise<ImportResult> {
@@ -122,6 +123,7 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean } = {})
       const since = new Date(Date.now() - 60 * 24 * 3600 * 1000); // 60 derniers jours
       const uids = await client.search({ from: FROM_MATCH, subject: SUBJECT_MATCH, since }, { uid: true });
       const list = Array.isArray(uids) ? uids : [];
+      if (debug) result.totalTrouves = list.length;
 
       for (const uid of list) {
         let raw: Buffer | null = null;
@@ -141,6 +143,7 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean } = {})
 
         if (debug && result.debugSample!.length < 2) {
           result.debugSample!.push({
+            from: parsed.from?.text || "(inconnu)",
             subject,
             text: (parsed.text || "").slice(0, 1400),
             htmlStripped: stripHtml(parsed.html || "").slice(0, 1400),
