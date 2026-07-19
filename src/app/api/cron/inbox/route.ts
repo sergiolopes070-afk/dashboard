@@ -36,6 +36,22 @@ export async function GET(req: Request) {
     return NextResponse.json({ clientsFormulaire: count ?? 0 });
   }
 
+  // Diagnostic persistance : empreinte de l'URL DB + écriture/relecture settings.
+  if (url.searchParams.get("diag") === "1") {
+    if (!supabase) return NextResponse.json({ error: "no db" }, { status: 503 });
+    const dbUrl = process.env.SUPABASE_URL || "";
+    const host = dbUrl.replace(/^https?:\/\//, "").split(".")[0]; // ref du projet Supabase
+    const action = url.searchParams.get("act");
+    if (action === "write") {
+      const marker = `PERSIST-${Date.now()}`;
+      const w = await supabase.from("settings").upsert({ key: "diag_persist", value: marker }, { onConflict: "key" }).select("key");
+      const r = await supabase.from("settings").select("value").eq("key", "diag_persist").maybeSingle();
+      return NextResponse.json({ dbRef: host, action: "write", marker, upsertErr: w.error?.message || null, relectureMemeRequete: r.data?.value ?? null });
+    }
+    const r = await supabase.from("settings").select("value").eq("key", "diag_persist").maybeSingle();
+    return NextResponse.json({ dbRef: host, action: "read", valeurActuelle: r.data?.value ?? null });
+  }
+
   const dry = url.searchParams.get("dry") === "1";
   const debug = url.searchParams.get("debug") === "1";
   const baseline = url.searchParams.get("baseline") === "1";
