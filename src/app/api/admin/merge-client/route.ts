@@ -143,15 +143,27 @@ export async function GET(req: Request) {
   if (url.searchParams.get("diag") === "1") {
     const cible = rows[0];
     if (!cible) return NextResponse.json({ diag: "aucune prestation" });
-    const marqueur = `DIAG-${Date.now()}`;
-    const w = await supabase.from("prestations").update({ message: marqueur }).eq("id", cible.id).select("id, message");
-    const r = await supabase.from("prestations").select("id, message").eq("id", cible.id).single();
+    const marqueur = `DIAGTYPE-${Date.now()}`;
+    // Test 1 : type_prestation
+    const wT = await supabase.from("prestations").update({ type_prestation: marqueur }).eq("id", cible.id).select("id, type_prestation");
+    const rT = await supabase.from("prestations").select("type_prestation").eq("id", cible.id).single();
+    // Test 2 : prix
+    const wP = await supabase.from("prestations").update({ prix: 123.45 }).eq("id", cible.id).select("id, prix");
+    const rP = await supabase.from("prestations").select("prix").eq("id", cible.id).single();
+    // Test 3 : archive
+    const wA = await supabase.from("prestations").update({ archive: true }).eq("id", cible.id).select("id, archive");
+    const rA = await supabase.from("prestations").select("archive").eq("id", cible.id).single();
+    // Restauration des valeurs d'origine (le diag ne doit rien casser).
+    await supabase.from("prestations").update({
+      type_prestation: cible.type_prestation, prix: cible.prix, archive: cible.archive ?? false,
+    }).eq("id", cible.id);
+    const rFinal = await supabase.from("prestations").select("type_prestation, prix, archive").eq("id", cible.id).single();
     return NextResponse.json({
+      restauration: rFinal.data,
       cibleId: cible.id,
-      marqueurEcrit: marqueur,
-      retourUpdate: { rows: w.data, error: w.error?.message || null },
-      relecture: { message: r.data?.message ?? null, error: r.error?.message || null },
-      verdict: r.data?.message === marqueur ? "ÉCRITURE PERSISTE ✅" : "ÉCRITURE NON PERSISTÉE ❌",
+      type_prestation: { ecrit: marqueur, retourUpdate: wT.data, updErr: wT.error?.message || null, relu: rT.data?.type_prestation ?? null, persiste: rT.data?.type_prestation === marqueur },
+      prix:            { ecrit: 123.45, retourUpdate: wP.data, updErr: wP.error?.message || null, relu: rP.data?.prix ?? null, persiste: rP.data?.prix === 123.45 },
+      archive:         { ecrit: true, retourUpdate: wA.data, updErr: wA.error?.message || null, relu: rA.data?.archive ?? null, persiste: rA.data?.archive === true },
     });
   }
 
