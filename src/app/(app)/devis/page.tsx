@@ -46,6 +46,19 @@ function DevisCustomizeModal({
   // ni avance immédiate URSSAF ni crédit d'impôt SAP ne s'appliquent.
   const isKinourent = getEntite(presta.typePresta) === "Kinourent";
 
+  // Pré-coche l'avantage fiscal selon la préférence enregistrée du client
+  // (avance immédiate / crédit d'impôt), sauf pour une prestation Kinourent.
+  useEffect(() => {
+    if (isKinourent || !presta.clientId) return;
+    fetch(`/api/clients/fiscal?clientId=${presta.clientId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.fiscal === "avance")      setOpts(o => ({ ...o, avanceImmediate: true }));
+        else if (d?.fiscal === "credit") setOpts(o => ({ ...o, creditImpot: true }));
+      })
+      .catch(() => {});
+  }, [presta.clientId, isKinourent]);
+
   function toggleEtat(e: string) {
     setOpts(o => ({
       ...o,

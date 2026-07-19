@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Plus, X, SlidersHorizontal, Download, CheckC
 import { Prestation, Prestataire, StatutClient } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
 import { ClientFicheById } from "@/components/ClientFiche";
+import EmailActions from "@/components/EmailActions";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
@@ -1654,6 +1655,14 @@ export default function AgendaPage() {
                               💡 {fiscal === "avance" ? "Ses relances mentionnent l'avance immédiate (−50%)." : "Ses relances mentionnent le crédit d'impôt (−50%)."}
                             </p>
                           )}
+                        </div>
+                      )}
+
+                      {/* ── Emails client (besoin d'infos / relances) ── */}
+                      {!isArchived && (
+                        <div className="mt-4 border-t border-gray-100 pt-3">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Emails client</p>
+                          <EmailActions prestationId={ev.row} clientEmail={ev.email} compact />
                         </div>
                       )}
                     </>

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X, Save, Loader2, MessageCircle, Archive, User, Mail, Bell } from "lucide-react";
+import { X, Save, Loader2, MessageCircle, Archive, User } from "lucide-react";
+import EmailActions from "@/components/EmailActions";
 import { Prestation, Prestataire, StatutClient, StatutPresta, MODES_PAIEMENT, MODE_PAIEMENT_ICONS } from "@/lib/constants";
 
 interface EditPrestationModalProps {
@@ -48,40 +49,6 @@ export default function EditPrestationModal({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState<string | null>(null);
-
-  // ── Emails manuels (besoin d'infos / démarrage des relances) ──
-  const [emailBusy, setEmailBusy]         = useState<"" | "relance" | "besoin_infos">("");
-  const [relanceNiveau, setRelanceNiveau] = useState<number | null>(null);
-  const [emailFeedback, setEmailFeedback] = useState("");
-
-  useEffect(() => {
-    fetch(`/api/emails/action?prestationId=${prestation.row}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setRelanceNiveau(d.relance ?? 0); })
-      .catch(() => {});
-  }, [prestation.row]);
-
-  async function sendEmailAction(type: "relance" | "besoin_infos") {
-    setEmailBusy(type); setEmailFeedback("");
-    try {
-      const res = await fetch("/api/emails/action", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prestationId: prestation.row, type }),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Erreur");
-      if (type === "relance") {
-        setRelanceNiveau(d.relance ?? 1);
-        setEmailFeedback("✅ 1re relance envoyée — les suivantes s'enchaînent automatiquement.");
-      } else {
-        setEmailFeedback("✅ Email « besoin d'infos » envoyé au client.");
-      }
-    } catch (e) {
-      setEmailFeedback(`❌ ${e instanceof Error ? e.message : "Erreur d'envoi"}`);
-    } finally {
-      setEmailBusy("");
-    }
-  }
 
   // Auto-fill emailPresta when prestataire changes from dropdown
   useEffect(() => {
@@ -211,40 +178,7 @@ export default function EditPrestationModal({
           {/* ── Emails manuels ── */}
           <fieldset className="space-y-2">
             <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Emails client</legend>
-            {!prestation.email ? (
-              <p className="text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
-                Pas d&apos;adresse email pour ce client — impossible d&apos;envoyer.
-              </p>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => sendEmailAction("besoin_infos")}
-                    disabled={emailBusy !== ""}
-                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 hover:border-blue-300 hover:bg-blue-50 transition-colors disabled:opacity-50"
-                  >
-                    {emailBusy === "besoin_infos" ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
-                    Besoin d&apos;infos
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => sendEmailAction("relance")}
-                    disabled={emailBusy !== "" || (relanceNiveau ?? 0) >= 1}
-                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-colors disabled:opacity-60 disabled:cursor-default text-white bg-orange-500 border-orange-500 hover:bg-orange-600 disabled:bg-gray-100 disabled:text-gray-500 disabled:border-gray-200"
-                  >
-                    {emailBusy === "relance" ? <Loader2 size={14} className="animate-spin" /> : <Bell size={14} />}
-                    {(relanceNiveau ?? 0) >= 1 ? `Relances en cours (niv. ${relanceNiveau})` : "Démarrer les relances"}
-                  </button>
-                </div>
-                <p className="text-[11px] text-gray-400">
-                  « Besoin d&apos;infos » : on a essayé de vous joindre, il nous manque des éléments pour le devis. « Démarrer les relances » envoie la 1re relance ; les suivantes (J+2, J+4) s&apos;enchaînent automatiquement.
-                </p>
-                {emailFeedback && (
-                  <p className={`text-xs font-medium ${emailFeedback.startsWith("❌") ? "text-red-600" : "text-green-600"}`}>{emailFeedback}</p>
-                )}
-              </>
-            )}
+            <EmailActions prestationId={prestation.row} clientEmail={prestation.email} />
           </fieldset>
 
           {/* Statuts */}
