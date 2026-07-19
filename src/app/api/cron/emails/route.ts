@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import nodemailer from "nodemailer";
 import { supabase } from "@/lib/supabase";
+import { getSetting, getGmailTransporter, ACCROCHE, buildRelanceHtml } from "@/lib/mailer";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +23,6 @@ export const dynamic = "force-dynamic";
 // ou ?key=<secret> pour un test manuel).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const RELANCE_JOURS    = [3, 5, 7]; // relances devis à J+3, J+5, J+7
-const RELANCE_AGE_MAX  = 10;        // au-delà : plus aucun email auto → "à appeler"
 const AVIS_JOURS       = 2;         // demande d'avis à partir de J+2 (48h)
 const AVIS_AGE_MAX     = 15;        // garde-fou : pas de demande d'avis sur une presta de plus de 15 j
 const DONE_STATUTS     = ["CONFIRMÉ", "PAYÉ", "TERMINÉ"];
@@ -45,12 +43,13 @@ function daysSince(value: string | null): number | null {
   return Math.floor((Date.now() - d.getTime()) / 86_400_000);
 }
 
-// Niveau de relance attendu pour un devis de cet âge (0 = aucune).
-function niveauCible(age: number): number {
-  if (age >= 7) return 3;
-  if (age >= 5) return 2;
-  if (age >= 3) return 1;
-  return 0;
+// Cadence des relances À PARTIR du démarrage manuel (jours écoulés depuis le
+// 1er envoi déclenché à la main) : niveau 1 = jour 0, niveau 2 = +2 j, niveau 3 = +4 j.
+// Le cron ne DÉMARRE jamais une séquence : il ne fait que la poursuivre.
+function niveauDepuisDemarrage(joursDepuisDemarrage: number): number {
+  if (joursDepuisDemarrage >= 4) return 3;
+  if (joursDepuisDemarrage >= 2) return 2;
+  return 1;
 }
 
 function getCronSecret(): string | undefined {
@@ -82,9 +81,9 @@ function authorize(req: Request): { ok: boolean; reason?: string } {
 // ─── Suivi anti-doublon (stocké dans la table `settings` déjà existante) ──────
 // Aucun changement de structure de base n'est nécessaire : on garde l'état dans
 // une seule ligne settings (clé `emails_auto_etat`, valeur = JSON).
-//   { "<id prestation>": { relance: 0-3, avisEnvoye: bool, avisAnnule: bool } }
+//   { "<id prestation>": { relance: 0-3, relanceStart: ISO, avisEnvoye, avisAnnule } }
 const ETAT_KEY = "emails_auto_etat";
-type EtatPresta = { relance?: number; avisEnvoye?: boolean; avisAnnule?: boolean };
+type EtatPresta = { relance?: number; relanceStart?: string; avisEnvoye?: boolean; avisAnnule?: boolean };
 type Etat = Record<string, EtatPresta>;
 
 async function lireEtat(): Promise<Etat> {
@@ -100,83 +99,8 @@ async function ecrireEtat(etat: Etat): Promise<string | null> {
   return error ? error.message : null;
 }
 
-// ─── Envoi Gmail ──────────────────────────────────────────────────────────────
-async function getSetting(key: string, envFallback?: string): Promise<string | null> {
-  if (envFallback) return envFallback;
-  if (!supabase) return null;
-  const { data } = await supabase.from("settings").select("value").eq("key", key).maybeSingle();
-  return (data?.value as string) || null;
-}
-
-async function getGmailTransporter() {
-  const user = await getSetting("gmail_user", process.env.GMAIL_USER);
-  const pass = await getSetting("gmail_app_password", process.env.GMAIL_APP_PASSWORD);
-  if (!user || !pass) return null;
-  return { transporter: nodemailer.createTransport({ service: "gmail", auth: { user, pass } }), user };
-}
-
-// ─── Contenu de l'email de relance ────────────────────────────────────────────
-const ACCROCHE: Record<number, { objet: string; intro: string }> = {
-  1: {
-    objet: "Votre devis KinouClean",
-    intro: "Avez-vous eu le temps de consulter le devis que nous vous avons transmis ?",
-  },
-  2: {
-    objet: "Votre devis KinouClean — petite relance",
-    intro: "Nous revenons vers vous au sujet de votre devis, resté sans réponse pour le moment.",
-  },
-  3: {
-    objet: "Votre devis KinouClean — dernier rappel",
-    intro: "Sauf erreur de notre part, votre devis est toujours en attente. C'est notre dernier message à ce sujet.",
-  },
-};
-
-const FISCAL_BLOC: Record<string, string> = {
-  avance: `<table width="100%" cellpadding="0" cellspacing="0" style="background:#EFF6FF;border-radius:10px;padding:14px 16px;margin:0 0 20px;"><tr><td style="font-size:14px;color:#1E40AF;line-height:1.6;">
-    💡 <strong>Avance immédiate</strong> — vous ne réglez que <strong>50 %</strong> du montant : l'État prend l'autre moitié en charge, sans avance de trésorerie de votre part.
-  </td></tr></table>`,
-  credit: `<table width="100%" cellpadding="0" cellspacing="0" style="background:#FFF7ED;border-radius:10px;padding:14px 16px;margin:0 0 20px;"><tr><td style="font-size:14px;color:#9A3412;line-height:1.6;">
-    💡 <strong>Crédit d'impôt 50 %</strong> — cette prestation à domicile ouvre droit au crédit d'impôt (art. 199 sexdecies du CGI) : votre coût réel est divisé par deux.
-  </td></tr></table>`,
-};
-
-function buildRelanceHtml(d: { prenom: string; typePresta: string; prix: string; niveau: number; fiscal?: string }): string {
-  const { intro } = ACCROCHE[d.niveau] ?? ACCROCHE[1];
-  const fiscalBloc = (d.fiscal && FISCAL_BLOC[d.fiscal]) || "";
-  return `<!DOCTYPE html>
-<html lang="fr"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
-<body style="margin:0;padding:0;background:#f4f4f7;font-family:Arial,Helvetica,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:32px 16px;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-        <tr><td style="background:#1C3557;padding:28px 32px;">
-          <div style="color:#ffffff;font-size:20px;font-weight:bold;">KinouClean</div>
-          <div style="color:rgba(255,255,255,0.6);font-size:11px;letter-spacing:2px;margin-top:4px;">NETTOYAGE PROFESSIONNEL À DOMICILE</div>
-        </td></tr>
-        <tr><td style="padding:32px;">
-          <p style="font-size:16px;color:#1F2937;margin:0 0 16px;">Bonjour ${d.prenom || ""},</p>
-          <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0 0 20px;">${intro}</p>
-          <table width="100%" cellpadding="0" cellspacing="0" style="background:#F9FAFB;border-radius:10px;padding:16px;margin:0 0 20px;">
-            <tr><td style="font-size:14px;color:#4B5563;line-height:1.8;">
-              🧹 <strong>Prestation :</strong> ${d.typePresta || "—"}<br/>
-              💶 <strong>Montant :</strong> ${d.prix ? `${d.prix} €` : "—"}
-            </td></tr>
-          </table>
-          ${fiscalBloc}
-          <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0 0 20px;">
-            Si vous souhaitez avancer, répondez simplement à cet email ou appelez-nous : nous fixerons une date qui vous arrange.
-            Une question, un ajustement du devis ? Nous sommes à votre écoute.
-          </p>
-          <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0;">Belle journée,<br/><strong>L'équipe KinouClean</strong></p>
-        </td></tr>
-        <tr><td style="background:#1C3557;padding:16px 32px;text-align:center;">
-          <div style="color:rgba(255,255,255,0.6);font-size:11px;">KinouClean · Organisme agréé SAP n° D3289580</div>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`;
-}
+// (Transporteur Gmail + templates de relance : voir src/lib/mailer.ts, partagés
+//  avec la route de déclenchement manuel /api/emails/action.)
 
 function buildAvisHtml(d: { prenom: string; typePresta: string; lien: string }): string {
   return `<!DOCTYPE html>
@@ -251,7 +175,7 @@ export async function GET(req: Request) {
 
   const envoyes:  unknown[] = [];
   const aEnvoyer: unknown[] = [];
-  const aAppeler: unknown[] = [];
+  const aDemarrer: unknown[] = [];     // devis sans séquence démarrée (action manuelle attendue)
   const demandeAvis: unknown[] = [];   // avis à envoyer (mode simulation) / bloqués
   const avisEnvoyes: unknown[] = [];   // avis réellement envoyés (test/réel)
   const erreurs:  unknown[] = [];
@@ -273,18 +197,24 @@ export async function GET(req: Request) {
     const aUneDate    = !!(p.date_intervention && String(p.date_intervention).trim());
     const clos        = DONE_STATUTS.includes(p.statut) || p.statut === "ANNULÉ";
 
-    // ── Relance devis ──
+    // ── Relance devis (séquence DÉMARRÉE MANUELLEMENT uniquement) ──
+    // Le cron ne démarre jamais une relance : il poursuit celles que l'utilisateur
+    // a lancées via le bouton (niveau 1 envoyé à la main + date de démarrage).
     if (devisExiste && !aUneDate && !clos) {
-      const age = daysSince(p.created_at);
-      if (age != null && age > RELANCE_AGE_MAX) {
-        aAppeler.push({ nom, email, prix, ageJours: age });
-      } else if (age != null && age >= RELANCE_JOURS[0]) {
-        const cible  = niveauCible(age);
-        const actuel = Number(etat[p.id]?.relance ?? 0);
-        if (cible > actuel) {
-          const cible_ = cible;
-          const info = { nom, email, prix, ageJours: age, niveau: cible_ };
+      const actuel = Number(etat[p.id]?.relance ?? 0);
+      const start  = etat[p.id]?.relanceStart || null;
 
+      if (actuel < 1) {
+        // Pas encore démarrée → on la signale seulement (action manuelle attendue).
+        const age = daysSince(p.created_at);
+        aDemarrer.push({ nom, email, prix, ageJours: age });
+      } else if (actuel < 3) {
+        // Séquence en cours : on planifie #2/#3 à partir du démarrage manuel
+        // (repli sur created_at pour les séquences démarrées avant cette évolution).
+        const joursDepuis = daysSince(start || p.created_at);
+        const cible = joursDepuis == null ? actuel : niveauDepuisDemarrage(joursDepuis);
+        if (cible > actuel) {
+          const info = { nom, email, prix, niveau: cible, joursDepuisDemarrage: joursDepuis };
           if (!email) {
             aEnvoyer.push({ ...info, bloque: "pas d'email" });
           } else if (mode === "simulation") {
@@ -295,12 +225,11 @@ export async function GET(req: Request) {
               await gmail!.transporter.sendMail({
                 from   : `"KinouClean" <${gmail!.user}>`,
                 to     : dest,
-                subject: (ACCROCHE[cible_] ?? ACCROCHE[1]).objet + (mode === "test" ? ` [TEST — destiné à ${email}]` : ""),
-                html   : buildRelanceHtml({ prenom: client.prenom || "", typePresta: p.type_prestation || "", prix: p.prix, niveau: cible_, fiscal: fiscalClients[client.id || p.client_id] }),
+                subject: (ACCROCHE[cible] ?? ACCROCHE[1]).objet + (mode === "test" ? ` [TEST — destiné à ${email}]` : ""),
+                html   : buildRelanceHtml({ prenom: client.prenom || "", typePresta: p.type_prestation || "", prix: p.prix, niveau: cible, fiscal: fiscalClients[client.id || p.client_id] }),
               });
-              // En mode test on NE marque PAS comme envoyé (pour pouvoir retester).
               if (mode === "reel") {
-                etat[p.id] = { ...(etat[p.id] ?? {}), relance: cible_ };
+                etat[p.id] = { ...(etat[p.id] ?? {}), relance: cible };
                 etatModifie = true;
               }
               envoyes.push({ ...info, envoyeA: dest });
@@ -362,17 +291,17 @@ export async function GET(req: Request) {
       : mode === "test"     ? `✉️ TEST — tout est envoyé à ${testEmail} (aucun client contacté, rien n'est marqué comme envoyé)`
       :                       "🚀 RÉEL — emails envoyés aux clients",
     executeLe: new Date().toISOString(),
-    reglages: { relanceJours: RELANCE_JOURS, relanceAgeMax: RELANCE_AGE_MAX, avisJours: AVIS_JOURS, avisAgeMax: AVIS_AGE_MAX, envoiAutoQuotidien: ENVOI_AUTO_ACTIF },
+    reglages: { cadenceRelanceJours: [0, 2, 4], avisJours: AVIS_JOURS, avisAgeMax: AVIS_AGE_MAX, envoiAutoQuotidien: ENVOI_AUTO_ACTIF, note: "Les relances ne partent QUE si la séquence a été démarrée manuellement." },
     resume:
       mode === "simulation"
-        ? `${aEnvoyer.length} relance(s) + ${demandeAvis.length} demande(s) d'avis partiraient. ${aAppeler.length} devis à appeler (>J+${RELANCE_AGE_MAX}).`
-        : `${envoyes.length} relance(s) + ${avisEnvoyes.length} avis envoyé(s), ${erreurs.length} erreur(s). ${aAppeler.length} devis à appeler.`,
+        ? `${aEnvoyer.length} relance(s) de suite partiraient. ${aDemarrer.length} devis en attente de démarrage manuel.`
+        : `${envoyes.length} relance(s) enchaînée(s) + ${avisEnvoyes.length} avis, ${erreurs.length} erreur(s). ${aDemarrer.length} devis à démarrer manuellement.`,
     relancesEnvoyees: envoyes,
     relancesAEnvoyer: aEnvoyer,
     avisEnvoyes,
     demandeAvis,
     erreurs,
-    aAppeler,
+    aDemarrer,
   };
 
   console.log("[CRON emails]", mode, "|", report.resume);

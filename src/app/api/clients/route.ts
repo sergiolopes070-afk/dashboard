@@ -83,30 +83,9 @@ export async function POST(req: Request) {
       } catch (e) { console.error("Erreur enregistrement fiscal:", e); }
     }
 
-    // Envoyer l'email de confirmation si l'adresse email est renseignée
-    if (body.email) {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-      try {
-        const emailRes = await fetch(`${baseUrl}/api/send-email`, {
-          method : "POST",
-          headers: { "Content-Type": "application/json" },
-          body   : JSON.stringify({
-            email     : body.email,
-            prenom    : body.prenom,
-            typePresta: typePresta,
-            quantite  : body.quantite,
-            adresse   : body.adresse,
-            date      : body.date,
-            heure     : body.heure,
-            prix      : prix,
-          }),
-        });
-        const emailData = await emailRes.json();
-        console.log("Email result:", emailData);
-      } catch (e) {
-        console.error("Erreur envoi email:", e);
-      }
-    }
+    // NB : plus d'email automatique à la création. Le contact initial se fait
+    // directement (téléphone/WhatsApp). Les emails (besoin d'infos, relances)
+    // sont déclenchés MANUELLEMENT depuis le dashboard via /api/emails/action.
 
     return NextResponse.json({ success: true, id: prestationId });
   } catch (err: unknown) {
