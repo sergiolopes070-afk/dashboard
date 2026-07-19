@@ -88,25 +88,44 @@ export function buildRelanceHtml(d: { prenom: string; typePresta: string; prix: 
     <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0;">Belle journée,<br/><strong>L'équipe KinouClean</strong></p>`);
 }
 
-// ─── Besoin d'informations pour établir le devis (client injoignable) ───────────
-export const BESOIN_INFOS_OBJET = "Nous avons essayé de vous joindre — KinouClean";
+// ─── Besoin d'informations pour établir le devis (suite au formulaire de contact) ─
+export const BESOIN_INFOS_OBJET = "Votre demande de devis — informations complémentaires | KinouClean";
 
 export function buildBesoinInfosHtml(d: { prenom: string; typePresta: string }): string {
-  const presta = d.typePresta ? ` pour votre demande de <strong>${d.typePresta.toLowerCase()}</strong>` : "";
+  const presta = d.typePresta ? ` concernant votre projet de <strong>${d.typePresta.toLowerCase()}</strong>` : "";
   return shell(`
     <p style="font-size:16px;color:#1F2937;margin:0 0 16px;">Bonjour ${d.prenom || ""},</p>
-    <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0 0 20px;">
-      Nous avons essayé de vous joindre par téléphone${presta}, sans succès pour le moment.
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 16px;">
+      Nous avons bien reçu votre demande transmise via notre <strong>formulaire de contact</strong>${presta}, et nous vous en remercions.
     </p>
-    <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0 0 20px;">
-      Afin d'établir un devis précis et adapté, nous aurions besoin de quelques informations complémentaires
-      (surface / nombre de pièces, état, contraintes d'accès, date souhaitée…).
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 16px;">
+      Nous avons cherché à vous joindre par téléphone afin d'échanger sur votre besoin, sans parvenir à vous contacter pour le moment.
     </p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#F9FAFB;border-radius:10px;padding:16px;margin:0 0 20px;">
-      <tr><td style="font-size:14px;color:#4B5563;line-height:1.7;">
-        👉 <strong>Le plus simple :</strong> répondez directement à cet email, ou rappelez-nous au
-        <strong>01 70 25 39 85</strong> — nous finaliserons votre devis ensemble en quelques minutes.
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 12px;">
+      Afin d'établir un <strong>devis précis et personnalisé</strong>, quelques précisions nous seraient utiles :
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#F9FAFB;border-radius:10px;padding:18px 20px;margin:0 0 20px;">
+      <tr><td style="font-size:14px;color:#374151;line-height:1.9;">
+        • La <strong>surface</strong> concernée ou le <strong>nombre de pièces</strong><br/>
+        • L'<strong>état</strong> des lieux / le niveau de salissure<br/>
+        • Les éventuelles <strong>contraintes d'accès</strong> (étage, ascenseur, stationnement…)<br/>
+        • La <strong>date</strong> ou la période souhaitée pour l'intervention
       </td></tr>
     </table>
-    <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0;">À très vite,<br/><strong>L'équipe KinouClean</strong></p>`);
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 8px;">
+      Vous pouvez simplement <strong>répondre à cet email</strong> avec ces éléments, ou nous joindre directement :
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+      <tr><td style="font-size:15px;color:#1C3557;line-height:1.8;font-weight:bold;">
+        📞 01 70 25 39 85
+      </td></tr>
+    </table>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 4px;">
+      Nous restons à votre entière disposition et reviendrons vers vous dans les meilleurs délais.
+    </p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:16px 0 0;">
+      Bien cordialement,<br/>
+      <strong>L'équipe KinouClean</strong><br/>
+      <span style="font-size:13px;color:#9CA3AF;">Nettoyage professionnel à domicile · Île-de-France</span>
+    </p>`);
 }
