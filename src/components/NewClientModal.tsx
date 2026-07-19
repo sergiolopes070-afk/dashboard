@@ -300,15 +300,28 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || (typeof window !== "undefined" ? window.location.origin : "");
     const fullAdresseWA = [f.adresse, [f.codePostal, f.ville].filter(Boolean).join(" ")].filter(Boolean).join(", ");
 
+    // Réservation multi-articles → une seule prestation. On liste tous les
+    // articles (principal + supplémentaires) et on calcule le total.
+    const articlesValides = articlesSupp.filter(a => a.typePresta || a.prix);
+    const tousArticles = articlesValides.length > 0
+      ? [{ typePresta: f.typePresta, quantite: f.quantite, prix: f.prix }, ...articlesValides]
+      : [];
+    const totalWA = tousArticles.reduce((s, a) => s + (parseFloat(a.prix) || 0), 0);
+    // Libellé prestation : soit la liste des articles, soit la prestation unique.
+    const prestaLabelWA = tousArticles.length > 0
+      ? tousArticles.map(a => `${a.typePresta || "Article"}${a.quantite ? ` (${a.quantite})` : ""}${a.prix ? ` — ${a.prix}€` : ""}`).join("\n   • ")
+      : `${f.typePresta}${f.quantite ? ` (${f.quantite})` : ""}`;
+    const montantWA = tousArticles.length > 0 ? `${totalWA}` : (f.prix || "—");
+
     // Message WhatsApp client
     const clientTelFormatted = f.tel.replace(/\s/g, "").replace(/^0/, "33");
     const clientMsg = encodeURIComponent(
       `Bonjour ${f.prenom} 👋,\n\nVotre demande a bien été enregistrée chez KinouClean ✅\n\n` +
       `📋 Récapitulatif de votre demande :\n` +
-      `🧹 Prestation : ${f.typePresta}${f.quantite ? ` (${f.quantite})` : ""}\n` +
+      `🧹 Prestation : ${tousArticles.length > 0 ? `\n   • ${prestaLabelWA}` : prestaLabelWA}\n` +
       `📍 Adresse : ${fullAdresseWA || "—"}\n` +
       `📅 Date : ${f.date || "—"}${f.heure ? ` à ${f.heure}` : ""}\n` +
-      `💶 Montant : ${f.prix || "—"} €\n\n` +
+      `💶 Montant : ${montantWA} €\n\n` +
       `Nous revenons vers vous très prochainement pour confirmer votre rendez-vous 🙏\n\nL'équipe KinouClean`
     );
 
@@ -321,10 +334,10 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
       const prestaMsg = encodeURIComponent(
         `Bonjour ${savedPrestataire.nom} 👋,\n\nUne nouvelle mission vous a été proposée chez KinouClean :\n\n` +
         `👤 Client : ${f.prenom} ${f.nom}\n` +
-        `🧹 Prestation : ${f.typePresta}${f.quantite ? ` (x${f.quantite})` : ""}\n` +
+        `🧹 Prestation : ${tousArticles.length > 0 ? `\n   • ${prestaLabelWA}` : prestaLabelWA}\n` +
         `📍 Adresse : ${fullAdresseWA || "—"}\n` +
         `📅 Date : ${f.date || "—"}${f.heure ? ` à ${f.heure}` : ""}\n` +
-        `💶 Prix : ${f.prix || "—"} €\n` +
+        `💶 Prix : ${montantWA} €\n` +
         (f.commentaire?.trim() ? `📝 Note interne : ${f.commentaire.trim()}\n` : "") +
         `\n` +
         (acceptUrl

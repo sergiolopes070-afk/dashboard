@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
-import { appendPrestation, updatePrestation, deleteClient, updateClientTags, updateClientNotes, insertPrestationForClient, getClientIdOfPrestation } from "@/lib/sheets";
+import { appendPrestation, updatePrestation, deleteClient, updateClientTags, updateClientNotes } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 
@@ -10,18 +10,49 @@ export async function POST(req: Request) {
   if (unauth) return unauth;
   try {
     const body = await req.json();
+
+    // Articles multiples (canapé + matelas + tapis…) → FUSIONNÉS en UNE seule
+    // prestation « normale » : type = liste des articles, prix = total, et le
+    // détail par article conservé dans la note. On ne crée plus une ligne par
+    // article (sinon une réservation apparaît éclatée dans l'agenda).
+    const articles = Array.isArray(body.articlesSupp)
+      ? body.articlesSupp.filter((a: { typePresta?: string; prix?: string }) => a && (a.typePresta || a.prix))
+      : [];
+
+    let typePresta = body.typePresta || "";
+    let prix       = body.prix       || "";
+    let message    = body.message    || "";
+
+    if (articles.length > 0) {
+      const items = [
+        { type: body.typePresta || "Prestation", qty: body.quantite || "", prix: body.prix || "" },
+        ...articles.map((a: { typePresta?: string; quantite?: string; prix?: string }) => ({
+          type: a.typePresta || "Article", qty: a.quantite || "", prix: a.prix || "",
+        })),
+      ];
+      typePresta = items.map(it => it.type).filter(Boolean).join(" + ");
+      const total = items.reduce((s, it) => s + (parseFloat(it.prix) || 0), 0);
+      if (total > 0) prix = String(total);
+      const breakdown = "Détail articles : " + items.map(it => {
+        const p = it.prix ? ` — ${parseFloat(it.prix).toFixed(2).replace(".", ",")} €` : "";
+        const q = it.qty ? ` (${it.qty})` : "";
+        return `${it.type}${q}${p}`;
+      }).join(" · ");
+      message = message ? `${message}\n${breakdown}` : breakdown;
+    }
+
     const prestationId = await appendPrestation({
       nom          : body.nom          || "",
       prenom       : body.prenom       || "",
       tel          : body.tel          || "",
       email        : body.email        || "",
-      typePresta   : body.typePresta   || "",
+      typePresta   : typePresta,
       quantite     : body.quantite     || "",
       adresse      : body.adresse      || "",
       date         : body.date         || "",
       heure        : body.heure        || "",
-      message      : body.message      || "",
-      prix         : body.prix         || "",
+      message      : message,
+      prix         : prix,
       prestataire  : body.prestataire  || "",
       statut       : body.statut       || "",
       statutPresta : body.statutPresta || "",
@@ -31,25 +62,6 @@ export async function POST(req: Request) {
       commentaire    : body.commentaire    || "",
       modePaiement   : body.modePaiement   || "",
     });
-
-    // Articles supplémentaires : prestations additionnelles rattachées au MÊME client.
-    if (Array.isArray(body.articlesSupp) && body.articlesSupp.length > 0) {
-      const clientId = await getClientIdOfPrestation(prestationId);
-      if (clientId) {
-        for (const art of body.articlesSupp) {
-          if (!art || (!art.typePresta && !art.prix)) continue;
-          await insertPrestationForClient(clientId, {
-            typePresta: art.typePresta || "",
-            quantite  : art.quantite   || "1",
-            prix      : art.prix       || "",
-            message   : art.message    || "",
-            adresse   : body.adresse   || "",
-            date      : body.date      || "",
-            heure     : body.heure     || "",
-          });
-        }
-      }
-    }
 
     // Envoyer l'email de confirmation si l'adresse email est renseignée
     if (body.email) {
@@ -61,12 +73,12 @@ export async function POST(req: Request) {
           body   : JSON.stringify({
             email     : body.email,
             prenom    : body.prenom,
-            typePresta: body.typePresta,
+            typePresta: typePresta,
             quantite  : body.quantite,
             adresse   : body.adresse,
             date      : body.date,
             heure     : body.heure,
-            prix      : body.prix,
+            prix      : prix,
           }),
         });
         const emailData = await emailRes.json();
