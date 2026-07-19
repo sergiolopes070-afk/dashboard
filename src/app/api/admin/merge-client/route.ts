@@ -138,6 +138,24 @@ export async function GET(req: Request) {
     return res;
   }
 
+  // Sonde de persistance CROSS-REQUÊTE : ?probe=write écrit un marqueur dans le
+  // message de la 1re prestation (sans restaurer) ; ?probe=read le relit dans une
+  // requête séparée. Si le marqueur survit → une seule base. Sinon → deux bases.
+  const probe = url.searchParams.get("probe");
+  if (probe === "write") {
+    const cible = rows[0];
+    if (!cible) return NextResponse.json({ probe: "aucune prestation" });
+    const marqueur = `PROBE-${Date.now()}`;
+    const w = await supabase.from("prestations").update({ message: marqueur }).eq("id", cible.id).select("id, message");
+    return NextResponse.json({ action: "write", cibleId: cible.id, marqueur, retour: w.data, err: w.error?.message || null });
+  }
+  if (probe === "read") {
+    const cible = rows[0];
+    if (!cible) return NextResponse.json({ probe: "aucune prestation" });
+    const r = await supabase.from("prestations").select("id, message").eq("id", cible.id).single();
+    return NextResponse.json({ action: "read", cibleId: cible.id, messageActuel: r.data?.message ?? null });
+  }
+
   // Diagnostic ponctuel : écrit un marqueur puis relit, pour savoir si l'écriture
   // persiste réellement (déclenché avec &diag=1).
   if (url.searchParams.get("diag") === "1") {
