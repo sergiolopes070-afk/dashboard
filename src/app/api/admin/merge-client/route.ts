@@ -138,17 +138,22 @@ export async function GET(req: Request) {
     const garde = g[0];
     const nouveauMessage = garde.message ? `${garde.message}\n${breakdown}` : breakdown;
 
-    const { error: upErr } = await supabase
+    const { data: upData, error: upErr } = await supabase
       .from("prestations")
       .update({ type_prestation: typeFusionne, prix: total, message: nouveauMessage })
-      .eq("id", garde.id);
+      .eq("id", garde.id)
+      .select("id");
     if (upErr) return NextResponse.json({ error: `MAJ échouée: ${upErr.message}`, effectue }, { status: 500 });
 
     const aSupprimer = g.slice(1).map(r => r.id);
-    const { error: delErr } = await supabase.from("prestations").delete().in("id", aSupprimer);
+    const { data: delData, error: delErr } = await supabase
+      .from("prestations").delete().in("id", aSupprimer).select("id");
     if (delErr) return NextResponse.json({ error: `Suppression échouée: ${delErr.message}`, effectue }, { status: 500 });
 
-    effectue.push({ garde: garde.id, supprimees: aSupprimer, type: typeFusionne, prix: total });
+    effectue.push({
+      garde: garde.id, supprimees: aSupprimer, type: typeFusionne, prix: total,
+      lignesMAJ: upData?.length ?? 0, lignesSupprimees: delData?.length ?? 0,
+    });
   }
 
   return NextResponse.json({
