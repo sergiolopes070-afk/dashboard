@@ -187,11 +187,14 @@ export async function GET(req: Request) {
         `${i.type}${i.qty ? ` (${i.qty})` : ""} — ${fmtEur(i.prix)}`).join(" · ");
       const nouveauMessage = garde.message ? `${garde.message}\n${breakdown}` : breakdown;
 
-      const { error: upErr } = await supabase
+      const { data: upData, error: upErr } = await supabase
         .from("prestations")
         .update({ type_prestation: typeFusionne, prix: total, message: nouveauMessage })
-        .eq("id", garde.id).select("id");
+        .eq("id", garde.id).select("id, type_prestation, prix");
       if (upErr) return NextResponse.json({ error: `MAJ échouée: ${upErr.message}`, effectue }, { status: 500 });
+      // Relecture immédiate (même requête) pour vérifier la persistance.
+      const relu = await supabase.from("prestations").select("type_prestation, prix").eq("id", garde.id).single();
+      (effectue as unknown[]).push({ __diagMAJ: { retour: upData, relu: relu.data } });
     }
 
     // Archiver les lignes en trop (tout sauf la gardée).
