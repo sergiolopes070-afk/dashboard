@@ -138,6 +138,23 @@ export async function GET(req: Request) {
     return res;
   }
 
+  // Diagnostic ponctuel : écrit un marqueur puis relit, pour savoir si l'écriture
+  // persiste réellement (déclenché avec &diag=1).
+  if (url.searchParams.get("diag") === "1") {
+    const cible = rows[0];
+    if (!cible) return NextResponse.json({ diag: "aucune prestation" });
+    const marqueur = `DIAG-${Date.now()}`;
+    const w = await supabase.from("prestations").update({ message: marqueur }).eq("id", cible.id).select("id, message");
+    const r = await supabase.from("prestations").select("id, message").eq("id", cible.id).single();
+    return NextResponse.json({
+      cibleId: cible.id,
+      marqueurEcrit: marqueur,
+      retourUpdate: { rows: w.data, error: w.error?.message || null },
+      relecture: { message: r.data?.message ?? null, error: r.error?.message || null },
+      verdict: r.data?.message === marqueur ? "ÉCRITURE PERSISTE ✅" : "ÉCRITURE NON PERSISTÉE ❌",
+    });
+  }
+
   const effectue: unknown[] = [];
   for (const [, g] of aFusionner) {
     const garde = g[0];
