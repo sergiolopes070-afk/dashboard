@@ -1,5 +1,5 @@
 "use client";
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
 // Lien direct vers le formulaire d'écriture d'avis Google Maps (#lrd=CID,3 = write review)
@@ -22,6 +22,24 @@ function AvisContent() {
   const [redirecting, setRedirecting] = useState(false);
 
   const effective = hovered || rating;
+
+  // Note pré-sélectionnée depuis les étoiles de l'email (?note=1..5).
+  // ≥4 → redirection directe vers Google. ≤3 → formulaire de commentaire pré-noté.
+  const noteParam = parseInt(searchParams.get("note") || "0", 10);
+  useEffect(() => {
+    if (!noteParam || noteParam < 1 || noteParam > 5) return;
+    setRating(noteParam);
+    if (noteParam >= 4) {
+      setRedirecting(true);
+      fetch("/api/avis", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, clientName, prestation, rating: noteParam, comment: "" }),
+      }).catch(() => {}).finally(() => {
+        setTimeout(() => { window.location.href = GOOGLE_REVIEW_URL; }, 1200);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleSubmit() {
     if (!rating) return;
@@ -155,6 +173,22 @@ function AvisContent() {
               border: "1px solid rgba(42,54,148,0.5)",
             }}>
               ✨ Votre avis sera publié sur Google
+            </div>
+          )}
+
+          {/* Invitation au commentaire (note basse) */}
+          {isLow && (
+            <div style={{
+              borderRadius: 10,
+              padding: "10px 14px",
+              marginBottom: 18,
+              textAlign: "center",
+              fontSize: 13,
+              background: "rgba(245,158,11,0.12)",
+              color: "#f59e0b",
+              border: "1px solid rgba(245,158,11,0.35)",
+            }}>
+              Merci de votre retour. Qu&apos;aurions-nous pu faire mieux ? Votre commentaire nous aide à progresser (il reste privé).
             </div>
           )}
 

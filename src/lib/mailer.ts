@@ -28,16 +28,16 @@ const TEL_LINK = "tel:0620799747";
 
 export const ACCROCHE: Record<number, { objet: string; intro: string }> = {
   1: {
-    objet: "Votre devis KinouClean vous attend ✨",
-    intro: "Votre devis est prêt et validé de notre côté. On réserve votre créneau ?",
+    objet: "Votre devis KinouClean est prêt",
+    intro: "Votre devis a bien été établi et reste à votre disposition. Souhaitez-vous que nous réservions votre créneau d'intervention ?",
   },
   2: {
-    objet: "On garde votre créneau ? — KinouClean",
-    intro: "Petit rappel au sujet de votre devis : nos disponibilités partent vite, autant réserver la vôtre dès maintenant.",
+    objet: "Votre devis KinouClean — souhaitez-vous réserver ?",
+    intro: "Nous revenons vers vous concernant votre devis. Nos disponibilités se réservent rapidement : nous serions ravis de bloquer le créneau qui vous convient.",
   },
   3: {
-    objet: "Dernière relance — votre devis KinouClean",
-    intro: "Dernier message de notre part : votre devis reste valable, mais nos créneaux se remplissent rapidement. On s'en occupe ensemble ?",
+    objet: "Votre devis KinouClean — dernière relance",
+    intro: "Sauf erreur de notre part, votre devis est toujours en attente. Il s'agit de notre dernière relance à ce sujet ; n'hésitez pas à nous solliciter, nous restons à votre disposition.",
   },
 };
 
@@ -137,4 +137,47 @@ export function buildBesoinInfosHtml(d: { prenom: string; typePresta: string }):
       <strong>L'équipe KinouClean</strong><br/>
       <span style="font-size:13px;color:#9CA3AF;">Nettoyage professionnel à domicile · Île-de-France</span>
     </p>`);
+}
+
+// ─── Demande d'avis (étoiles cliquables → page d'avis pré-notée) ────────────────
+export const AVIS_OBJET = "Votre avis compte pour nous ⭐";
+
+// `lienBase` = URL de la page d'avis avec ses paramètres (nom, prestation), SANS
+// la note. Chaque étoile ajoute &note=N : la page redirige vers Google (≥4) ou
+// ouvre un formulaire de commentaire (≤3).
+export function buildAvisHtml(d: { prenom: string; typePresta: string; lienBase: string }): string {
+  const sep = d.lienBase.includes("?") ? "&" : "?";
+  const etoile = (n: number) =>
+    `<a href="${d.lienBase}${sep}note=${n}" style="text-decoration:none;font-size:40px;line-height:1;color:#F59E0B;padding:0 4px;">★</a>`;
+  return shell(`
+    <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour ${d.prenom || ""},</p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 8px;">
+      Merci de votre confiance pour votre prestation${d.typePresta ? ` de ${d.typePresta.toLowerCase()}` : ""} ✨.
+    </p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 20px;">
+      Votre satisfaction est notre priorité. En un clic, quelle note donneriez-vous à votre expérience ?
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 10px;"><tr><td align="center">
+      ${[1,2,3,4,5].map(etoile).join("")}
+    </td></tr></table>
+    <p style="font-size:13px;color:#9CA3AF;line-height:1.6;margin:0 0 24px;text-align:center;">
+      Cliquez sur le nombre d'étoiles qui correspond à votre satisfaction.
+    </p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0;">
+      Merci infiniment pour le temps que vous nous accordez 🙏<br/><strong>L'équipe KinouClean</strong>
+    </p>`);
+}
+
+// Message de rappel WhatsApp (RDV du lendemain), avec plusieurs prestations
+// listées si le client en a plusieurs le même jour.
+export function buildRappelMessage(d: { prenom: string; prestations: string[]; date: string; heure?: string; adresse?: string }): string {
+  const liste = d.prestations.filter(Boolean).join(" + ") || "Prestation KinouClean";
+  return (
+    `Bonjour ${d.prenom || ""} 👋,\n\n` +
+    `Petit rappel de votre rendez-vous KinouClean prévu demain :\n\n` +
+    `🧹 ${liste}\n` +
+    `📅 ${d.date || "demain"}${d.heure ? ` à ${d.heure}` : ""}\n` +
+    (d.adresse ? `📍 ${d.adresse}\n` : "") +
+    `\nEn cas d'empêchement, merci de nous prévenir au plus tôt. À demain !`
+  );
 }
