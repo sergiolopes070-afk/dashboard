@@ -278,7 +278,13 @@ export default function PrestationsPage() {
                 className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
               />
             </div>
-            {/* Mode de paiement — obligatoire */}
+            {/* Mode de paiement — obligatoire SAUF pour les annulations
+               (annulation client / injoignable / doublon = aucun paiement). */}
+            {["Annulation client", "Client injoignable", "Doublon"].some(r => archiveReason.startsWith(r)) ? (
+              <p className="text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                Aucun paiement requis pour une annulation.
+              </p>
+            ) : (
             <div className="space-y-2">
               <label className="text-xs font-medium text-gray-600">
                 Mode de paiement <span className="text-red-400">*</span>
@@ -300,6 +306,7 @@ export default function PrestationsPage() {
                 ))}
               </div>
             </div>
+            )}
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-600">Commentaire <span className="text-gray-400 font-normal">(optionnel)</span></label>
               <textarea
@@ -319,7 +326,7 @@ export default function PrestationsPage() {
               </button>
               <button
                 onClick={handleArchiveConfirm}
-                disabled={!archiveReason.trim() || !archivePayment || archiving}
+                disabled={!archiveReason.trim() || (!archivePayment && !["Annulation client", "Client injoignable", "Doublon"].some(r => archiveReason.startsWith(r))) || archiving}
                 className="flex-1 py-2 rounded-xl bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors disabled:opacity-50"
               >
                 {archiving ? "Archivage…" : "Archiver"}
