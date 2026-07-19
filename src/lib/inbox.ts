@@ -14,6 +14,7 @@ import { appendPrestation } from "./sheets";
 import { getSetting } from "./mailer";
 
 const SUBJECT_MATCH = "Nouvelle demande de devis";
+const FROM_MATCH = "contact@kinouclean.fr"; // n'importer QUE les emails du formulaire du site
 const PROCESSED_KEY = "inbox_processed";
 
 // ─── Suivi des emails déjà importés ─────────────────────────────────────────────
@@ -119,7 +120,7 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean } = {})
     const lock = await client.getMailboxLock("INBOX");
     try {
       const since = new Date(Date.now() - 60 * 24 * 3600 * 1000); // 60 derniers jours
-      const uids = await client.search({ subject: SUBJECT_MATCH, since }, { uid: true });
+      const uids = await client.search({ from: FROM_MATCH, subject: SUBJECT_MATCH, since }, { uid: true });
       const list = Array.isArray(uids) ? uids : [];
 
       for (const uid of list) {
