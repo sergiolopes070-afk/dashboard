@@ -197,10 +197,17 @@ export default function EditPrestationModal({
             <p className="text-[11px] text-gray-400">PDF généré à la volée. Pour un devis personnalisé (état du bien, options…), passe par l&apos;onglet Devis.</p>
           </fieldset>
 
-          {/* ── Emails manuels ── */}
+          {/* ── Contact client (email / WhatsApp) ── */}
           <fieldset className="space-y-2">
-            <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Emails client</legend>
-            <EmailActions prestationId={prestation.row} clientEmail={prestation.email} />
+            <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Contacter le client</legend>
+            <EmailActions
+              prestationId={prestation.row}
+              clientEmail={prestation.email}
+              clientTel={prestation.tel}
+              prenom={prestation.prenom}
+              typePresta={prestation.typePresta}
+              prix={prestation.prix}
+            />
           </fieldset>
 
           {/* Statuts */}

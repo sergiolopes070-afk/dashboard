@@ -1658,11 +1658,19 @@ export default function AgendaPage() {
                         </div>
                       )}
 
-                      {/* ── Emails client (besoin d'infos / relances) ── */}
+                      {/* ── Contact client (email / WhatsApp) ── */}
                       {!isArchived && (
                         <div className="mt-4 border-t border-gray-100 pt-3">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Emails client</p>
-                          <EmailActions prestationId={ev.row} clientEmail={ev.email} compact />
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Contacter le client</p>
+                          <EmailActions
+                            prestationId={ev.row}
+                            clientEmail={ev.email}
+                            clientTel={ev.tel}
+                            prenom={ev.prenom}
+                            typePresta={ev.typePresta}
+                            prix={ev.prix}
+                            compact
+                          />
                         </div>
                       )}
                     </>
