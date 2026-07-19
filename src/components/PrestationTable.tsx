@@ -315,7 +315,7 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
             >
               <td className="py-3 px-4">
                 {onClientClick && p.clientId ? (
-                  <button onClick={() => onClientClick(p.clientId)} className="font-medium text-gray-900 hover:text-blue-600 transition-colors text-left" title="Ouvrir la fiche client">
+                  <button onClick={(e) => { e.stopPropagation(); onClientClick(p.clientId); }} className="font-medium text-gray-900 hover:text-blue-600 hover:underline transition-colors text-left" title="Ouvrir la fiche client">
                     {p.prenom} {p.nom}
                   </button>
                 ) : (

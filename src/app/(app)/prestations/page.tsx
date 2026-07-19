@@ -197,6 +197,7 @@ export default function PrestationsPage() {
           prestataires={prestataires}
           onClose={() => setEditing(null)}
           onSaved={handleSaved}
+          onViewClient={setFicheClientId}
           onArchive={(id, label) => {
             setEditing(null);
             setArchiveModal({ id, label });

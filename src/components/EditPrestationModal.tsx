@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X, Save, Loader2, MessageCircle, Archive } from "lucide-react";
+import { X, Save, Loader2, MessageCircle, Archive, User } from "lucide-react";
 import { Prestation, Prestataire, StatutClient, StatutPresta, MODES_PAIEMENT, MODE_PAIEMENT_ICONS } from "@/lib/constants";
 
 interface EditPrestationModalProps {
@@ -9,6 +9,7 @@ interface EditPrestationModalProps {
   onClose: () => void;
   onSaved: (row: string, updates: Record<string, string>) => void;
   onArchive?: (id: string, label: string) => void;
+  onViewClient?: (clientId: string) => void;
 }
 
 const STATUTS_CLIENT: StatutClient[] = [
@@ -28,6 +29,7 @@ export default function EditPrestationModal({
   onClose,
   onSaved,
   onArchive,
+  onViewClient,
 }: EditPrestationModalProps) {
   const [form, setForm] = useState({
     statut        : prestation.statut       as string,
@@ -133,18 +135,33 @@ export default function EditPrestationModal({
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-gray-100">
-          <div>
+        <div className="flex items-start justify-between p-5 border-b border-gray-100 gap-3">
+          <div className="min-w-0">
             <h2 className="font-semibold text-gray-900 text-base">
               Modifier — {prestation.prenom} {prestation.nom}
             </h2>
             <p className="text-xs text-gray-400 mt-0.5">
               {prestation.typePresta}
             </p>
+            {/* Coordonnées client + accès fiche */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-gray-500">
+              {prestation.tel && <span>📞 {prestation.tel}</span>}
+              {prestation.email && <span className="truncate max-w-[180px]">✉️ {prestation.email}</span>}
+              {prestation.adresse && <span className="truncate max-w-[220px]">📍 {prestation.adresse}</span>}
+            </div>
+            {onViewClient && prestation.clientId && (
+              <button
+                type="button"
+                onClick={() => { onClose(); onViewClient(prestation.clientId); }}
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline"
+              >
+                <User size={13} /> Voir la fiche client
+              </button>
+            )}
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 transition-colors"
+            className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 transition-colors shrink-0"
           >
             <X size={18} />
           </button>
