@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
-import { appendPrestation, updatePrestation, deleteClient, updateClientTags, updateClientNotes } from "@/lib/sheets";
+import { appendPrestation, updatePrestation, deleteClient, updateClientTags, updateClientNotes, getClientIdOfPrestation } from "@/lib/sheets";
+import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
+
+// Enregistre la préférence fiscale d'un client (avance / credit) dans la table
+// `settings` (clé `fiscal_clients`, JSON) — même stockage que /api/clients/fiscal.
+async function saveFiscal(clientId: string, fiscal: "avance" | "credit") {
+  if (!supabase) return;
+  const { data } = await supabase.from("settings").select("value").eq("key", "fiscal_clients").maybeSingle();
+  let map: Record<string, string> = {};
+  try { map = data?.value ? JSON.parse(data.value as string) : {}; } catch { map = {}; }
+  map[clientId] = fiscal;
+  await supabase.from("settings").upsert({ key: "fiscal_clients", value: JSON.stringify(map) }, { onConflict: "key" });
+}
 
 // POST : ajouter un nouveau client / prestation
 export async function POST(req: Request) {
@@ -62,6 +74,14 @@ export async function POST(req: Request) {
       commentaire    : body.commentaire    || "",
       modePaiement   : body.modePaiement   || "",
     });
+
+    // Préférence fiscale choisie à la création (avance immédiate / crédit d'impôt).
+    if (body.fiscal === "avance" || body.fiscal === "credit") {
+      try {
+        const clientId = await getClientIdOfPrestation(prestationId);
+        if (clientId) await saveFiscal(clientId, body.fiscal);
+      } catch (e) { console.error("Erreur enregistrement fiscal:", e); }
+    }
 
     // Envoyer l'email de confirmation si l'adresse email est renseignée
     if (body.email) {

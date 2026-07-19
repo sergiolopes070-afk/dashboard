@@ -109,6 +109,7 @@ interface CreateForm {
   prix: string; prestataire: string; statut: StatutClient; message: string;
   date: string; heure: string;
   commentaire: string; modePaiement: string;
+  fiscal: "" | "avance" | "credit";
 }
 
 const EMPTY_FORM: CreateForm = {
@@ -116,7 +117,7 @@ const EMPTY_FORM: CreateForm = {
   typePresta:"", adresse:"", codePostal:"", ville:"",
   prix:"", prestataire:"", statut:"", message:"",
   date:"", heure:"",
-  commentaire:"", modePaiement:"",
+  commentaire:"", modePaiement:"", fiscal:"",
 };
 
 // ─── Composant DayDetailModal ─────────────────────────────────────────────────
@@ -564,6 +565,28 @@ function QuickCreateModal({
             <textarea rows={2} value={form.commentaire} onChange={e => set("commentaire", e.target.value)}
               placeholder="Note interne pour le prestataire…"
               className={`${inputCls} resize-none`} />
+          </div>
+
+          {/* ── Avantage fiscal du client ── */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 mb-2 block">Avantage fiscal du client</label>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { val: "", label: "Aucun", icon: "—" },
+                { val: "avance", label: "Avance immédiate", icon: "⚡" },
+                { val: "credit", label: "Crédit d'impôt", icon: "🧾" },
+              ] as const).map(o => (
+                <button key={o.val || "aucun"} type="button"
+                  onClick={() => set("fiscal", o.val)}
+                  className={`px-2 py-2 rounded-lg text-xs font-medium border transition-colors text-center ${
+                    form.fiscal === o.val
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
+                  }`}>
+                  <span className="block text-base leading-none mb-0.5">{o.icon}</span>{o.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div>

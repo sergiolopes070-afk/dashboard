@@ -199,6 +199,7 @@ const EMPTY = {
   prestataire    : "",
   message        : "",
   commentaire    : "",   // note interne → prestataire, jamais le client
+  fiscal         : "" as "" | "avance" | "credit", // préférence fiscale du client
 };
 
 export default function NewClientModal({ prestataires, onClose, onSaved, initialValues }: Props) {
@@ -631,6 +632,32 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
                 <div className="flex justify-between font-bold text-gray-900 pt-1 border-t border-blue-100"><span>Total TTC</span><span>{totalTTC.toFixed(2)} €</span></div>
               </div>
             )}
+
+            {/* Avantage fiscal souhaité par le client (adapte les relances/devis) */}
+            <Field label="Avantage fiscal du client">
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { val: "", label: "Aucun", icon: "—" },
+                  { val: "avance", label: "Avance immédiate", icon: "⚡" },
+                  { val: "credit", label: "Crédit d'impôt", icon: "🧾" },
+                ] as const).map(o => (
+                  <button
+                    key={o.val || "aucun"}
+                    type="button"
+                    onClick={() => set("fiscal", o.val)}
+                    className={`px-2 py-2 rounded-xl border text-xs font-medium transition-colors text-center ${
+                      form.fiscal === o.val
+                        ? "border-blue-400 bg-blue-50 text-blue-700"
+                        : "border-gray-200 hover:border-gray-300 text-gray-600"
+                    }`}
+                  >
+                    <span className="block text-base leading-none mb-0.5">{o.icon}</span>
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">Sert de repère et adapte les relances (services à la personne uniquement).</p>
+            </Field>
 
             <Field label="Notes interne">
               <textarea value={form.commentaire} onChange={(e) => set("commentaire", e.target.value)}
