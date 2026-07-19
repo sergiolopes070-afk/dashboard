@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { importInbox } from "@/lib/inbox";
+import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -26,6 +27,13 @@ export async function GET(req: Request) {
   if (!cronOk) {
     const unauth = await requireAuth(); // bouton du dashboard : session requise
     if (unauth) return unauth;
+  }
+
+  // Diagnostic : combien de clients issus du formulaire existent réellement.
+  if (url.searchParams.get("count") === "1") {
+    if (!supabase) return NextResponse.json({ error: "no db" }, { status: 503 });
+    const { count } = await supabase.from("clients").select("id", { count: "exact", head: true }).eq("source", "Site (formulaire)");
+    return NextResponse.json({ clientsFormulaire: count ?? 0 });
   }
 
   const dry = url.searchParams.get("dry") === "1";
