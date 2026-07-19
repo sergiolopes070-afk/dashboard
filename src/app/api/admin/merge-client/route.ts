@@ -124,35 +124,59 @@ export async function GET(req: Request) {
   }
 
   // 5) Fusion réelle.
+  // NB : sur cet environnement, le client Supabase peut UPDATE mais pas DELETE
+  // (RLS). On « retire » donc les lignes en trop en les ARCHIVANT à 0 € (elles
+  // quittent l'agenda actif et ne comptent plus dans le CA), au lieu de les
+  // supprimer. Idempotent : si la ligne gardée est déjà fusionnée (« … + … »),
+  // on ne re-somme pas, on se contente d'archiver les lignes restantes.
+  async function archiverLigne(id: string) {
+    const patch = { archive: true, prix: 0, archive_reason: "Doublon (fusionné)" };
+    let res = await supabase!.from("prestations").update(patch).eq("id", id).select("id");
+    if (res.error && res.error.message.includes("archive_reason")) {
+      res = await supabase!.from("prestations").update({ archive: true, prix: 0 }).eq("id", id).select("id");
+    }
+    return res;
+  }
+
   const effectue: unknown[] = [];
   for (const [, g] of aFusionner) {
-    const items = g.map((r: PRow) => ({
-      type: r.type_prestation || "Prestation",
-      qty : r.quantite && r.quantite > 1 ? String(r.quantite) : "",
-      prix: r.prix || 0,
-    }));
-    const typeFusionne = items.map(i => i.type).join(" + ");
-    const total = items.reduce((s: number, i) => s + i.prix, 0);
-    const breakdown = "Détail articles : " + items.map(i =>
-      `${i.type}${i.qty ? ` (${i.qty})` : ""} — ${fmtEur(i.prix)}`).join(" · ");
     const garde = g[0];
-    const nouveauMessage = garde.message ? `${garde.message}\n${breakdown}` : breakdown;
+    const dejaFusionnee = (garde.type_prestation || "").includes(" + ");
 
-    const { data: upData, error: upErr } = await supabase
-      .from("prestations")
-      .update({ type_prestation: typeFusionne, prix: total, message: nouveauMessage })
-      .eq("id", garde.id)
-      .select("id");
-    if (upErr) return NextResponse.json({ error: `MAJ échouée: ${upErr.message}`, effectue }, { status: 500 });
+    let typeFusionne = garde.type_prestation || "";
+    let total = garde.prix || 0;
 
-    const aSupprimer = g.slice(1).map(r => r.id);
-    const { data: delData, error: delErr } = await supabase
-      .from("prestations").delete().in("id", aSupprimer).select("id");
-    if (delErr) return NextResponse.json({ error: `Suppression échouée: ${delErr.message}`, effectue }, { status: 500 });
+    if (!dejaFusionnee) {
+      const items = g.map((r: PRow) => ({
+        type: r.type_prestation || "Prestation",
+        qty : r.quantite && r.quantite > 1 ? String(r.quantite) : "",
+        prix: r.prix || 0,
+      }));
+      typeFusionne = items.map(i => i.type).join(" + ");
+      total = items.reduce((s: number, i) => s + i.prix, 0);
+      const breakdown = "Détail articles : " + items.map(i =>
+        `${i.type}${i.qty ? ` (${i.qty})` : ""} — ${fmtEur(i.prix)}`).join(" · ");
+      const nouveauMessage = garde.message ? `${garde.message}\n${breakdown}` : breakdown;
+
+      const { error: upErr } = await supabase
+        .from("prestations")
+        .update({ type_prestation: typeFusionne, prix: total, message: nouveauMessage })
+        .eq("id", garde.id).select("id");
+      if (upErr) return NextResponse.json({ error: `MAJ échouée: ${upErr.message}`, effectue }, { status: 500 });
+    }
+
+    // Archiver les lignes en trop (tout sauf la gardée).
+    const aArchiver = g.slice(1).map(r => r.id);
+    let nbArchivees = 0;
+    for (const id of aArchiver) {
+      const res = await archiverLigne(id);
+      if (res.error) return NextResponse.json({ error: `Archivage échoué: ${res.error.message}`, effectue }, { status: 500 });
+      nbArchivees += res.data?.length ?? 0;
+    }
 
     effectue.push({
-      garde: garde.id, supprimees: aSupprimer, type: typeFusionne, prix: total,
-      lignesMAJ: upData?.length ?? 0, lignesSupprimees: delData?.length ?? 0,
+      garde: garde.id, archivees: aArchiver, type: typeFusionne, prix: total,
+      dejaFusionnee, nbArchivees,
     });
   }
 
