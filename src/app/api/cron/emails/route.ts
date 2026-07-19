@@ -62,6 +62,15 @@ function getCronSecret(): string | undefined {
 }
 
 function authorize(req: Request): { ok: boolean; reason?: string } {
+  // 1) Requête interne de Vercel Cron : Vercel ajoute l'en-tête `x-vercel-cron`
+  //    sur chaque invocation planifiée. On l'accepte pour que la relance
+  //    quotidienne s'exécute MÊME si la variable CRON_SECRET est mal nommée
+  //    (Vercel n'injecte le Bearer que si elle s'appelle exactement CRON_SECRET).
+  //    Risque résiduel (endpoint public) minime : l'anti-doublon garantit qu'une
+  //    même relance n'est jamais envoyée deux fois, quel que soit le déclencheur.
+  if (req.headers.get("x-vercel-cron")) return { ok: true };
+
+  // 2) Déclenchement manuel : Bearer <secret> ou ?key=<secret> (casse tolérée).
   const secret = getCronSecret();
   if (!secret) return { ok: false, reason: "CRON_SECRET non configuré sur Vercel" };
   const auth = req.headers.get("authorization");
