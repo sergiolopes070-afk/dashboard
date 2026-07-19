@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Import des demandes de devis reçues par email (formulaire du site kinouclean.fr).
-// Lit la boîte Gmail en IMAP (mot de passe d'application), repère les emails dont
-// l'objet commence par « Nouvelle demande de devis », extrait les champs et crée
-// automatiquement le client/prestation dans le dashboard.
+// Lit la boîte Gmail en IMAP (mot de passe d'application), repère les emails
+// « Nouvelle demande de devis » envoyés par contact@kinouclean.fr, extrait les
+// champs et crée automatiquement le client/prestation dans le dashboard.
 //
 // Anti-doublon : on mémorise les Message-ID déjà traités (settings/inbox_processed)
 // → un même email n'est jamais importé deux fois, même s'il a déjà été lu dans Gmail.
@@ -36,16 +36,9 @@ function stripHtml(html: string): string {
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
-    .replace(/&eacute;/gi, "é").replace(/&egrave;/gi, "è")
     .replace(/&#\d+;/g, " ");
 }
 
-// Un libellé = ligne toute en majuscules (avec accents), courte, avec ≥1 lettre.
-function estLibelle(l: string): boolean {
-  if (l.length > 40) return false;
-  if (!/[A-ZÀ-Ý]/.test(l)) return false;      // au moins une lettre majuscule
-  return !/[a-zà-ÿ]/.test(l);                  // aucune minuscule
-}
 function normLabel(l: string): string {
   return l.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
 }
@@ -55,40 +48,62 @@ export interface DemandeParsee {
   typePresta: string; adresse: string; prix: string; message: string;
 }
 
-export function parseDemande(text: string): DemandeParsee {
-  const lignes = text.split("\n").map(s => s.replace(/ /g, " ").trim()).filter(Boolean);
-  const paires: { label: string; labelOrig: string; value: string }[] = [];
-  for (let i = 0; i < lignes.length; i++) {
-    if (estLibelle(lignes[i])) {
-      const next = lignes[i + 1];
-      const value = next && !estLibelle(next) ? next : "";
-      paires.push({ label: normLabel(lignes[i]), labelOrig: lignes[i].trim(), value });
+// Libellés possibles dans l'email (la valeur SUIT le libellé, sur la même ligne).
+const LABELS = [
+  "Prestation", "Type de prestation", "Prénom", "Prenom", "Nom", "Email", "E-mail",
+  "Téléphone", "Telephone", "Adresse", "Nombre de places", "Surface du logement",
+  "Surface", "Taille du canapé", "Fréquence des interventions", "Fréquence",
+  "Créneau préféré", "Créneau", "Message", "Description",
+];
+const CORE_NORM = ["PRESTATION", "TYPE DE PRESTATION", "PRENOM", "NOM", "EMAIL", "E-MAIL", "TELEPHONE", "ADRESSE"];
+
+export function parseDemande(text: string, subject = ""): DemandeParsee {
+  let t = text.replace(/\s+/g, " ").trim();
+  // Fin des champs : bouton « Rappeler … » / pied de page.
+  const fin = t.search(/\bRappeler\b|Pensez à recontacter/i);
+  if (fin > 0) t = t.slice(0, fin);
+
+  // Email & téléphone : extraction directe (fiable via texte + liens tel:/mailto:).
+  const email = (t.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/) || [""])[0].trim();
+  const telM = t.match(/tel:(\+?\d[\d ]*)/i) || t.match(/T[ée]l[ée]phone\s+(\+?[\d ]{6,})/i);
+  const tel = telM ? telM[1].replace(/[^\d+]/g, "") : "";
+
+  // Ancre chaque libellé, puis découpe la valeur entre deux libellés successifs.
+  const anchors: { orig: string; norm: string; labelStart: number; valStart: number }[] = [];
+  for (const lab of LABELS) {
+    const re = new RegExp("(?:^|\\s)" + lab.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?=\\s|:)", "i");
+    const m = re.exec(t);
+    if (m) {
+      const labelStart = m.index + (m[0].length - lab.length);
+      anchors.push({ orig: lab, norm: normLabel(lab), labelStart, valStart: labelStart + lab.length });
     }
   }
-  const get = (labels: string[]) => paires.find(p => labels.includes(p.label))?.value || "";
+  anchors.sort((a, b) => a.valStart - b.valStart);
+
+  const clean = (s: string) => s.replace(/^[:\s]+/, "").replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
+  const map: Record<string, string> = {};
+  const details: string[] = [];
+  for (let i = 0; i < anchors.length; i++) {
+    const next = anchors[i + 1];
+    const value = clean(t.slice(anchors[i].valStart, next ? next.labelStart : t.length));
+    if (map[anchors[i].norm] === undefined) map[anchors[i].norm] = value;
+    if (!CORE_NORM.includes(anchors[i].norm) && value) {
+      details.push(`${anchors[i].orig.charAt(0).toUpperCase()}${anchors[i].orig.slice(1)} : ${value}`);
+    }
+  }
+  const get = (labs: string[]) => { for (const l of labs) if (map[l]) return map[l]; return ""; };
 
   const prenom = get(["PRENOM"]);
-  const nom    = get(["NOM"]);
-  const email  = get(["EMAIL", "E-MAIL", "MAIL"]);
-  const tel    = get(["TELEPHONE", "TEL", "PORTABLE"]);
-  const typePresta = get(["PRESTATION", "TYPE DE PRESTATION"]);
+  const nom = get(["NOM"]);
   const adresse = get(["ADRESSE"]);
-
-  // Prix : dernière valeur contenant un montant en €.
-  let prix = "";
-  for (const p of paires) {
-    const m = p.value.match(/(\d[\d\s]*(?:[.,]\d+)?)\s*€/);
-    if (m) prix = m[1].replace(/\s/g, "").replace(",", ".");
+  let typePresta = get(["PRESTATION", "TYPE DE PRESTATION"]);
+  if (!typePresta && subject) {
+    const parts = subject.split(/[–—-]/);
+    if (parts.length > 1) typePresta = parts.slice(1).join("-").trim();
   }
-
-  // Message : les champs "détail" non standard (taille, créneau, message…).
-  const CORE = ["PRENOM", "NOM", "EMAIL", "E-MAIL", "MAIL", "TELEPHONE", "TEL", "PORTABLE", "PRESTATION", "TYPE DE PRESTATION", "ADRESSE"];
-  const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-  const details = paires
-    .filter(p => !CORE.includes(p.label) && p.value)
-    .map(p => `${titleCase(p.labelOrig)} : ${p.value}`);
+  const prixM = t.match(/(\d[\d\s]*(?:[.,]\d+)?)\s*€/);
+  const prix = prixM ? prixM[1].replace(/\s/g, "").replace(",", ".") : "";
   const message = details.join("\n");
-
   return { prenom, nom, email, tel, typePresta, adresse, prix, message };
 }
 
@@ -102,9 +117,11 @@ export interface ImportResult {
   totalTrouves?: number;
 }
 
-export async function importInbox(opts: { dry?: boolean; debug?: boolean } = {}): Promise<ImportResult> {
+export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?: number; baseline?: boolean } = {}): Promise<ImportResult> {
   const dry = !!opts.dry;
   const debug = !!opts.debug;
+  const baseline = !!opts.baseline; // marque comme traité sans créer (ignore l'historique)
+  const days = opts.days && opts.days > 0 ? opts.days : 60;
   const result: ImportResult = { imported: [], skipped: 0, errors: [], dry };
   if (debug) result.debugSample = [];
 
@@ -120,7 +137,7 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean } = {})
     await client.connect();
     const lock = await client.getMailboxLock("INBOX");
     try {
-      const since = new Date(Date.now() - 60 * 24 * 3600 * 1000); // 60 derniers jours
+      const since = new Date(Date.now() - days * 24 * 3600 * 1000);
       const uids = await client.search({ from: FROM_MATCH, subject: SUBJECT_MATCH, since }, { uid: true });
       const list = Array.isArray(uids) ? uids : [];
       if (debug) result.totalTrouves = list.length;
@@ -138,8 +155,12 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean } = {})
         const messageId = parsed.messageId || `uid-${uid}`;
         if (traites.has(messageId)) { result.skipped++; continue; }
 
+        // Baseline : on marque l'email comme traité SANS créer de client (sert à
+        // ignorer l'historique et ne traiter que les nouvelles demandes ensuite).
+        if (baseline && !dry) { nouveauxIds.push(messageId); result.skipped++; continue; }
+
         const body = (parsed.text && parsed.text.trim()) ? parsed.text : stripHtml(parsed.html || "");
-        const d = parseDemande(body);
+        const d = parseDemande(body, subject);
 
         if (debug && result.debugSample!.length < 2) {
           result.debugSample!.push({

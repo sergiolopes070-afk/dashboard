@@ -159,7 +159,7 @@ export async function GET(req: Request) {
   // Ne bloque jamais le traitement des relances en cas d'erreur IMAP.
   let inboxImport: unknown = null;
   if (mode !== "test") {
-    try { const r = await importInbox({}); inboxImport = { crees: r.imported.length, ignores: r.skipped, erreurs: r.errors }; }
+    try { const r = await importInbox({ days: 7 }); inboxImport = { crees: r.imported.length, ignores: r.skipped, erreurs: r.errors }; }
     catch (e) { inboxImport = { erreur: e instanceof Error ? e.message : "import inbox échoué" }; }
   }
 

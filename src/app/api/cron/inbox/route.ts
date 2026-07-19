@@ -30,10 +30,14 @@ export async function GET(req: Request) {
 
   const dry = url.searchParams.get("dry") === "1";
   const debug = url.searchParams.get("debug") === "1";
-  const res = await importInbox({ dry: dry || debug, debug });
+  const baseline = url.searchParams.get("baseline") === "1";
+  const daysParam = parseInt(url.searchParams.get("days") || "", 10);
+  const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : undefined;
+
+  const res = await importInbox({ dry: dry || debug, debug, baseline, days });
   if (debug) return NextResponse.json({ mode: "DEBUG", totalTrouves: res.totalTrouves, debugSample: res.debugSample, erreurs: res.errors.slice(0, 3) });
   return NextResponse.json({
-    mode: dry ? "SIMULATION (aucune création)" : "IMPORT",
+    mode: baseline ? "BASELINE (historique marqué traité, rien créé)" : dry ? "SIMULATION (aucune création)" : "IMPORT",
     crees: res.imported.length,
     ignores: res.skipped,
     erreurs: res.errors,
