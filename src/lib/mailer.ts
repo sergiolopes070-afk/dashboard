@@ -43,10 +43,10 @@ export const ACCROCHE: Record<number, { objet: string; intro: string }> = {
 
 const FISCAL_BLOC: Record<string, string> = {
   avance: `<table width="100%" cellpadding="0" cellspacing="0" style="background:#EFF6FF;border-radius:10px;padding:14px 16px;margin:0 0 18px;"><tr><td style="font-size:14px;color:#1E40AF;line-height:1.6;">
-    ⚡ <strong>Avance immédiate activée pour vous</strong> — vous ne réglez que <strong>50 %</strong> du montant, l'État prend l'autre moitié en charge immédiatement. Zéro avance de trésorerie : une vraie raison de vous lancer maintenant.
+    <strong>Avance immédiate</strong> — vous ne réglez que <strong>50 %</strong> du montant : l'État prend l'autre moitié en charge immédiatement, sans avance de trésorerie de votre part.
   </td></tr></table>`,
   credit: `<table width="100%" cellpadding="0" cellspacing="0" style="background:#FFF7ED;border-radius:10px;padding:14px 16px;margin:0 0 18px;"><tr><td style="font-size:14px;color:#9A3412;line-height:1.6;">
-    🧾 <strong>Crédit d'impôt 50 %</strong> — cette prestation à domicile <strong>divise votre coût réel par deux</strong> (art. 199 sexdecies du CGI).
+    <strong>Crédit d'impôt 50 %</strong> — cette prestation à domicile divise votre coût réel par deux (art. 199 sexdecies du CGI).
   </td></tr></table>`,
 };
 
@@ -75,26 +75,26 @@ export function buildRelanceHtml(d: { prenom: string; typePresta: string; prix: 
   const { intro } = ACCROCHE[d.niveau] ?? ACCROCHE[1];
   const fiscalBloc = (d.fiscal && FISCAL_BLOC[d.fiscal]) || "";
   return shell(`
-    <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour ${d.prenom || ""},</p>
+    <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour Madame, Monsieur,</p>
     <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0 0 18px;">${intro}</p>
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#F9FAFB;border-radius:10px;padding:16px;margin:0 0 18px;">
       <tr><td style="font-size:14px;color:#4B5563;line-height:1.8;">
-        🧹 <strong>Prestation :</strong> ${d.typePresta || "—"}<br/>
-        💶 <strong>Montant :</strong> ${d.prix ? `${d.prix} €` : "—"}
+        <strong>Prestation :</strong> ${d.typePresta || "—"}<br/>
+        <strong>Montant :</strong> ${d.prix ? `${d.prix} €` : "—"}
       </td></tr>
     </table>
     ${fiscalBloc}
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;"><tr><td align="center">
-      <a href="${TEL_LINK}" style="display:inline-block;background:#F97316;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;padding:13px 30px;border-radius:10px;">📞 Réserver mon créneau</a>
+      <a href="${TEL_LINK}" style="display:inline-block;background:#1C3557;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;padding:13px 30px;border-radius:10px;">Réserver mon créneau</a>
     </td></tr></table>
     <p style="font-size:14px;color:#6B7280;line-height:1.6;margin:0 0 18px;text-align:center;">
-      ou répondez simplement à cet email — nous fixons une date qui vous arrange.
+      ou répondez simplement à cet email — nous fixerons une date qui vous convient.
     </p>
     <p style="font-size:13px;color:#9CA3AF;line-height:1.7;margin:0;text-align:center;">
-      ✓ Prestataires vérifiés &nbsp;·&nbsp; ✓ Satisfaction garantie &nbsp;·&nbsp; ✓ Intervention rapide<br/>
-      <span style="color:#4B5563;">Une question ou un ajustement ? Appelez-nous au <strong>${TEL}</strong>.</span>
+      Prestataires vérifiés · Satisfaction garantie · Intervention rapide<br/>
+      <span style="color:#4B5563;">Pour toute question, contactez-nous au <strong>${TEL}</strong>.</span>
     </p>
-    <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:18px 0 0;">Au plaisir de vous compter parmi nos clients,<br/><strong>L'équipe KinouClean</strong></p>`);
+    <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:18px 0 0;">Bien cordialement,<br/><strong>L'équipe KinouClean</strong></p>`);
 }
 
 // ─── Besoin d'informations pour établir le devis (suite au formulaire de contact) ─

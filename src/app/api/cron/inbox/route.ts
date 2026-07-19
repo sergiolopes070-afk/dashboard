@@ -36,6 +36,23 @@ export async function GET(req: Request) {
     return NextResponse.json({ clientsFormulaire: count ?? 0 });
   }
 
+  // SUPPRESSION des clients (+ prestations) créés par l'import (source = formulaire).
+  if (url.searchParams.get("cleanup") === "1") {
+    if (!supabase) return NextResponse.json({ error: "no db" }, { status: 503 });
+    const { data: cls } = await supabase.from("clients").select("id").eq("source", "Site (formulaire)");
+    const ids = (cls || []).map(c => c.id as string);
+    if (!ids.length) return NextResponse.json({ trouves: 0, prestationsSupprimees: 0, clientsSupprimes: 0 });
+    const rp = await supabase.from("prestations").delete().in("client_id", ids).select("id");
+    const rc = await supabase.from("clients").delete().eq("source", "Site (formulaire)").select("id");
+    return NextResponse.json({
+      trouves: ids.length,
+      prestationsSupprimees: rp.data?.length ?? 0,
+      clientsSupprimes: rc.data?.length ?? 0,
+      errP: rp.error?.message || null,
+      errC: rc.error?.message || null,
+    });
+  }
+
   // Diagnostic persistance : empreinte de l'URL DB + écriture/relecture settings.
   if (url.searchParams.get("diag") === "1") {
     if (!supabase) return NextResponse.json({ error: "no db" }, { status: 503 });

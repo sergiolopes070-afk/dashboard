@@ -65,17 +65,16 @@ export default function EmailActions({
     }
   }
 
-  // Messages WhatsApp (envoi manuel, l'utilisateur valide dans WhatsApp).
+  // Messages WhatsApp (envoi manuel) — professionnels, sans emoji, vouvoiement.
   const msgBesoinInfos =
-    `Bonjour ${prenom} 👋, ici KinouClean.\n\n` +
-    `Suite à votre demande via notre formulaire de contact${typePresta ? ` (${typePresta})` : ""}, nous avons essayé de vous joindre.\n\n` +
-    `Pour établir votre devis, pourriez-vous nous préciser : surface / nombre de pièces, état des lieux, contraintes d'accès et date souhaitée ?\n\n` +
-    `Vous pouvez répondre directement ici. Merci !`;
+    `Bonjour Madame, Monsieur,\n\n` +
+    `Nous sommes l'équipe KinouClean. Suite à votre demande transmise via notre formulaire de contact${typePresta ? ` (${typePresta})` : ""}, nous avons cherché à vous joindre par téléphone sans succès.\n\n` +
+    `Afin d'établir votre devis, pourriez-vous nous préciser : la surface ou le nombre de pièces, l'état des lieux, les contraintes d'accès et la date souhaitée ?\n\n` +
+    `Vous pouvez répondre directement à ce message.\n\nBien cordialement,\nL'équipe KinouClean`;
   const msgRelance =
-    `Bonjour ${prenom} 👋, ici KinouClean.\n\n` +
-    `Votre devis${typePresta ? ` pour ${typePresta.toLowerCase()}` : ""}${prix ? ` (${prix} €)` : ""} est prêt. ` +
-    `Souhaitez-vous que nous réservions votre créneau d'intervention ?\n\n` +
-    `Nous restons à votre disposition ici quand vous voulez 🙂`;
+    `Bonjour Madame, Monsieur,\n\n` +
+    `Votre devis${typePresta ? ` pour ${typePresta.toLowerCase()}` : ""}${prix ? ` d'un montant de ${prix} €` : ""} est prêt. Souhaitez-vous que nous réservions votre créneau d'intervention ?\n\n` +
+    `Nous restons à votre entière disposition.\n\nBien cordialement,\nL'équipe KinouClean`;
 
   const hasEmail = !!clientEmail;
   const hasTel   = !!clientTel;
