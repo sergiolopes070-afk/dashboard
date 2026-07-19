@@ -39,8 +39,16 @@ export async function GET(req: Request) {
   const unauth = await requireAuth();
   if (unauth) return unauth;
   const id = new URL(req.url).searchParams.get("prestationId");
-  if (!id) return NextResponse.json({ error: "prestationId requis" }, { status: 400 });
   const etat = await lireEtat();
+  // Sans prestationId → renvoie le niveau de relance de TOUTES les prestations
+  // (pour afficher un badge dans le tableau sans ouvrir chaque prestation).
+  if (!id) {
+    const niveaux: Record<string, number> = {};
+    for (const [pid, e] of Object.entries(etat)) {
+      if (e.relance) niveaux[pid] = e.relance;
+    }
+    return NextResponse.json({ niveaux });
+  }
   const e = etat[id] || {};
   return NextResponse.json({ relance: e.relance ?? 0, relanceStart: e.relanceStart ?? null });
 }

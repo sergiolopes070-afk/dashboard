@@ -261,6 +261,12 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
   useEffect(() => {
     fetch("/api/prestations/entite").then(r => r.json()).then(d => setEntiteOverrides(d.overrides || {})).catch(() => {});
   }, []);
+
+  // Niveaux de relance (settings/emails_auto_etat) pour badge en ligne.
+  const [relanceNiveaux, setRelanceNiveaux] = useState<Record<string, number>>({});
+  useEffect(() => {
+    fetch("/api/emails/action").then(r => r.json()).then(d => setRelanceNiveaux(d.niveaux || {})).catch(() => {});
+  }, []);
   async function setEntite(prestationId: string, entite: Entite | null) {
     // Optimiste
     setEntiteOverrides(prev => {
@@ -324,9 +330,17 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                 <div className="text-xs text-gray-400">{p.tel}</div>
               </td>
               <td className="py-3 px-4">
-                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
                   <span className="font-medium text-gray-800">{p.typePresta}</span>
                   <EntiteBadge prestationId={p.row} typePresta={p.typePresta} overrides={entiteOverrides} onSet={setEntite} />
+                  {relanceNiveaux[p.row] ? (
+                    <span
+                      className="text-[10px] px-1.5 py-0.5 rounded-full border font-medium bg-orange-100 text-orange-700 border-orange-200"
+                      title={`Séquence de relance démarrée — niveau ${relanceNiveaux[p.row]}/3`}
+                    >
+                      🔔 Relance {relanceNiveaux[p.row]}/3
+                    </span>
+                  ) : null}
                 </div>
                 {p.quantite && <div className="text-xs text-gray-400">{p.quantite}</div>}
               </td>
