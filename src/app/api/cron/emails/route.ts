@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getSetting, getGmailTransporter, ACCROCHE, buildRelanceHtml } from "@/lib/mailer";
+import { importInbox } from "@/lib/inbox";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cron quotidien des emails automatiques.
@@ -151,6 +153,14 @@ export async function GET(req: Request) {
   const testEmail = process.env.AUTH_EMAIL || null;
   if (mode === "test" && !testEmail) {
     return NextResponse.json({ error: "AUTH_EMAIL introuvable : impossible d'envoyer le test" }, { status: 500 });
+  }
+
+  // Import automatique des demandes de devis reçues par email (formulaire du site).
+  // Ne bloque jamais le traitement des relances en cas d'erreur IMAP.
+  let inboxImport: unknown = null;
+  if (mode !== "test") {
+    try { const r = await importInbox({}); inboxImport = { crees: r.imported.length, ignores: r.skipped, erreurs: r.errors }; }
+    catch (e) { inboxImport = { erreur: e instanceof Error ? e.message : "import inbox échoué" }; }
   }
 
   const { data, error } = await supabase
@@ -302,6 +312,7 @@ export async function GET(req: Request) {
     demandeAvis,
     erreurs,
     aDemarrer,
+    inboxImport,
   };
 
   console.log("[CRON emails]", mode, "|", report.resume);
