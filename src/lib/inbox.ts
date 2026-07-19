@@ -97,11 +97,14 @@ export interface ImportResult {
   skipped: number;
   errors: string[];
   dry: boolean;
+  debugSample?: { subject: string; text: string; htmlStripped: string; parsed: DemandeParsee }[];
 }
 
-export async function importInbox(opts: { dry?: boolean } = {}): Promise<ImportResult> {
+export async function importInbox(opts: { dry?: boolean; debug?: boolean } = {}): Promise<ImportResult> {
   const dry = !!opts.dry;
+  const debug = !!opts.debug;
   const result: ImportResult = { imported: [], skipped: 0, errors: [], dry };
+  if (debug) result.debugSample = [];
 
   const user = await getSetting("gmail_user", process.env.GMAIL_USER);
   const pass = await getSetting("gmail_app_password", process.env.GMAIL_APP_PASSWORD);
@@ -134,6 +137,17 @@ export async function importInbox(opts: { dry?: boolean } = {}): Promise<ImportR
 
         const body = (parsed.text && parsed.text.trim()) ? parsed.text : stripHtml(parsed.html || "");
         const d = parseDemande(body);
+
+        if (debug && result.debugSample!.length < 2) {
+          result.debugSample!.push({
+            subject,
+            text: (parsed.text || "").slice(0, 1400),
+            htmlStripped: stripHtml(parsed.html || "").slice(0, 1400),
+            parsed: d,
+          });
+          continue;
+        }
+
         if (!d.email && !d.tel) { result.errors.push(`Email ${messageId} : ni email ni téléphone détectés.`); continue; }
 
         if (!dry) {
