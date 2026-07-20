@@ -51,6 +51,7 @@ interface Stats {
   toReassign       : number;
   waitingPresta    : number;
   devisGeneres     : number;
+  nouveauxClients  : number;
   prestations      : Prestation[];
   prestataires     : Prestataire[];
   archive          : Prestation[];
@@ -397,7 +398,8 @@ export default function HomePage() {
           <StatCard title="Prestataires" value={stats?.totalPrestataires ?? "—"} subtitle="Équipe active" icon={Wrench} color="orange" href="/prestataires" />
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <StatCard title="Nouveaux clients" value={stats?.nouveauxClients ?? "—"} subtitle="Prospects à traiter" icon={UserPlus} color="purple" alert={(stats?.nouveauxClients || 0) > 0} href="/prospects" />
           <StatCard title="Interventions à venir" value={stats?.upcoming ?? "—"} subtitle="Confirmées" icon={CalendarCheck} color="blue" href="/agenda" />
           <StatCard title="En attente prestataire" value={stats?.waitingPresta ?? "—"} subtitle="Proposition envoyée" icon={Clock} color="orange" href="/prestations" />
           <StatCard title="À réaffecter" value={stats?.toReassign ?? "—"} subtitle="Prestataire refusé" icon={AlertTriangle} color="red" alert={(stats?.toReassign || 0) > 0} href="/prestations" />

@@ -459,12 +459,24 @@ export async function deleteDepense(id: string): Promise<void> {
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 
+// Nombre de prospects encore au statut NOUVEAU (= nouveaux clients à traiter).
+async function getNouveauxProspects(): Promise<number> {
+  if (!supabase) return 0;
+  const { count, error } = await supabase
+    .from("prospects")
+    .select("id", { count: "exact", head: true })
+    .eq("statut", "NOUVEAU");
+  if (error) return 0; // table absente ou inaccessible → on n'échoue pas le dashboard
+  return count ?? 0;
+}
+
 export async function getDashboardStats() {
-  const [prestations, prestataires, archive, entiteOverrides] = await Promise.all([
+  const [prestations, prestataires, archive, entiteOverrides, nouveauxClients] = await Promise.all([
     getPrestations(),
     getPrestataires(),
     getArchive(),
     getEntiteOverrides(),
+    getNouveauxProspects(),
   ]);
 
   const today = new Date();
@@ -503,6 +515,7 @@ export async function getDashboardStats() {
     archiveCA,
     caParEntite,
     entiteOverrides,
+    nouveauxClients,
     upcoming         : upcoming.length,
     toReassign       : toReassign.length,
     waitingPresta    : waitingPresta.length,
