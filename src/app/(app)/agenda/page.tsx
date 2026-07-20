@@ -1762,6 +1762,7 @@ export default function AgendaPage() {
                           `📍 Adresse : ${ev.adresse || "—"}\n` +
                           `📅 Date : ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
                           `💶 Prix : ${ev.prix && ev.prix !== "0" ? ev.prix + " €" : "À définir"}` +
+                          (ev.modePaiement ? `\n💳 Mode de paiement : ${ev.modePaiement}` : "") +
                           (ev.message?.trim() ? `\n\n💬 Message client :\n${ev.message.trim()}` : "") +
                           (ev.commentaire?.trim() ? `\n\n📝 Note interne :\n${ev.commentaire.trim()}` : "") +
                           `\n\nMerci de répondre directement via ces liens :\n\n` +

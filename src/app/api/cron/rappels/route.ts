@@ -108,14 +108,32 @@ export async function GET(req: Request) {
   if (!gmail) return NextResponse.json({ error: "Gmail non connecté" }, { status: 503 });
   const dest = process.env.AUTH_EMAIL || gmail.user;
 
+  // Bouton "table" (le standard email : compatible Gmail/Outlook/iOS) + lien
+  // texte de secours juste en dessous, pour que ce soit TOUJOURS cliquable.
   const lignes = rappels.map(r => `
     <tr><td style="padding:14px 16px;border-bottom:1px solid #eef0f4;">
       <div style="font-size:15px;font-weight:bold;color:#1C3557;">${r.heure ? r.heure + " · " : ""}${r.client || "Client"}</div>
       <div style="font-size:13px;color:#6B7280;margin:2px 0 10px;">🧹 ${r.prestations.join(" + ") || "—"}${r.tel ? ` · 📞 ${r.tel}` : ""}</div>
       ${r.waLink
-        ? `<a href="${r.waLink}" style="display:inline-block;background:#25D366;color:#fff;text-decoration:none;font-size:13px;font-weight:bold;padding:9px 18px;border-radius:8px;">💬 Envoyer le rappel WhatsApp</a>`
+        ? `<table cellpadding="0" cellspacing="0" border="0"><tr>
+             <td bgcolor="#25D366" style="border-radius:8px;">
+               <a href="${r.waLink}" target="_blank" style="display:block;padding:11px 20px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;color:#ffffff;text-decoration:none;">Envoyer le rappel WhatsApp</a>
+             </td>
+           </tr></table>
+           <div style="font-size:11px;margin-top:6px;">
+             <a href="${r.waLink}" target="_blank" style="color:#1C3557;">ou ouvrir le lien WhatsApp</a>
+           </div>`
         : `<span style="font-size:12px;color:#9CA3AF;">Pas de numéro de téléphone</span>`}
     </td></tr>`).join("");
+
+  // Version texte brut : les URL y sont cliquables dans tous les clients mail.
+  const texte =
+    `Rappels à envoyer — RDV du ${frDate(demainISO)} (${rappels.length})\n\n` +
+    rappels.map(r =>
+      `${r.heure ? r.heure + " · " : ""}${r.client || "Client"}` +
+      `${r.prestations.length ? ` — ${r.prestations.join(" + ")}` : ""}` +
+      `${r.tel ? ` — ${r.tel}` : ""}\n${r.waLink || "(pas de numéro)"}\n`
+    ).join("\n");
 
   const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:0;background:#f4f4f7;font-family:Arial,Helvetica,sans-serif;">
@@ -140,6 +158,7 @@ export async function GET(req: Request) {
     await gmail.transporter.sendMail({
       from: `"KinouClean" <${gmail.user}>`, to: dest,
       subject: `🔔 ${rappels.length} rappel(s) à envoyer — RDV du ${frDate(demainISO)}`,
+      text: texte,
       html,
     });
     return NextResponse.json({ demain: demainISO, nbRappels: rappels.length, envoyeA: dest });
