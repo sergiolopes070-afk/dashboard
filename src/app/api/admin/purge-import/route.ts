@@ -59,7 +59,6 @@ export async function GET(req: Request) {
 
   // Recompte IMMÉDIAT dans la même requête (teste la persistance réelle).
   const apres = await supabase.from("clients").select("id", { count: "exact", head: true }).eq("source", SRC);
-  const dbRef = (process.env.SUPABASE_URL || "").replace(/^https?:\/\//, "").split(".")[0];
 
   return NextResponse.json({
     dbRef,
