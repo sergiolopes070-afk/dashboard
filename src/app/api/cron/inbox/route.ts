@@ -4,7 +4,6 @@ import { importInbox } from "@/lib/inbox";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
 
 // Import des demandes de devis reçues par email (formulaire du site).
 //   • Bouton du dashboard  → session (utilisateur connecté).
