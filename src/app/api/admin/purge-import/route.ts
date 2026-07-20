@@ -26,14 +26,15 @@ export async function GET(req: Request) {
 
   const SRC = "Site (formulaire)";
 
+  const dbRef = (process.env.SUPABASE_URL || "").replace(/^https?:\/\//, "").split(".")[0];
+  const svcKeyTail = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").slice(-6);
+
   // État des lieux complet de la base clients.
   if (url.searchParams.get("etat") === "1") {
     const total = await supabase.from("clients").select("id", { count: "exact", head: true });
-    const { data: all } = await supabase.from("clients").select("source").limit(5000);
-    const parSource: Record<string, number> = {};
-    (all || []).forEach(c => { const s = (c.source as string) || "(vide)"; parSource[s] = (parSource[s] || 0) + 1; });
+    const site = await supabase.from("clients").select("id", { count: "exact", head: true }).eq("source", SRC);
     const totalPresta = await supabase.from("prestations").select("id", { count: "exact", head: true });
-    return NextResponse.json({ totalClients: total.count ?? 0, totalPrestations: totalPresta.count ?? 0, clientsParSource: parSource });
+    return NextResponse.json({ dbRef, svcKeyTail, totalClients: total.count ?? 0, clientsSiteFormulaire: site.count ?? 0, totalPrestations: totalPresta.count ?? 0 });
   }
 
   const { data: cls, error: e1 } = await supabase.from("clients").select("id").eq("source", SRC);
