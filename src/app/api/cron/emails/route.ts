@@ -53,6 +53,9 @@ function niveauDepuisDemarrage(joursDepuisDemarrage: number): number {
   return 1;
 }
 
+// Heure UTC du cron planifié dans vercel.json ("0 8 * * *").
+const CRON_HEURE_UTC = 8;
+
 function getCronSecret(): string | undefined {
   if (process.env.CRON_SECRET) return process.env.CRON_SECRET;
   for (const [k, v] of Object.entries(process.env)) {
@@ -69,9 +72,18 @@ function authorize(req: Request): { ok: boolean; reason?: string; simulationForc
   const secret = getCronSecret();
   const auth = req.headers.get("authorization");
   const key  = new URL(req.url).searchParams.get("key");
+  // Secret valide (déclenchement manuel) → tous les droits, à toute heure.
   if (secret && (auth === `Bearer ${secret}` || key === secret)) return { ok: true };
-  // Cron Vercel sans secret valide → autorisé mais en simulation stricte.
-  if (req.headers.get("x-vercel-cron")) return { ok: true, simulationForcee: true };
+
+  // Cron Vercel sans Bearer (variable d'env pas nommée exactement CRON_SECRET) :
+  // on autorise l'envoi UNIQUEMENT dans la fenêtre horaire du cron planifié
+  // (08:00 UTC, ±1h de tolérance pour les retards de planification). En dehors,
+  // lecture seule → un déclenchement falsifié ne peut pas envoyer d'emails.
+  if (req.headers.get("x-vercel-cron")) {
+    const h = new Date().getUTCHours();
+    const dansLaFenetre = h >= CRON_HEURE_UTC - 1 && h <= CRON_HEURE_UTC + 1;
+    return { ok: true, simulationForcee: !dansLaFenetre };
+  }
   return { ok: false, reason: "Non autorisé" };
 }
 
