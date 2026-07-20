@@ -45,5 +45,14 @@ export async function GET(req: Request) {
   const rc = await supabase.from("clients").delete().eq("source", SRC).select("id");
   if (rc.error) return NextResponse.json({ error: `clients: ${rc.error.message}`, prestationsSupprimees: prestSupp }, { status: 500 });
 
-  return NextResponse.json({ prestationsSupprimees: prestSupp, clientsSupprimes: rc.data?.length ?? 0 });
+  // Recompte IMMÉDIAT dans la même requête (teste la persistance réelle).
+  const apres = await supabase.from("clients").select("id", { count: "exact", head: true }).eq("source", SRC);
+  const dbRef = (process.env.SUPABASE_URL || "").replace(/^https?:\/\//, "").split(".")[0];
+
+  return NextResponse.json({
+    dbRef,
+    prestationsSupprimees: prestSupp,
+    clientsSupprimes: rc.data?.length ?? 0,
+    resteApresSuppressionMemeRequete: apres.count ?? 0,
+  });
 }
