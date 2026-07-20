@@ -29,12 +29,33 @@ export async function GET(req: Request) {
   const dbRef = (process.env.SUPABASE_URL || "").replace(/^https?:\/\//, "").split(".")[0];
   const svcKeyTail = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").slice(-6);
 
-  // État des lieux complet de la base clients.
+  // État des lieux (comptages fiables : head/count exact).
   if (url.searchParams.get("etat") === "1") {
     const total = await supabase.from("clients").select("id", { count: "exact", head: true });
-    const site = await supabase.from("clients").select("id", { count: "exact", head: true }).eq("source", SRC);
     const totalPresta = await supabase.from("prestations").select("id", { count: "exact", head: true });
-    return NextResponse.json({ dbRef, svcKeyTail, totalClients: total.count ?? 0, clientsSiteFormulaire: site.count ?? 0, totalPrestations: totalPresta.count ?? 0 });
+    const p79 = await supabase.from("prestations").select("id", { count: "exact", head: true }).eq("prix", 79);
+    const p69 = await supabase.from("prestations").select("id", { count: "exact", head: true }).eq("prix", 69);
+    return NextResponse.json({ dbRef, svcKeyTail, totalClients: total.count ?? 0, totalPrestations: totalPresta.count ?? 0, prestations79: p79.count ?? 0, prestations69: p69.count ?? 0 });
+  }
+
+  // Suppression des prestations à 79 € ou 69 € (imports) — par lots.
+  if (url.searchParams.get("prixpurge") === "1") {
+    if (url.searchParams.get("go") !== "1") {
+      const p79 = await supabase.from("prestations").select("id", { count: "exact", head: true }).eq("prix", 79);
+      const p69 = await supabase.from("prestations").select("id", { count: "exact", head: true }).eq("prix", 69);
+      return NextResponse.json({ aSupprimer79: p79.count ?? 0, aSupprimer69: p69.count ?? 0, note: "Ajoute &go=1 pour supprimer." });
+    }
+    let supp = 0;
+    for (let round = 0; round < 60; round++) {
+      const r = await supabase.from("prestations").delete().in("prix", [79, 69]).select("id").limit(500);
+      const n = r.data?.length ?? 0;
+      supp += n;
+      if (r.error) return NextResponse.json({ error: r.error.message, supprimees: supp }, { status: 500 });
+      if (n === 0) break;
+    }
+    const rest79 = await supabase.from("prestations").select("id", { count: "exact", head: true }).eq("prix", 79);
+    const rest69 = await supabase.from("prestations").select("id", { count: "exact", head: true }).eq("prix", 69);
+    return NextResponse.json({ prestationsSupprimees: supp, reste79: rest79.count ?? 0, reste69: rest69.count ?? 0 });
   }
 
   const { data: cls, error: e1 } = await supabase.from("clients").select("id").eq("source", SRC);
