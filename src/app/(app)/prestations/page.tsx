@@ -1,9 +1,8 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Search, Filter, Archive, X, Download, Trash2, Loader2, Inbox } from "lucide-react";
+import { Search, Filter, Archive, X, Download, Trash2, Loader2 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { Skeleton } from "@/components/Skeleton";
-import { useToast } from "@/components/Toast";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import PrestationTable from "@/components/PrestationTable";
 import { ClientFicheById } from "@/components/ClientFiche";
@@ -28,8 +27,6 @@ export default function PrestationsPage() {
   const [archiving, setArchiving]             = useState(false);
   const [deleteModal, setDeleteModal]     = useState<{ id: string; label: string } | null>(null);
   const [deleting, setDeleting]           = useState(false);
-  const [importing, setImporting]         = useState(false);
-  const toast = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,22 +51,6 @@ export default function PrestationsPage() {
     );
   }, []);
 
-  // Import manuel des demandes de devis reçues par email (formulaire du site).
-  const importDemandes = useCallback(async () => {
-    setImporting(true);
-    try {
-      const res = await fetch("/api/cron/inbox");
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Import impossible");
-      if (d.crees > 0) { toast.success(`${d.crees} nouvelle(s) demande(s) importée(s)`); await load(); }
-      else toast.success("Aucune nouvelle demande à importer");
-      if (d.erreurs?.length) toast.error(`${d.erreurs.length} email(s) non importé(s)`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Import impossible");
-    } finally {
-      setImporting(false);
-    }
-  }, [load, toast]);
 
   const exportCSV = () => {
     const headers = ["Prénom", "Nom", "Tel", "Email", "Adresse", "Type", "Quantité", "Date", "Heure", "Prix", "Statut", "Prestataire", "Commission", "Commentaire"];
@@ -148,24 +129,13 @@ export default function PrestationsPage() {
         onRefresh={load}
         loading={loading}
         action={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={importDemandes}
-              disabled={importing}
-              title="Importer les demandes de devis reçues par email (formulaire du site)"
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-60"
-            >
-              {importing ? <Loader2 size={14} className="animate-spin" /> : <Inbox size={14} />}
-              Importer les demandes
-            </button>
-            <button
-              onClick={exportCSV}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-            >
-              <Download size={14} />
-              Export CSV
-            </button>
-          </div>
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            <Download size={14} />
+            Export CSV
+          </button>
         }
       />
       <div className="flex-1 p-6 space-y-4">
