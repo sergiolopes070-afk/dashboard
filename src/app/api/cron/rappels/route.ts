@@ -22,15 +22,17 @@ function getCronSecret(): string | undefined {
   return undefined;
 }
 
-// `envoiAutorise` = secret valide. L'en-tête `x-vercel-cron` seul est accepté
-// mais SANS droit d'envoi (il est falsifiable sur une URL publique) : la requête
-// répond alors en lecture seule, comme un ?test=1.
+// Ce cron n'envoie QU'À l'équipe (AUTH_EMAIL), jamais aux clients. Le risque
+// d'un déclenchement falsifié se limite donc à un email interne en double :
+// on accepte l'en-tête `x-vercel-cron` pour garantir le rappel quotidien de 18h,
+// même si la variable Vercel n'est pas nommée exactement CRON_SECRET.
+// (Le cron des relances clients, lui, exige le secret — voir /api/cron/emails.)
 function authorize(req: Request): { ok: boolean; envoiAutorise: boolean } {
   const secret = getCronSecret();
   const key = new URL(req.url).searchParams.get("key");
   const auth = req.headers.get("authorization");
   if (secret && (key === secret || auth === `Bearer ${secret}`)) return { ok: true, envoiAutorise: true };
-  if (req.headers.get("x-vercel-cron")) return { ok: true, envoiAutorise: false };
+  if (req.headers.get("x-vercel-cron")) return { ok: true, envoiAutorise: true };
   return { ok: false, envoiAutorise: false };
 }
 
@@ -97,7 +99,13 @@ export async function GET(req: Request) {
   }).sort((a, b) => (a.heure || "").localeCompare(b.heure || ""));
 
   if (test) {
-    return NextResponse.json({ mode: "TEST (aucun email envoyé)", demain: demainISO, nbRappels: rappels.length, rappels });
+    return NextResponse.json({
+      mode: "TEST (aucun email envoyé)",
+      // true = la variable Vercel est bien nommée CRON_SECRET → Vercel injecte le
+      // Bearer sur ses crons → les relances clients (cron emails) fonctionneront.
+      cronSecretNomExact: !!process.env.CRON_SECRET,
+      demain: demainISO, nbRappels: rappels.length, rappels,
+    });
   }
 
   if (rappels.length === 0) {
