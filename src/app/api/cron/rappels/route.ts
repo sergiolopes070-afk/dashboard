@@ -22,12 +22,16 @@ function getCronSecret(): string | undefined {
   return undefined;
 }
 
-function authorize(req: Request): boolean {
-  if (req.headers.get("x-vercel-cron")) return true;
+// `envoiAutorise` = secret valide. L'en-tête `x-vercel-cron` seul est accepté
+// mais SANS droit d'envoi (il est falsifiable sur une URL publique) : la requête
+// répond alors en lecture seule, comme un ?test=1.
+function authorize(req: Request): { ok: boolean; envoiAutorise: boolean } {
   const secret = getCronSecret();
   const key = new URL(req.url).searchParams.get("key");
   const auth = req.headers.get("authorization");
-  return !!secret && (key === secret || auth === `Bearer ${secret}`);
+  if (secret && (key === secret || auth === `Bearer ${secret}`)) return { ok: true, envoiAutorise: true };
+  if (req.headers.get("x-vercel-cron")) return { ok: true, envoiAutorise: false };
+  return { ok: false, envoiAutorise: false };
 }
 
 // Date de demain au format YYYY-MM-DD, en fuseau Europe/Paris.
@@ -48,10 +52,12 @@ function frDate(iso: string): string {
 const waTel = (tel: string) => tel.replace(/\s/g, "").replace(/^0/, "33");
 
 export async function GET(req: Request) {
-  if (!authorize(req)) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  const droits = authorize(req);
+  if (!droits.ok) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
 
-  const test = new URL(req.url).searchParams.get("test") === "1";
+  // Sans secret valide → lecture seule (aucun email envoyé).
+  const test = new URL(req.url).searchParams.get("test") === "1" || !droits.envoiAutorise;
   const demainISO = demainParisISO();
 
   const { data, error } = await supabase

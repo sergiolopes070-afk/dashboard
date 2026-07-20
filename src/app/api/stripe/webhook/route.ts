@@ -113,19 +113,26 @@ export async function POST(req: NextRequest) {
   const stripe        = new Stripe(secretKey, { apiVersion: "2026-02-25.clover" });
   const webhookSecret = await getSetting("stripe_webhook_secret", process.env.STRIPE_WEBHOOK_SECRET);
 
-  let event: Stripe.Event;
+  // SÉCURITÉ : la signature Stripe est OBLIGATOIRE. Sans elle, n'importe qui
+  // pourrait poster un faux « paiement confirmé » et marquer une prestation payée.
+  // On refuse donc explicitement au lieu d'accepter un événement non vérifié.
+  if (!webhookSecret) {
+    console.error("[Stripe webhook] STRIPE_WEBHOOK_SECRET manquant — appel refusé.");
+    return NextResponse.json(
+      { error: "Webhook non configuré (secret de signature manquant)." },
+      { status: 503 },
+    );
+  }
+  if (!sig) {
+    return NextResponse.json({ error: "Signature Stripe absente" }, { status: 400 });
+  }
 
-  if (webhookSecret && sig) {
-    try {
-      event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
-    } catch (err) {
-      console.error("Webhook signature invalide:", err);
-      return NextResponse.json({ error: "Signature invalide" }, { status: 400 });
-    }
-  } else {
-    // Pas de secret configuré → accepter sans vérification (dev / test)
-    try { event = JSON.parse(rawBody) as Stripe.Event; }
-    catch { return NextResponse.json({ error: "Body invalide" }, { status: 400 }); }
+  let event: Stripe.Event;
+  try {
+    event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+  } catch (err) {
+    console.error("Webhook signature invalide:", err);
+    return NextResponse.json({ error: "Signature invalide" }, { status: 400 });
   }
 
   // ── Paiement confirmé ─────────────────────────────────────────────────────

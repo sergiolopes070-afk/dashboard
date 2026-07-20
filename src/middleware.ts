@@ -11,7 +11,6 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/avis") ||
     pathname.startsWith("/api/cron") ||        // cron : protégé par CRON_SECRET, pas par la session
-    pathname.startsWith("/api/admin") ||       // admin ponctuel : protégé par CRON_SECRET
     pathname.startsWith("/avis") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon")

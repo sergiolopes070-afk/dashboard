@@ -61,21 +61,17 @@ function getCronSecret(): string | undefined {
   return undefined;
 }
 
-function authorize(req: Request): { ok: boolean; reason?: string } {
-  // 1) Requête interne de Vercel Cron : Vercel ajoute l'en-tête `x-vercel-cron`
-  //    sur chaque invocation planifiée. On l'accepte pour que la relance
-  //    quotidienne s'exécute MÊME si la variable CRON_SECRET est mal nommée
-  //    (Vercel n'injecte le Bearer que si elle s'appelle exactement CRON_SECRET).
-  //    Risque résiduel (endpoint public) minime : l'anti-doublon garantit qu'une
-  //    même relance n'est jamais envoyée deux fois, quel que soit le déclencheur.
-  if (req.headers.get("x-vercel-cron")) return { ok: true };
-
-  // 2) Déclenchement manuel : Bearer <secret> ou ?key=<secret> (casse tolérée).
+// Résultat d'autorisation. `simulationForcee` = requête reconnue comme un cron
+// Vercel mais SANS secret valide : on laisse tourner en lecture seule (aucun
+// email envoyé), car l'en-tête `x-vercel-cron` est falsifiable sur une URL
+// publique. Seul le secret (Bearer ou ?key=) autorise un envoi réel.
+function authorize(req: Request): { ok: boolean; reason?: string; simulationForcee?: boolean } {
   const secret = getCronSecret();
-  if (!secret) return { ok: false, reason: "CRON_SECRET non configuré sur Vercel" };
   const auth = req.headers.get("authorization");
   const key  = new URL(req.url).searchParams.get("key");
-  if (auth === `Bearer ${secret}` || key === secret) return { ok: true };
+  if (secret && (auth === `Bearer ${secret}` || key === secret)) return { ok: true };
+  // Cron Vercel sans secret valide → autorisé mais en simulation stricte.
+  if (req.headers.get("x-vercel-cron")) return { ok: true, simulationForcee: true };
   return { ok: false, reason: "Non autorisé" };
 }
 
@@ -144,8 +140,11 @@ export async function GET(req: Request) {
   const reqUrl   = new URL(req.url);
   const params   = reqUrl.searchParams;
   const baseUrl  = process.env.NEXT_PUBLIC_BASE_URL || reqUrl.origin;
+  // Sans secret valide (en-tête cron falsifiable) → simulation stricte : on
+  // calcule et on liste, mais AUCUN email ne part.
   const mode: "simulation" | "test" | "reel" =
-    params.get("test") === "1" ? "test"
+    auth.simulationForcee ? "simulation"
+    : params.get("test") === "1" ? "test"
     : params.get("send") === "1" ? "reel"
     : ENVOI_AUTO_ACTIF ? "reel" : "simulation";
 
