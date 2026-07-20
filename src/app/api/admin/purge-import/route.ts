@@ -25,6 +25,17 @@ export async function GET(req: Request) {
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
 
   const SRC = "Site (formulaire)";
+
+  // État des lieux complet de la base clients.
+  if (url.searchParams.get("etat") === "1") {
+    const total = await supabase.from("clients").select("id", { count: "exact", head: true });
+    const { data: all } = await supabase.from("clients").select("source").limit(5000);
+    const parSource: Record<string, number> = {};
+    (all || []).forEach(c => { const s = (c.source as string) || "(vide)"; parSource[s] = (parSource[s] || 0) + 1; });
+    const totalPresta = await supabase.from("prestations").select("id", { count: "exact", head: true });
+    return NextResponse.json({ totalClients: total.count ?? 0, totalPrestations: totalPresta.count ?? 0, clientsParSource: parSource });
+  }
+
   const { data: cls, error: e1 } = await supabase.from("clients").select("id").eq("source", SRC);
   if (e1) return NextResponse.json({ error: e1.message }, { status: 500 });
   const ids = (cls || []).map(c => c.id as string);
