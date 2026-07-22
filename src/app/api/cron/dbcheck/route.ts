@@ -55,12 +55,14 @@ export async function GET(req: Request) {
     });
   }
 
+  const k = url.searchParams.get("k") || "dbcheck";
   if (url.searchParams.get("write") === "1") {
     const marker = url.searchParams.get("v") || `M-${Date.now()}`;
-    const w = await supabase.from("settings").upsert({ key: "dbcheck", value: marker }, { onConflict: "key" }).select("key");
-    const relu = await supabase.from("settings").select("value").eq("key", "dbcheck").maybeSingle();
-    return NextResponse.json({ dbRef, action: "write", ecrit: marker, upsertErr: w.error?.message || null, reluMemeRequete: relu.data?.value ?? null });
+    const w = await supabase.from("settings").upsert({ key: k, value: marker }, { onConflict: "key" }).select("key");
+    return NextResponse.json({ dbRef, action: "write", cle: k, ecrit: marker, upsertErr: w.error?.message || null });
   }
-  const r = await supabase.from("settings").select("value").eq("key", "dbcheck").maybeSingle();
-  return NextResponse.json({ dbRef, action: "read", valeur: r.data?.value ?? null });
+  // Lecture "à froid" (sans écriture préalable) via .maybeSingle() ET tableau.
+  const single = await supabase.from("settings").select("value").eq("key", k).maybeSingle();
+  const array  = await supabase.from("settings").select("value").eq("key", k).limit(1);
+  return NextResponse.json({ dbRef, action: "read", cle: k, viaSingle: single.data?.value ?? null, viaTableau: array.data?.[0]?.value ?? null });
 }
