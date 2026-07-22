@@ -27,6 +27,22 @@ export async function GET(req: Request) {
     return NextResponse.json({ dbRef, roleDeLaCle: role, note: role === "service_role" ? "OK: contourne la RLS" : "PROBLÈME: soumis à la RLS → UPDATE/DELETE bloqués" });
   }
 
+  // Diagnostic approfondi : doublons de lignes + UPDATE direct.
+  if (url.searchParams.get("deep") === "1") {
+    const rows = await supabase.from("settings").select("key, value").eq("key", "dbcheck");
+    const marker = `DIRECT-${Date.now()}`;
+    const up = await supabase.from("settings").update({ value: marker }).eq("key", "dbcheck").select("key, value");
+    const relu = await supabase.from("settings").select("value").eq("key", "dbcheck");
+    return NextResponse.json({
+      dbRef,
+      lignesPourCetteCle: rows.data?.length ?? 0,
+      valeursExistantes: (rows.data || []).map(r => r.value),
+      updateAffecte: up.data?.length ?? 0,
+      updateErr: up.error?.message || null,
+      relectureApresUpdate: (relu.data || []).map(r => r.value),
+    });
+  }
+
   if (url.searchParams.get("write") === "1") {
     const marker = url.searchParams.get("v") || `M-${Date.now()}`;
     const w = await supabase.from("settings").upsert({ key: "dbcheck", value: marker }, { onConflict: "key" }).select("key");
