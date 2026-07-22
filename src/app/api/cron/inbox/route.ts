@@ -1,0 +1,46 @@
+import { NextResponse } from "next/server";
+import { requireAuth } from "@/lib/require-auth";
+import { importInbox } from "@/lib/inbox";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+// Import des demandes de devis reçues par email (formulaire du site).
+//   • Bouton du dashboard  → session (utilisateur connecté).
+//   • Cron / test manuel   → en-tête x-vercel-cron ou ?key=<CRON_SECRET>.
+//   • ?dry=1               → simulation (parse + liste, ne crée rien).
+function getSecret(): string | undefined {
+  if (process.env.CRON_SECRET) return process.env.CRON_SECRET;
+  for (const [k, v] of Object.entries(process.env)) {
+    if (/^cron_?secret$/i.test(k) && v) return v;
+  }
+  return undefined;
+}
+
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const secret = getSecret();
+  const key = url.searchParams.get("key");
+  const cronOk = !!req.headers.get("x-vercel-cron") || (!!secret && key === secret);
+
+  if (!cronOk) {
+    const unauth = await requireAuth(); // bouton du dashboard : session requise
+    if (unauth) return unauth;
+  }
+
+  const dry = url.searchParams.get("dry") === "1";
+  const debug = url.searchParams.get("debug") === "1";
+  const baseline = url.searchParams.get("baseline") === "1";
+  const daysParam = parseInt(url.searchParams.get("days") || "", 10);
+  const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : undefined;
+
+  const res = await importInbox({ dry: dry || debug, debug, baseline, days });
+  if (debug) return NextResponse.json({ mode: "DEBUG", totalTrouves: res.totalTrouves, debugSample: res.debugSample, erreurs: res.errors.slice(0, 3) });
+  return NextResponse.json({
+    mode: baseline ? "BASELINE (historique marqué traité, rien créé)" : dry ? "SIMULATION (aucune création)" : "IMPORT",
+    crees: res.imported.length,
+    ignores: res.skipped,
+    erreurs: res.errors,
+    details: res.imported,
+  });
+}

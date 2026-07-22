@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getSetting, getGmailTransporter, ACCROCHE, buildRelanceHtml } from "@/lib/mailer";
 import { getSettingJSON } from "@/lib/settings";
+import { importInbox } from "@/lib/inbox";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -163,9 +164,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "AUTH_EMAIL introuvable : impossible d'envoyer le test" }, { status: 500 });
   }
 
-  // Import auto des demandes DÉSACTIVÉ tant que la persistance du suivi anti-doublon
-  // (settings/inbox_processed) n'est pas fiable → évite les doublons en masse.
-  const inboxImport: unknown = { desactive: true };
+  // Import auto des demandes de devis reçues par email (formulaire du site).
+  // Fenêtre courte (7 j) + double garde-fou anti-doublon (Message-ID + email/tél).
+  // Ne bloque jamais le traitement des relances en cas d'erreur IMAP.
+  let inboxImport: unknown = null;
+  if (mode !== "test" && mode !== "simulation") {
+    try { const r = await importInbox({ days: 7 }); inboxImport = { crees: r.imported.length, ignores: r.skipped, erreurs: r.errors }; }
+    catch (e) { inboxImport = { erreur: e instanceof Error ? e.message : "import inbox échoué" }; }
+  }
 
   const { data, error } = await supabase
     .from("prestations")
