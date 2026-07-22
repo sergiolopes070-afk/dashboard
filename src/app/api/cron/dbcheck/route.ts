@@ -1,0 +1,30 @@
+import { NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase";
+
+export const dynamic = "force-dynamic";
+
+// Test de fiabilité DB : écrit un marqueur dans settings puis le relit.
+// Protégé par CRON_SECRET (?key=). ?write=1 écrit, sinon lit.
+function secret() {
+  if (process.env.CRON_SECRET) return process.env.CRON_SECRET;
+  for (const [k, v] of Object.entries(process.env)) if (/^cron_?secret$/i.test(k) && v) return v;
+  return undefined;
+}
+
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const s = secret();
+  if (!s || url.searchParams.get("key") !== s) return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  if (!supabase) return NextResponse.json({ error: "no db" }, { status: 503 });
+
+  const dbRef = (process.env.SUPABASE_URL || "").replace(/^https?:\/\//, "").split(".")[0];
+
+  if (url.searchParams.get("write") === "1") {
+    const marker = url.searchParams.get("v") || `M-${Date.now()}`;
+    const w = await supabase.from("settings").upsert({ key: "dbcheck", value: marker }, { onConflict: "key" }).select("key");
+    const relu = await supabase.from("settings").select("value").eq("key", "dbcheck").maybeSingle();
+    return NextResponse.json({ dbRef, action: "write", ecrit: marker, upsertErr: w.error?.message || null, reluMemeRequete: relu.data?.value ?? null });
+  }
+  const r = await supabase.from("settings").select("value").eq("key", "dbcheck").maybeSingle();
+  return NextResponse.json({ dbRef, action: "read", valeur: r.data?.value ?? null });
+}
