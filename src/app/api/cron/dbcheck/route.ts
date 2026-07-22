@@ -19,6 +19,14 @@ export async function GET(req: Request) {
 
   const dbRef = (process.env.SUPABASE_URL || "").replace(/^https?:\/\//, "").split(".")[0];
 
+  // Décode le RÔLE de la clé utilisée par l'app (sans exposer la clé).
+  if (url.searchParams.get("role") === "1") {
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    let role = "(illisible)";
+    try { role = JSON.parse(Buffer.from(key.split(".")[1], "base64").toString()).role; } catch { /* pas un JWT */ }
+    return NextResponse.json({ dbRef, roleDeLaCle: role, note: role === "service_role" ? "OK: contourne la RLS" : "PROBLÈME: soumis à la RLS → UPDATE/DELETE bloqués" });
+  }
+
   if (url.searchParams.get("write") === "1") {
     const marker = url.searchParams.get("v") || `M-${Date.now()}`;
     const w = await supabase.from("settings").upsert({ key: "dbcheck", value: marker }, { onConflict: "key" }).select("key");
