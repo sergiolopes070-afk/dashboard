@@ -1,19 +1,16 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { appendPrestation, updatePrestation, deleteClient, updateClientTags, updateClientNotes, getClientIdOfPrestation } from "@/lib/sheets";
-import { supabase } from "@/lib/supabase";
+import { getSettingJSON, setSettingRaw } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
 // Enregistre la préférence fiscale d'un client (avance / credit) dans la table
 // `settings` (clé `fiscal_clients`, JSON) — même stockage que /api/clients/fiscal.
 async function saveFiscal(clientId: string, fiscal: "avance" | "credit") {
-  if (!supabase) return;
-  const { data } = await supabase.from("settings").select("value").eq("key", "fiscal_clients").maybeSingle();
-  let map: Record<string, string> = {};
-  try { map = data?.value ? JSON.parse(data.value as string) : {}; } catch { map = {}; }
+  const map = await getSettingJSON<Record<string, string>>("fiscal_clients", {});
   map[clientId] = fiscal;
-  await supabase.from("settings").upsert({ key: "fiscal_clients", value: JSON.stringify(map) }, { onConflict: "key" });
+  await setSettingRaw("fiscal_clients", JSON.stringify(map));
 }
 
 // POST : ajouter un nouveau client / prestation

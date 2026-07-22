@@ -4,14 +4,13 @@
 // manuellement : besoin d'infos, 1re relance) pour garantir un contenu identique.
 // ─────────────────────────────────────────────────────────────────────────────
 import nodemailer from "nodemailer";
-import { supabase } from "./supabase";
+import { getSettingRaw } from "./settings";
 
 // Lit un réglage (settings) avec repli sur une variable d'environnement.
+// Lecture FRAÎCHE en tableau (voir src/lib/settings.ts pour le pourquoi).
 export async function getSetting(key: string, envFallback?: string): Promise<string | null> {
   if (envFallback) return envFallback;
-  if (!supabase) return null;
-  const { data } = await supabase.from("settings").select("value").eq("key", key).maybeSingle();
-  return (data?.value as string) || null;
+  return getSettingRaw(key);
 }
 
 // Transporteur Gmail (adresse + mot de passe d'application, via settings ou env).

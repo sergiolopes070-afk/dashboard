@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabase } from "@/lib/supabase";
+import { getSettingRaw } from "@/lib/settings";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 
@@ -8,9 +9,7 @@ export const dynamic = "force-dynamic";
 
 async function getSetting(key: string, envFallback?: string): Promise<string | null> {
   if (envFallback) return envFallback;
-  if (!supabase) return null;
-  const { data } = await supabase.from("settings").select("value").eq("key", key).maybeSingle();
-  return (data?.value as string) || null;
+  return getSettingRaw(key);
 }
 
 // ─── Email prestataire ────────────────────────────────────────────────────────

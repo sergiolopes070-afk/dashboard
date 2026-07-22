@@ -4,15 +4,13 @@ import React from "react";
 import { supabase } from "@/lib/supabase";
 import { DevisPDF, DevisData, LigneSupp, getProfil } from "@/lib/devis-pdf";
 import { resolveEntite, Entite, ENTITE_OVERRIDE_KEY } from "@/lib/entite";
+import { getSettingJSON } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
 // Corrections manuelles d'entité (settings/entite_override).
 async function getEntiteOverrides(): Promise<Record<string, Entite>> {
-  if (!supabase) return {};
-  const { data } = await supabase.from("settings").select("value").eq("key", ENTITE_OVERRIDE_KEY).maybeSingle();
-  try { return data?.value ? (JSON.parse(data.value as string) as Record<string, Entite>) : {}; }
-  catch { return {}; }
+  return getSettingJSON<Record<string, Entite>>(ENTITE_OVERRIDE_KEY, {});
 }
 
 function today(): string {

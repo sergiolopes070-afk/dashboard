@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { Entite, ENTITES, ENTITE_OVERRIDE_KEY } from "@/lib/entite";
+import { getSettingJSON, setSettingRaw } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +14,7 @@ const KEY = ENTITE_OVERRIDE_KEY;
 type Map = Record<string, Entite>;
 
 async function lire(): Promise<Map> {
-  if (!supabase) return {};
-  const { data } = await supabase.from("settings").select("value").eq("key", KEY).maybeSingle();
-  try { return data?.value ? (JSON.parse(data.value as string) as Map) : {}; }
-  catch { return {}; }
+  return getSettingJSON<Map>(KEY, {});
 }
 
 // GET → { overrides } (map complète)
@@ -41,8 +39,8 @@ export async function POST(req: Request) {
   if (entite && ENTITES.includes(entite as Entite)) map[prestationId] = entite as Entite;
   else delete map[prestationId]; // vide → suppression de l'exception (retour à l'auto)
 
-  const { error } = await supabase.from("settings").upsert({ key: KEY, value: JSON.stringify(map) }, { onConflict: "key" });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const err = await setSettingRaw(KEY, JSON.stringify(map));
+  if (err) return NextResponse.json({ error: err }, { status: 500 });
 
   return NextResponse.json({ success: true, overrides: map });
 }

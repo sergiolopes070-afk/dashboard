@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import { supabase } from "@/lib/supabase";
+import { getSettingRaw } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +10,7 @@ const DEST_EMAIL = "kinouclean@gmail.com";
 
 async function getSetting(key: string, envFallback?: string): Promise<string | null> {
   if (envFallback) return envFallback;
-  if (!supabase) return null;
-  const { data } = await supabase.from("settings").select("value").eq("key", key).maybeSingle();
-  return (data?.value as string) || null;
+  return getSettingRaw(key);
 }
 
 async function getGmailTransporter() {

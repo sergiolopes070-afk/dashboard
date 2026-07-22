@@ -1,13 +1,11 @@
 import { supabase } from "./supabase";
 import { Prestation, Prestataire, Depense, ModePaiement } from "./constants";
 import { getEntite, resolveEntite, Entite, ENTITE_OVERRIDE_KEY } from "./entite";
+import { getSettingJSON } from "./settings";
 
 // Lit la table de corrections manuelles d'entité (settings/entite_override).
 async function getEntiteOverrides(): Promise<Record<string, Entite>> {
-  if (!supabase) return {};
-  const { data } = await supabase.from("settings").select("value").eq("key", ENTITE_OVERRIDE_KEY).maybeSingle();
-  try { return data?.value ? (JSON.parse(data.value as string) as Record<string, Entite>) : {}; }
-  catch { return {}; }
+  return getSettingJSON<Record<string, Entite>>(ENTITE_OVERRIDE_KEY, {});
 }
 
 // ─── Date helpers ────────────────────────────────────────────────────────────

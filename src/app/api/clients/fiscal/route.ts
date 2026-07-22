@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
+import { getSettingJSON, setSettingRaw } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +14,7 @@ export type Fiscal = "" | "avance" | "credit";
 type Map = Record<string, Fiscal>;
 
 async function lire(): Promise<Map> {
-  if (!supabase) return {};
-  const { data } = await supabase.from("settings").select("value").eq("key", KEY).maybeSingle();
-  try { return data?.value ? (JSON.parse(data.value as string) as Map) : {}; }
-  catch { return {}; }
+  return getSettingJSON<Map>(KEY, {});
 }
 
 // GET ?clientId=<id> → { fiscal }
@@ -46,8 +44,8 @@ export async function POST(req: Request) {
   if (valide) map[clientId] = valide;
   else delete map[clientId];
 
-  const { error } = await supabase.from("settings").upsert({ key: KEY, value: JSON.stringify(map) }, { onConflict: "key" });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const err = await setSettingRaw(KEY, JSON.stringify(map));
+  if (err) return NextResponse.json({ error: err }, { status: 500 });
 
   return NextResponse.json({ success: true, fiscal: valide });
 }

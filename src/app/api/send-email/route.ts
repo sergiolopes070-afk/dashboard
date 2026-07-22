@@ -3,17 +3,16 @@ import { requireAuth } from "@/lib/require-auth";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import { supabase } from "@/lib/supabase";
+import { getSettingRaw } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
 const FROM_NAME = "KinouClean";
 
-/** Lit un setting depuis Supabase (fallback si env var absente) */
+/** Lit un setting depuis Supabase (fallback si env var absente) — lecture fraîche */
 async function getSetting(key: string, envFallback?: string): Promise<string | null> {
   if (envFallback) return envFallback;
-  if (!supabase) return null;
-  const { data } = await supabase.from("settings").select("value").eq("key", key).maybeSingle();
-  return (data?.value as string) || null;
+  return getSettingRaw(key);
 }
 
 /** Crée un transporteur Gmail SMTP (env vars ou Supabase settings) */

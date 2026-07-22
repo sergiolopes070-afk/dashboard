@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getSetting, getGmailTransporter, ACCROCHE, buildRelanceHtml } from "@/lib/mailer";
+import { getSettingJSON } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -96,10 +97,7 @@ type EtatPresta = { relance?: number; relanceStart?: string; avisEnvoye?: boolea
 type Etat = Record<string, EtatPresta>;
 
 async function lireEtat(): Promise<Etat> {
-  if (!supabase) return {};
-  const { data } = await supabase.from("settings").select("value").eq("key", ETAT_KEY).maybeSingle();
-  try { return data?.value ? (JSON.parse(data.value as string) as Etat) : {}; }
-  catch { return {}; }
+  return getSettingJSON<Etat>(ETAT_KEY, {});
 }
 
 async function ecrireEtat(etat: Etat): Promise<string | null> {
@@ -181,10 +179,7 @@ export async function GET(req: Request) {
   let etatModifie = false;
 
   // Préférence fiscale par client (avance immédiate / crédit d'impôt).
-  const fiscalClients: Record<string, string> = await (async () => {
-    const { data } = await supabase.from("settings").select("value").eq("key", "fiscal_clients").maybeSingle();
-    try { return data?.value ? JSON.parse(data.value as string) : {}; } catch { return {}; }
-  })();
+  const fiscalClients = await getSettingJSON<Record<string, string>>("fiscal_clients", {});
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows: any[] = data || [];

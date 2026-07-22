@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
+import { getSettingJSON, setSettingRaw } from "@/lib/settings";
 import {
   getGmailTransporter, buildRelanceHtml, ACCROCHE,
   buildBesoinInfosHtml, BESOIN_INFOS_OBJET,
@@ -19,19 +20,14 @@ type EtatPresta = { relance?: number; relanceStart?: string; avisEnvoye?: boolea
 type Etat = Record<string, EtatPresta>;
 
 async function lireEtat(): Promise<Etat> {
-  if (!supabase) return {};
-  const { data } = await supabase.from("settings").select("value").eq("key", ETAT_KEY).maybeSingle();
-  try { return data?.value ? JSON.parse(data.value as string) as Etat : {}; } catch { return {}; }
+  return getSettingJSON<Etat>(ETAT_KEY, {});
 }
 async function ecrireEtat(etat: Etat): Promise<string | null> {
-  if (!supabase) return "Supabase non configuré";
-  const { error } = await supabase.from("settings").upsert({ key: ETAT_KEY, value: JSON.stringify(etat) }, { onConflict: "key" });
-  return error ? error.message : null;
+  return setSettingRaw(ETAT_KEY, JSON.stringify(etat));
 }
 async function lireFiscal(clientId: string): Promise<string | undefined> {
-  if (!supabase) return undefined;
-  const { data } = await supabase.from("settings").select("value").eq("key", "fiscal_clients").maybeSingle();
-  try { const m = data?.value ? JSON.parse(data.value as string) : {}; return m[clientId]; } catch { return undefined; }
+  const m = await getSettingJSON<Record<string, string>>("fiscal_clients", {});
+  return m[clientId];
 }
 
 // GET ?prestationId=… → état de la séquence de relance pour l'UI.
