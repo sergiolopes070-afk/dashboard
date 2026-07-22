@@ -9,6 +9,7 @@ import Topbar from "@/components/Topbar";
 import { SkeletonList } from "@/components/Skeleton";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
+import NewClientModal from "@/components/NewClientModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Commentaire {
@@ -241,8 +242,6 @@ function ProspectModal({
   const [addingComment, setAddingComment] = useState(false);
   const [saving, setSaving]         = useState(false);
   const [showConvert, setShowConvert] = useState(false);
-  const [convertForm, setConvertForm] = useState({ date: "", heure: "", prix: "", typePresta: p.typePresta, adresse: p.adresse });
-  const [converting, setConverting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameForm, setNameForm] = useState({ prenom: prospect.prenom, nom: prospect.nom });
@@ -286,18 +285,18 @@ function ProspectModal({
     onClose();
   }
 
-  async function handleConvert() {
-    setConverting(true);
+  // Après création du client via NewClientModal : on marque le prospect converti.
+  async function handleConvertedSaved() {
     try {
-      const res = await fetch(`/api/prospects/${p.id}`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(convertForm),
+      await fetch(`/api/prospects/${p.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ statut: "CONVERTI" }),
       });
-      if (!res.ok) throw new Error((await res.json()).error);
-      setP(prev => ({ ...prev, statut: "CONVERTI" }));
-      onConverted(p.id);
-      setShowConvert(false);
-    } finally { setConverting(false); }
+    } catch { /* le client est créé ; le statut prospect suivra au prochain refresh */ }
+    setP(prev => ({ ...prev, statut: "CONVERTI" }));
+    onConverted(p.id);
+    setShowConvert(false);
+    onClose();
   }
 
   async function saveName() {
@@ -665,57 +664,15 @@ function ProspectModal({
             </div>
           )}
 
-          {/* ── Convertir en client ── */}
+          {/* ── Convertir en client (formulaire intelligent complet) ── */}
           {isActive && (
-            <div className="border border-green-200 rounded-xl overflow-hidden">
-              <button
-                onClick={() => setShowConvert(v => !v)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-green-50 text-green-700 text-sm font-semibold hover:bg-green-100 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <UserCheck size={16} />
-                  Convertir en client
-                </div>
-                <ChevronRight size={14} className={`transition-transform ${showConvert ? "rotate-90" : ""}`} />
-              </button>
-              {showConvert && (
-                <div className="px-4 py-4 space-y-3 bg-white border-t border-green-100">
-                  <p className="text-xs text-gray-500">Renseignez les détails du premier rendez-vous (optionnel)</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><label className="text-xs text-gray-500 mb-1 block">Date RDV</label>
-                      <input type="date" value={convertForm.date}
-                        onChange={e => setConvertForm(f => ({ ...f, date: e.target.value }))}
-                        className={inputCls} /></div>
-                    <div><label className="text-xs text-gray-500 mb-1 block">Heure RDV</label>
-                      <input type="time" value={convertForm.heure}
-                        onChange={e => setConvertForm(f => ({ ...f, heure: e.target.value }))}
-                        className={inputCls} /></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><label className="text-xs text-gray-500 mb-1 block">Prestation</label>
-                      <select value={convertForm.typePresta}
-                        onChange={e => setConvertForm(f => ({ ...f, typePresta: e.target.value }))}
-                        className={inputCls}>
-                        <option value="">— Sélectionner —</option>
-                        {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select></div>
-                    <div><label className="text-xs text-gray-500 mb-1 block">Prix (€)</label>
-                      <input type="number" value={convertForm.prix}
-                        onChange={e => setConvertForm(f => ({ ...f, prix: e.target.value }))}
-                        placeholder="0" className={inputCls} /></div>
-                  </div>
-                  <div><label className="text-xs text-gray-500 mb-1 block">Adresse intervention</label>
-                    <input value={convertForm.adresse}
-                      onChange={e => setConvertForm(f => ({ ...f, adresse: e.target.value }))}
-                      className={inputCls} /></div>
-                  <button onClick={handleConvert} disabled={converting}
-                    className="w-full py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2">
-                    {converting ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
-                    {converting ? "Conversion…" : "Confirmer la conversion"}
-                  </button>
-                </div>
-              )}
-            </div>
+            <button
+              onClick={() => setShowConvert(true)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition-colors"
+            >
+              <UserCheck size={16} />
+              Convertir en client
+            </button>
           )}
           {p.statut === "CONVERTI" && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
@@ -749,6 +706,19 @@ function ProspectModal({
           </button>
         </div>
       </div>
+
+      {/* Conversion : même formulaire intelligent que « Nouveau client », prérempli */}
+      {showConvert && (
+        <NewClientModal
+          prestataires={[]}
+          initialValues={{
+            prenom: p.prenom, nom: p.nom, tel: p.tel, email: p.email,
+            adresse: p.adresse, typePresta: p.typePresta,
+          }}
+          onClose={() => setShowConvert(false)}
+          onSaved={handleConvertedSaved}
+        />
+      )}
     </div>
   );
 }
