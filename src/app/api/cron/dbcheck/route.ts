@@ -27,6 +27,18 @@ export async function GET(req: Request) {
     return NextResponse.json({ dbRef, roleDeLaCle: role, note: role === "service_role" ? "OK: contourne la RLS" : "PROBLÈME: soumis à la RLS → UPDATE/DELETE bloqués" });
   }
 
+  // Compare la MÊME lecture via maybeSingle vs via tableau .select().
+  if (url.searchParams.get("compare") === "1") {
+    const viaSingle = await supabase.from("settings").select("value").eq("key", "dbcheck").maybeSingle();
+    const viaArray  = await supabase.from("settings").select("value").eq("key", "dbcheck").limit(1);
+    return NextResponse.json({
+      dbRef,
+      viaMaybeSingle: viaSingle.data?.value ?? null,
+      viaTableau: viaArray.data?.[0]?.value ?? null,
+      identiques: (viaSingle.data?.value ?? null) === (viaArray.data?.[0]?.value ?? null),
+    });
+  }
+
   // Diagnostic approfondi : doublons de lignes + UPDATE direct.
   if (url.searchParams.get("deep") === "1") {
     const rows = await supabase.from("settings").select("key, value").eq("key", "dbcheck");
