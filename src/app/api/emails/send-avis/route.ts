@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { getGmailTransporter, buildAvisHtml, AVIS_OBJET } from "@/lib/mailer";
+import { getSettingRaw } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,11 @@ export async function POST(req: Request) {
   const unauth = await requireAuth();
   if (unauth) return unauth;
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
+
+  // Interrupteur global (Configuration) : demandes d'avis en pause → on n'envoie rien.
+  if (await getSettingRaw("avis_actif") === "false") {
+    return NextResponse.json({ paused: true, message: "Demandes d'avis en pause (Configuration)" });
+  }
 
   const { prestationId } = await req.json() as { prestationId?: string };
   if (!prestationId) return NextResponse.json({ error: "prestationId requis" }, { status: 400 });

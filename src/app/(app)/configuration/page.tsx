@@ -523,6 +523,42 @@ export default function ConfigurationPage() {
               </div>
             </section>
 
+            {/* Automatisations */}
+            <section>
+              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                Automatisations
+              </h2>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-800 text-sm">Demandes d&apos;avis</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {settings.avis_actif === "false"
+                      ? "En pause — aucune demande d'avis ne sera envoyée, même à l'archivage."
+                      : "Active — la demande d'avis peut être envoyée au client à l'archivage."}
+                  </p>
+                </div>
+                {(() => {
+                  const actif = settings.avis_actif !== "false";
+                  return (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={actif}
+                      onClick={async () => {
+                        try {
+                          await save({ avis_actif: actif ? "false" : "true" });
+                          showToast(actif ? "Demandes d'avis mises en pause" : "Demandes d'avis réactivées");
+                        } catch (e) { showToast(e instanceof Error ? e.message : "Erreur", "error"); }
+                      }}
+                      className={`relative shrink-0 w-12 h-7 rounded-full transition-colors ${actif ? "bg-emerald-500" : "bg-gray-300"}`}
+                    >
+                      <span className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${actif ? "translate-x-5" : ""}`} />
+                    </button>
+                  );
+                })()}
+              </div>
+            </section>
+
             {/* Checklist état */}
             <section>
               <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">

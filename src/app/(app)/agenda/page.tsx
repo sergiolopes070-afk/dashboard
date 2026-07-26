@@ -401,6 +401,16 @@ export default function AgendaPage() {
   const [archiveComment, setArchiveComment] = useState("");
   const [archiveSendAvis, setArchiveSendAvis] = useState(true); // demander un avis au client à l'archivage
   const [archiving,      setArchiving]      = useState(false);
+  const [avisGlobalActif, setAvisGlobalActif] = useState(true); // interrupteur global (Configuration)
+
+  // Charge l'état global des demandes d'avis (Configuration → Automatisations).
+  useEffect(() => {
+    fetch("/api/settings").then(r => r.ok ? r.json() : null).then(s => {
+      const actif = s ? s.avis_actif !== "false" : true;
+      setAvisGlobalActif(actif);
+      setArchiveSendAvis(actif); // par défaut aligné sur l'interrupteur global
+    }).catch(() => {});
+  }, []);
 
   // ── Édition inline depuis le modal ────────────────────────────────────────
   const [editMode,   setEditMode]   = useState(false);
@@ -1645,18 +1655,24 @@ export default function AgendaPage() {
 
             {/* Demande d'avis — proposée seulement si prestation réalisée (pas une annulation) */}
             {!isCancellationReason(archiveReason) && (
-              <label className="flex items-start gap-2.5 p-3 mb-4 rounded-xl border border-amber-200 bg-amber-50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={archiveSendAvis}
-                  onChange={e => setArchiveSendAvis(e.target.checked)}
-                  className="w-4 h-4 accent-amber-500 mt-0.5"
-                />
-                <span className="text-xs text-amber-800 leading-snug">
-                  <strong>⭐ Envoyer la demande d&apos;avis à ce client</strong><br/>
-                  <span className="text-amber-600">Décoche si le client n&apos;était pas satisfait (aucun email ne partira).</span>
-                </span>
-              </label>
+              avisGlobalActif ? (
+                <label className="flex items-start gap-2.5 p-3 mb-4 rounded-xl border border-amber-200 bg-amber-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={archiveSendAvis}
+                    onChange={e => setArchiveSendAvis(e.target.checked)}
+                    className="w-4 h-4 accent-amber-500 mt-0.5"
+                  />
+                  <span className="text-xs text-amber-800 leading-snug">
+                    <strong>⭐ Envoyer la demande d&apos;avis à ce client</strong><br/>
+                    <span className="text-amber-600">Décoche si le client n&apos;était pas satisfait (aucun email ne partira).</span>
+                  </span>
+                </label>
+              ) : (
+                <div className="p-3 mb-4 rounded-xl border border-gray-200 bg-gray-50 text-xs text-gray-500">
+                  ⏸️ Demandes d&apos;avis <strong>en pause</strong> — aucun email d&apos;avis ne sera envoyé. Réactive-les dans Configuration → Automatisations.
+                </div>
+              )
             )}
 
             {/* Actions */}
