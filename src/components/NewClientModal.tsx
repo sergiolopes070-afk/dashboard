@@ -216,6 +216,7 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
   const [savedPrestationId, setSavedPrestationId] = useState<string>("");
   const [showSuccess, setShowSuccess]     = useState(false);
   const [savedFormData, setSavedFormData] = useState<typeof EMPTY | null>(null);
+  const [savedEmailEnvoye, setSavedEmailEnvoye] = useState(false);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -280,9 +281,10 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
       const clientHasTel = !!form.tel;
       const prestataireHasTel = hasPrestataire && !!assignedPrestataire?.tel;
 
-      if (clientHasTel || prestataireHasTel) {
+      if (clientHasTel || prestataireHasTel || form.email) {
         setSavedPrestationId(prestationId);
         setSavedFormData({ ...form });
+        setSavedEmailEnvoye(!!data.emailEnvoye);
         if (prestataireHasTel) setSavedPrestataire(assignedPrestataire!);
         setShowSuccess(true);
       } else {
@@ -380,11 +382,24 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
           </p>
 
           <div className="space-y-3 mb-6">
+            {/* Statut de l'email de confirmation automatique */}
+            {f.email ? (
+              <div className={`rounded-xl p-3 text-left text-sm ${savedEmailEnvoye ? "bg-blue-50 border border-blue-100 text-blue-800" : "bg-amber-50 border border-amber-200 text-amber-800"}`}>
+                {savedEmailEnvoye
+                  ? <>✅ Récapitulatif envoyé par email à <strong>{f.email}</strong>.</>
+                  : <>⚠️ L&apos;email n&apos;a pas pu être envoyé (Gmail non connecté ?){f.tel ? " — envoie le récap par WhatsApp ci-dessous." : ""}</>}
+              </div>
+            ) : (
+              <div className="rounded-xl p-3 text-left text-sm bg-amber-50 border border-amber-200 text-amber-800">
+                📱 Ce client n&apos;a <strong>pas d&apos;email</strong>{f.tel ? " — envoie-lui le récap par WhatsApp ci-dessous." : ". Ajoute un email ou un téléphone pour lui transmettre le récap."}
+              </div>
+            )}
+
             {/* Bouton WhatsApp client */}
             {f.tel && (
               <div className="bg-green-50 border border-green-100 rounded-xl p-4 text-left">
                 <p className="text-xs font-semibold text-green-700 uppercase tracking-wider mb-2">
-                  Confirmer au client
+                  {f.email ? "Confirmer au client" : "Envoyer le récap (pas d'email)"}
                 </p>
                 <p className="text-sm text-gray-600 mb-3">
                   Envoyez un récap de la demande à <strong>{f.prenom} {f.nom}</strong> par WhatsApp.

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { appendPrestation, updatePrestation, deleteClient, updateClientTags, updateClientNotes, getClientIdOfPrestation } from "@/lib/sheets";
 import { getSettingJSON, setSettingRaw } from "@/lib/settings";
+import { sendConfirmationEmail } from "@/lib/mailer";
 
 export const dynamic = "force-dynamic";
 
@@ -80,11 +81,19 @@ export async function POST(req: Request) {
       } catch (e) { console.error("Erreur enregistrement fiscal:", e); }
     }
 
-    // NB : plus d'email automatique à la création. Le contact initial se fait
-    // directement (téléphone/WhatsApp). Les emails (besoin d'infos, relances)
-    // sont déclenchés MANUELLEMENT depuis le dashboard via /api/emails/action.
+    // Email récapitulatif automatique au client (si son email est renseigné).
+    // S'il n'a pas d'email, l'écran de succès propose l'envoi du récap par WhatsApp.
+    let emailEnvoye = false;
+    if (body.email) {
+      try {
+        emailEnvoye = await sendConfirmationEmail(body.email, {
+          prenom: body.prenom || "", typePresta, quantite: body.quantite || "",
+          adresse: body.adresse || "", date: body.date || "", heure: body.heure || "", prix,
+        });
+      } catch (e) { console.error("Erreur envoi email de confirmation:", e); }
+    }
 
-    return NextResponse.json({ success: true, id: prestationId });
+    return NextResponse.json({ success: true, id: prestationId, emailEnvoye });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";
     return NextResponse.json({ error: message }, { status: 500 });
