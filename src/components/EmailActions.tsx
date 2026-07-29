@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Mail, Bell, Loader2, MessageCircle } from "lucide-react";
+import { Mail, Bell, Loader2, MessageCircle, CheckCircle2 } from "lucide-react";
 
 // Actions de contact client pour une prestation (email + WhatsApp), réutilisé
 // dans la modale Prestations et le panneau détail Agenda.
@@ -22,6 +22,10 @@ export default function EmailActions({
   prenom = "",
   typePresta = "",
   prix,
+  quantite = "",
+  adresse = "",
+  date = "",
+  heure = "",
   compact = false,
 }: {
   prestationId: string;
@@ -30,9 +34,13 @@ export default function EmailActions({
   prenom?: string;
   typePresta?: string;
   prix?: string;
+  quantite?: string;
+  adresse?: string;
+  date?: string;
+  heure?: string;
   compact?: boolean;
 }) {
-  const [busy, setBusy]            = useState<"" | "relance" | "besoin_infos">("");
+  const [busy, setBusy]            = useState<"" | "relance" | "besoin_infos" | "confirmation">("");
   const [relanceNiveau, setNiveau] = useState<number | null>(null);
   const [feedback, setFeedback]    = useState("");
 
@@ -65,6 +73,24 @@ export default function EmailActions({
     }
   }
 
+  // Récapitulatif de confirmation (même contenu que le mail auto de création).
+  async function sendConfirmation() {
+    setBusy("confirmation"); setFeedback("");
+    try {
+      const res = await fetch("/api/emails/send-confirmation", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prestationId }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur");
+      setFeedback(`✅ Récapitulatif ${date ? "de confirmation " : ""}envoyé par email.`);
+    } catch (e) {
+      setFeedback(`❌ ${e instanceof Error ? e.message : "Erreur d'envoi"}`);
+    } finally {
+      setBusy("");
+    }
+  }
+
   // Messages WhatsApp (envoi manuel) — professionnels, sans emoji, vouvoiement.
   const msgBesoinInfos =
     `Bonjour Madame, Monsieur,\n\n` +
@@ -75,6 +101,25 @@ export default function EmailActions({
     `Bonjour Madame, Monsieur,\n\n` +
     `Votre devis${typePresta ? ` pour ${typePresta.toLowerCase()}` : ""}${prix ? ` d'un montant de ${prix} €` : ""} est prêt. Souhaitez-vous que nous réservions votre créneau d'intervention ?\n\n` +
     `Nous restons à votre entière disposition.\n\nBien cordialement,\nL'équipe KinouClean`;
+
+  // Récapitulatif WhatsApp — même logique que le mail : RDV calé → confirmé,
+  // sinon → demande enregistrée.
+  const rdvFixe   = !!date;
+  const prestaWA  = [typePresta, quantite && quantite !== "1" ? `(${quantite})` : ""].filter(Boolean).join(" ") || "Prestation KinouClean";
+  const msgConfirmation =
+    `Bonjour ${prenom || ""} 👋,\n\n` +
+    (rdvFixe
+      ? `Votre rendez-vous KinouClean est confirmé ✅\n\n`
+      : `Votre demande a bien été enregistrée chez KinouClean ✅\n\n`) +
+    `📋 Récapitulatif :\n` +
+    `🧹 Prestation : ${prestaWA}\n` +
+    `📍 Adresse : ${adresse || "—"}\n` +
+    `${rdvFixe ? "📅 Rendez-vous" : "📅 Date souhaitée"} : ${date || "—"}${heure ? ` à ${heure}` : ""}\n` +
+    `💶 Montant : ${prix ? `${prix} €` : "—"}\n\n` +
+    (rdvFixe
+      ? `Pour toute modification ou question, répondez simplement à ce message ou appelez-nous au 06 20 79 97 47. À très bientôt !`
+      : `Nous revenons vers vous très rapidement pour confirmer les détails. Pour toute question, appelez-nous au 06 20 79 97 47.`) +
+    `\n\nL'équipe KinouClean`;
 
   const hasEmail = !!clientEmail;
   const hasTel   = !!clientTel;
@@ -92,6 +137,26 @@ export default function EmailActions({
 
   return (
     <div className="space-y-2.5">
+      {/* Récapitulatif / confirmation — même contenu que le mail auto de création */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="text-xs text-gray-600 font-medium">
+          {date ? "Confirmation RDV" : "Récap demande"}
+        </span>
+        <div className="flex gap-1.5">
+          {hasEmail && (
+            <button type="button" onClick={sendConfirmation} disabled={busy !== ""}
+              className={`${emailBtn} border-gray-200 text-gray-700 hover:border-blue-300 hover:bg-blue-50`}>
+              {busy === "confirmation" ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Email
+            </button>
+          )}
+          {hasTel && (
+            <a href={waLink(clientTel!, msgConfirmation)} target="_blank" rel="noopener noreferrer" className={waBtn}>
+              <MessageCircle size={13} /> WhatsApp
+            </a>
+          )}
+        </div>
+      </div>
+
       {/* Besoin d'infos */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <span className="text-xs text-gray-600 font-medium">Besoin d&apos;infos</span>

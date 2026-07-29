@@ -1366,6 +1366,10 @@ export default function AgendaPage() {
                             prenom={ev.prenom}
                             typePresta={ev.typePresta}
                             prix={ev.prix}
+                            quantite={ev.quantite}
+                            adresse={ev.adresse}
+                            date={ev.date}
+                            heure={ev.heure}
                             compact
                           />
                         </div>

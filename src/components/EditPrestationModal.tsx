@@ -207,6 +207,10 @@ export default function EditPrestationModal({
               prenom={prestation.prenom}
               typePresta={prestation.typePresta}
               prix={prestation.prix}
+              quantite={prestation.quantite}
+              adresse={prestation.adresse}
+              date={prestation.date}
+              heure={prestation.heure}
             />
           </fieldset>
 
