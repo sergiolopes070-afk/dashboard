@@ -155,6 +155,7 @@ export async function GET(req: Request) {
   // calcule et on liste, mais AUCUN email ne part.
   const mode: "simulation" | "test" | "reel" =
     auth.simulationForcee ? "simulation"
+    : params.get("dry") === "1" ? "simulation"   // inspection lecture seule (aucun envoi)
     : params.get("test") === "1" ? "test"
     : params.get("send") === "1" ? "reel"
     : ENVOI_AUTO_ACTIF ? "reel" : "simulation";
@@ -196,6 +197,7 @@ export async function GET(req: Request) {
   const demandeAvis: unknown[] = [];   // avis à envoyer (mode simulation) / bloqués
   const avisEnvoyes: unknown[] = [];   // avis réellement envoyés (test/réel)
   const erreurs:  unknown[] = [];
+  const diagRelances: unknown[] = [];  // diagnostic : toutes les relances démarrées + pourquoi elles avancent ou pas
 
   const gmail = mode === "simulation" ? null : await getGmailTransporter();
   if (mode !== "simulation" && !gmail) {
@@ -213,6 +215,25 @@ export async function GET(req: Request) {
     const devisExiste = !isNaN(prix) && prix > 0;
     const aUneDate    = !!(p.date_intervention && String(p.date_intervention).trim());
     const clos        = DONE_STATUTS.includes(p.statut) || p.statut === "ANNULÉ";
+
+    // Diagnostic : toute prestation dont une relance a démarré, avec les motifs
+    // qui l'empêchent éventuellement d'avancer (date d'intervention, statut clos…).
+    const niveauEtat = Number(etat[p.id]?.relance ?? 0);
+    if (niveauEtat >= 1) {
+      const jrs = daysSince(etat[p.id]?.relanceStart || p.created_at);
+      diagRelances.push({
+        nom, niveauActuel: niveauEtat,
+        joursDepuisDemarrage: jrs,
+        niveauCible: jrs == null ? niveauEtat : niveauDepuisDemarrage(jrs),
+        statut: p.statut || "(vide)",
+        aUneDate, devisExiste, clos, email: email || null,
+        bloquePar: !devisExiste ? "prix/devis absent"
+          : aUneDate ? "date d'intervention renseignée → relances stoppées"
+          : clos ? `statut clos (${p.statut})`
+          : !email ? "pas d'email"
+          : null,
+      });
+    }
 
     // ── Relance devis (séquence DÉMARRÉE MANUELLEMENT uniquement) ──
     // Le cron ne démarre jamais une relance : il poursuit celles que l'utilisateur
@@ -319,6 +340,7 @@ export async function GET(req: Request) {
     demandeAvis,
     erreurs,
     aDemarrer,
+    diagRelances,
     inboxImport,
   };
 

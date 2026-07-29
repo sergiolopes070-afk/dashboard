@@ -216,7 +216,8 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
   const [savedPrestationId, setSavedPrestationId] = useState<string>("");
   const [showSuccess, setShowSuccess]     = useState(false);
   const [savedFormData, setSavedFormData] = useState<typeof EMPTY | null>(null);
-  const [savedEmailEnvoye, setSavedEmailEnvoye] = useState(false);
+  // Envoi MANUEL du récap par email (bouton sur l'écran de succès).
+  const [emailSendState, setEmailSendState] = useState<"" | "sending" | "sent" | "error">("");
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -284,7 +285,7 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
       if (clientHasTel || prestataireHasTel || form.email) {
         setSavedPrestationId(prestationId);
         setSavedFormData({ ...form });
-        setSavedEmailEnvoye(!!data.emailEnvoye);
+        setEmailSendState("");
         if (prestataireHasTel) setSavedPrestataire(assignedPrestataire!);
         setShowSuccess(true);
       } else {
@@ -390,12 +391,45 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
           </p>
 
           <div className="space-y-3 mb-6">
-            {/* Statut de l'email de confirmation automatique */}
+            {/* Récapitulatif par email — envoi MANUEL (aucun mail auto) */}
             {f.email ? (
-              <div className={`rounded-xl p-3 text-left text-sm ${savedEmailEnvoye ? "bg-blue-50 border border-blue-100 text-blue-800" : "bg-amber-50 border border-amber-200 text-amber-800"}`}>
-                {savedEmailEnvoye
-                  ? <>✅ Récapitulatif envoyé par email à <strong>{f.email}</strong>.</>
-                  : <>⚠️ L&apos;email n&apos;a pas pu être envoyé (Gmail non connecté ?){f.tel ? " — envoie le récap par WhatsApp ci-dessous." : ""}</>}
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-left">
+                <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-2">
+                  Récapitulatif par email
+                </p>
+                <p className="text-sm text-gray-600 mb-3">
+                  Envoyer le récap à <strong>{f.email}</strong> (rien n&apos;est envoyé automatiquement).
+                </p>
+                {emailSendState === "sent" ? (
+                  <div className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-sm font-semibold">
+                    <CheckCircle size={16} /> Récapitulatif envoyé ✅
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={async () => {
+                        setEmailSendState("sending");
+                        try {
+                          const r = await fetch("/api/emails/send-confirmation", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ prestationId: savedPrestationId }),
+                          });
+                          setEmailSendState(r.ok ? "sent" : "error");
+                        } catch { setEmailSendState("error"); }
+                      }}
+                      disabled={emailSendState === "sending"}
+                      className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60"
+                    >
+                      {emailSendState === "sending"
+                        ? <><Loader2 size={16} className="animate-spin" /> Envoi…</>
+                        : <><CheckCircle size={16} /> Envoyer le récap par email</>}
+                    </button>
+                    {emailSendState === "error" && (
+                      <p className="text-xs text-red-600 mt-2">❌ Échec de l&apos;envoi (Gmail non connecté ?){f.tel ? " — tu peux l'envoyer par WhatsApp ci-dessous." : ""}</p>
+                    )}
+                  </>
+                )}
               </div>
             ) : (
               <div className="rounded-xl p-3 text-left text-sm bg-amber-50 border border-amber-200 text-amber-800">
