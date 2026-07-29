@@ -316,16 +316,24 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
       : `${f.typePresta}${f.quantite ? ` (${f.quantite})` : ""}`;
     const montantWA = tousArticles.length > 0 ? `${totalWA}` : (f.prix || "—");
 
-    // Message WhatsApp client
+    // Message WhatsApp client — même logique que le mail de confirmation :
+    // un RDV est calé (date présente) → tout est confirmé ; sinon → demande enregistrée.
+    const rdvFixeWA = !!f.date;
     const clientTelFormatted = f.tel.replace(/\s/g, "").replace(/^0/, "33");
     const clientMsg = encodeURIComponent(
-      `Bonjour ${f.prenom} 👋,\n\nVotre demande a bien été enregistrée chez KinouClean ✅\n\n` +
-      `📋 Récapitulatif de votre demande :\n` +
+      `Bonjour ${f.prenom} 👋,\n\n` +
+      (rdvFixeWA
+        ? `Votre rendez-vous KinouClean est confirmé ✅\n\n`
+        : `Votre demande a bien été enregistrée chez KinouClean ✅\n\n`) +
+      `📋 Récapitulatif :\n` +
       `🧹 Prestation : ${tousArticles.length > 0 ? `\n   • ${prestaLabelWA}` : prestaLabelWA}\n` +
       `📍 Adresse : ${fullAdresseWA || "—"}\n` +
-      `📅 Date : ${f.date || "—"}${f.heure ? ` à ${f.heure}` : ""}\n` +
+      `${rdvFixeWA ? "📅 Rendez-vous" : "📅 Date souhaitée"} : ${f.date || "—"}${f.heure ? ` à ${f.heure}` : ""}\n` +
       `💶 Montant : ${montantWA} €\n\n` +
-      `Nous revenons vers vous très prochainement pour confirmer votre rendez-vous 🙏\n\nL'équipe KinouClean`
+      (rdvFixeWA
+        ? `Pour toute modification ou question, répondez simplement à ce message ou appelez-nous au 06 20 79 97 47. À très bientôt !`
+        : `Nous revenons vers vous très rapidement pour confirmer les détails. Pour toute question, appelez-nous au 06 20 79 97 47.`) +
+      `\n\nL'équipe KinouClean`
     );
 
     // Message WhatsApp prestataire
