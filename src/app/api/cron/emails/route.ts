@@ -247,10 +247,14 @@ export async function GET(req: Request) {
         const age = daysSince(p.created_at);
         aDemarrer.push({ nom, email, prix, ageJours: age });
       } else if (actuel < 3) {
-        // Séquence en cours : on planifie #2/#3 à partir du démarrage manuel
-        // (repli sur created_at pour les séquences démarrées avant cette évolution).
+        // Séquence en cours : on avance d'UN cran à la fois (jamais de saut), pour
+        // garantir que chaque étape (2 puis 3) parte réellement au client — même si
+        // le cron a manqué un jour. Cadence depuis le démarrage manuel :
+        //   niveau 2 dès J+2, niveau 3 dès J+4. (repli created_at pour l'historique)
         const joursDepuis = daysSince(start || p.created_at);
-        const cible = joursDepuis == null ? actuel : niveauDepuisDemarrage(joursDepuis);
+        const prochain = actuel + 1;                 // 2 puis 3
+        const seuilJours = prochain === 2 ? 2 : 4;   // J requis pour ce prochain niveau
+        const cible = (joursDepuis != null && joursDepuis >= seuilJours) ? prochain : actuel;
         if (cible > actuel) {
           const info = { nom, email, prix, niveau: cible, joursDepuisDemarrage: joursDepuis };
           if (!email) {
