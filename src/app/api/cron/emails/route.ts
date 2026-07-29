@@ -345,6 +345,10 @@ export async function GET(req: Request) {
     erreurs,
     aDemarrer,
     diagRelances,
+    // Carte EXACTE que renvoie /api/emails/action (source du badge « Relance x/3 »).
+    niveauxBadge: Object.fromEntries(
+      Object.entries(etat).filter(([, e]) => e.relance).map(([k, e]) => [k, e.relance])
+    ),
     inboxImport,
   };
 
