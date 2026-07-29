@@ -206,7 +206,7 @@ export function buildConfirmationHtml(d: {
     ? "Votre rendez-vous est confirmé. En voici le récapitulatif :"
     : "Nous avons bien enregistré votre demande. En voici le récapitulatif :";
   const cloture = rdvFixe
-    ? `Tout est en ordre : <strong>aucune démarche de votre part n'est nécessaire</strong>. Pour toute <strong>modification</strong> ou question, répondez simplement à cet email ou appelez-nous au <strong>${TEL}</strong>.`
+    ? `Pour toute <strong>modification</strong> ou question, répondez simplement à cet email ou appelez-nous au <strong>${TEL}</strong>. À très bientôt !`
     : `Nous revenons vers vous très rapidement pour confirmer les détails. Pour toute question, répondez simplement à cet email ou appelez-nous au <strong>${TEL}</strong>.`;
 
   return shell(`
