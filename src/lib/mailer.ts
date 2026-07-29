@@ -182,7 +182,13 @@ export function buildRappelMessage(d: { prenom: string; prestations: string[]; d
 }
 
 // ─── Email de confirmation à la création (récapitulatif de la demande) ──────────
-export const CONFIRMATION_OBJET = "✅ Votre demande est bien enregistrée — KinouClean";
+export function confirmationObjet(rdvFixe: boolean): string {
+  return rdvFixe
+    ? "✅ Votre rendez-vous KinouClean est confirmé"
+    : "✅ Votre demande est bien enregistrée — KinouClean";
+}
+// Rétrocompat : objet par défaut.
+export const CONFIRMATION_OBJET = confirmationObjet(false);
 
 export function buildConfirmationHtml(d: {
   prenom: string; typePresta: string; quantite: string;
@@ -190,23 +196,29 @@ export function buildConfirmationHtml(d: {
 }): string {
   const presta = [d.typePresta, d.quantite && d.quantite !== "1" ? `(${d.quantite})` : ""].filter(Boolean).join(" ");
   const dateStr = [d.date, d.heure].filter(Boolean).join(" à ");
+  const rdvFixe = !!d.date; // un rendez-vous est calé → tout est confirmé
   const ligne = (label: string, valeur: string) => `
     <tr><td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:14px;color:#6B7280;">${label}</td>
         <td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:14px;color:#1F2937;font-weight:bold;">${valeur || "—"}</td></tr>`;
+
+  // Intro + clôture adaptées : RDV fixé → confirmé, sinon → on recontacte.
+  const intro = rdvFixe
+    ? "Votre rendez-vous est confirmé. En voici le récapitulatif :"
+    : "Nous avons bien enregistré votre demande. En voici le récapitulatif :";
+  const cloture = rdvFixe
+    ? `Tout est en ordre : <strong>aucune démarche de votre part n'est nécessaire</strong>. Pour toute <strong>modification</strong> ou question, répondez simplement à cet email ou appelez-nous au <strong>${TEL}</strong>.`
+    : `Nous revenons vers vous très rapidement pour confirmer les détails. Pour toute question, répondez simplement à cet email ou appelez-nous au <strong>${TEL}</strong>.`;
+
   return shell(`
     <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour ${d.prenom || ""},</p>
-    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 18px;">
-      Nous avons bien enregistré votre demande. En voici le récapitulatif :
-    </p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 18px;">${intro}</p>
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#F9FAFB;border-radius:10px;overflow:hidden;margin:0 0 20px;">
       ${ligne("Prestation", presta)}
-      ${ligne("Date", dateStr)}
+      ${ligne(rdvFixe ? "Rendez-vous" : "Date souhaitée", dateStr)}
       ${ligne("Adresse", d.adresse)}
       ${ligne("Montant", d.prix ? `${d.prix} €` : "—")}
     </table>
-    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 4px;">
-      Nous revenons vers vous très rapidement pour confirmer les détails. Pour toute question, répondez simplement à cet email ou appelez-nous au <strong>${TEL}</strong>.
-    </p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 4px;">${cloture}</p>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:16px 0 0;">Bien cordialement,<br/><strong>L'équipe KinouClean</strong></p>`);
 }
 
@@ -219,7 +231,7 @@ export async function sendConfirmationEmail(to: string, d: {
   if (!gmail) return false;
   await gmail.transporter.sendMail({
     from: `"KinouClean" <${gmail.user}>`, to,
-    subject: CONFIRMATION_OBJET,
+    subject: confirmationObjet(!!d.date),
     html: buildConfirmationHtml(d),
   });
   return true;
