@@ -13,11 +13,13 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { supabase } from "./supabase";
 import { getSetting } from "./mailer";
-import { getSettingJSON, setSettingRaw } from "./settings";
+import { getSettingJSON, getSettingRaw, setSettingRaw } from "./settings";
 
 const SUBJECT_MATCH = "Nouvelle demande de devis";
 const FROM_MATCH = "contact@kinouclean.fr"; // n'importer QUE les emails du formulaire du site
 const PROCESSED_KEY = "inbox_processed";
+const LOCK_KEY = "inbox_lock";          // verrou anti-exécutions simultanées (cron + bouton)
+const LOCK_TTL_MS = 120_000;            // 2 min : au-delà, un verrou est considéré périmé
 
 // ─── Suivi des emails déjà importés (lecture fraîche via helper settings) ─────────
 async function lireTraites(): Promise<string[]> {
@@ -27,21 +29,35 @@ async function ecrireTraites(ids: string[]): Promise<void> {
   await setSettingRaw(PROCESSED_KEY, JSON.stringify(ids.slice(-2000)));
 }
 
+// Normalisation pour comparer des identités de façon fiable.
+export const normEmail = (e: string) => (e || "").trim().toLowerCase();
+export const normTel   = (t: string) => (t || "").replace(/\D/g, "");
+
 // 2ᵉ garde-fou : ce lead existe-t-il déjà (même email OU téléphone) — soit comme
 // PROSPECT, soit comme CLIENT déjà en base ? (indépendant du suivi des Message-ID
-// → doublon impossible même en cas de bug.)
+// → doublon impossible même en cas de bug.) Email comparé en insensible à la
+// casse ; téléphone comparé sur les chiffres uniquement (les espaces/format ne
+// cassent plus la détection).
 async function leadExisteDeja(email: string, tel: string): Promise<boolean> {
   if (!supabase) return false;
-  const conds: string[] = [];
-  if (email) conds.push(`email.eq.${email}`);
-  if (tel)   conds.push(`tel.eq.${tel}`);
-  if (!conds.length) return false;
-  const filtre = conds.join(",");
-  const [prospect, client] = await Promise.all([
-    supabase.from("prospects").select("id").or(filtre).limit(1),
-    supabase.from("clients").select("id").or(filtre).limit(1),
-  ]);
-  return ((prospect.data?.length ?? 0) > 0) || ((client.data?.length ?? 0) > 0);
+  const e = normEmail(email);
+  const t = normTel(tel);
+  if (!e && !t) return false;
+
+  for (const table of ["prospects", "clients"] as const) {
+    // Email : match exact insensible à la casse (ilike sans jokers).
+    if (e) {
+      const { data } = await supabase.from(table).select("id").ilike("email", e).limit(1);
+      if ((data?.length ?? 0) > 0) return true;
+    }
+    // Téléphone : on récupère les tél non nuls et on compare sur les chiffres
+    // (les fiches peuvent stocker « 06 20… » alors que le lead a « 0620… »).
+    if (t) {
+      const { data } = await supabase.from(table).select("tel").not("tel", "is", null).limit(5000);
+      if ((data || []).some(r => normTel(r.tel as string) === t)) return true;
+    }
+  }
+  return false;
 }
 
 // ─── Parsing du corps de l'email en champs ──────────────────────────────────────
@@ -144,8 +160,24 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
   const pass = await getSetting("gmail_app_password", process.env.GMAIL_APP_PASSWORD);
   if (!user || !pass) { result.errors.push("Gmail non connecté (identifiants manquants)."); return result; }
 
+  // ── Verrou anti-concurrence ──────────────────────────────────────────────
+  // Empêche deux imports simultanés (cron quotidien + clic sur le bouton) de
+  // créer le même prospect deux fois : le 2e s'arrête net tant que le 1er tourne.
+  const isRealRun = !dry && !debug;
+  if (isRealRun) {
+    const lockRaw = await getSettingRaw(LOCK_KEY);
+    const lockTs = lockRaw ? parseInt(lockRaw, 10) : 0;
+    if (lockTs && Date.now() - lockTs < LOCK_TTL_MS) {
+      result.errors.push("Import déjà en cours — réessaie dans un instant.");
+      return result;
+    }
+    await setSettingRaw(LOCK_KEY, String(Date.now()));
+  }
+
+  try {
   const traites = new Set(await lireTraites());
   const nouveauxIds: string[] = [];
+  const vusRun = new Set<string>(); // identités déjà créées DANS CETTE exécution
 
   const client = new ImapFlow({ host: "imap.gmail.com", port: 993, secure: true, auth: { user, pass }, logger: false });
   try {
@@ -190,6 +222,15 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
 
         if (!d.email && !d.tel) { result.errors.push(`Email ${messageId} : ni email ni téléphone détectés.`); continue; }
 
+        // 3ᵉ garde-fou : même identité déjà créée DANS CETTE exécution (deux mails
+        // du même contact dans le même lot) → on ne recrée pas.
+        const identite = normEmail(d.email) || normTel(d.tel);
+        if (identite && vusRun.has(identite)) {
+          if (!dry) nouveauxIds.push(messageId);
+          result.skipped++;
+          continue;
+        }
+
         // 2ᵉ garde-fou : si un prospect OU un client avec ce même email/tél existe
         // déjà, on NE crée rien (on marque juste l'email comme traité). Doublon impossible.
         if (await leadExisteDeja(d.email, d.tel)) {
@@ -223,6 +264,7 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
             continue;
           }
         }
+        if (identite) vusRun.add(identite);
         result.imported.push({ prenom: d.prenom, email: d.email, typePresta: d.typePresta, prix: d.prix });
       }
     } finally {
@@ -238,4 +280,8 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
     await ecrireTraites([...Array.from(traites), ...nouveauxIds]);
   }
   return result;
+  } finally {
+    // Libère le verrou quoi qu'il arrive (succès, erreur IMAP, exception).
+    if (isRealRun) { try { await setSettingRaw(LOCK_KEY, "0"); } catch { /* ignore */ } }
+  }
 }
