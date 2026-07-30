@@ -2,15 +2,16 @@
 // Import des demandes de devis reçues par email (formulaire du site kinouclean.fr).
 // Lit la boîte Gmail en IMAP (mot de passe d'application), repère les emails
 // « Nouvelle demande de devis » envoyés par contact@kinouclean.fr, extrait les
-// champs et crée automatiquement le client/prestation dans le dashboard.
+// champs et crée automatiquement un PROSPECT (statut NOUVEAU) dans le dashboard —
+// le lead est ensuite qualifié/relancé puis converti en client à la main.
 //
-// Anti-doublon : on mémorise les Message-ID déjà traités (settings/inbox_processed)
-// → un même email n'est jamais importé deux fois, même s'il a déjà été lu dans Gmail.
+// Double anti-doublon :
+//   • Message-ID déjà traités (settings/inbox_processed) → jamais réimporté.
+//   • Prospect OU client existant (même email/tél) → jamais recréé.
 // ─────────────────────────────────────────────────────────────────────────────
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { supabase } from "./supabase";
-import { appendPrestation } from "./sheets";
 import { getSetting } from "./mailer";
 import { getSettingJSON, setSettingRaw } from "./settings";
 
@@ -26,16 +27,21 @@ async function ecrireTraites(ids: string[]): Promise<void> {
   await setSettingRaw(PROCESSED_KEY, JSON.stringify(ids.slice(-2000)));
 }
 
-// 2ᵉ garde-fou : un client avec cet email OU ce téléphone existe-t-il déjà ?
-// (indépendant du suivi des Message-ID → doublon impossible même en cas de bug.)
-async function clientExisteDeja(email: string, tel: string): Promise<boolean> {
+// 2ᵉ garde-fou : ce lead existe-t-il déjà (même email OU téléphone) — soit comme
+// PROSPECT, soit comme CLIENT déjà en base ? (indépendant du suivi des Message-ID
+// → doublon impossible même en cas de bug.)
+async function leadExisteDeja(email: string, tel: string): Promise<boolean> {
   if (!supabase) return false;
   const conds: string[] = [];
   if (email) conds.push(`email.eq.${email}`);
   if (tel)   conds.push(`tel.eq.${tel}`);
   if (!conds.length) return false;
-  const { data } = await supabase.from("clients").select("id").or(conds.join(",")).limit(1);
-  return (data?.length ?? 0) > 0;
+  const filtre = conds.join(",");
+  const [prospect, client] = await Promise.all([
+    supabase.from("prospects").select("id").or(filtre).limit(1),
+    supabase.from("clients").select("id").or(filtre).limit(1),
+  ]);
+  return ((prospect.data?.length ?? 0) > 0) || ((client.data?.length ?? 0) > 0);
 }
 
 // ─── Parsing du corps de l'email en champs ──────────────────────────────────────
@@ -184,9 +190,9 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
 
         if (!d.email && !d.tel) { result.errors.push(`Email ${messageId} : ni email ni téléphone détectés.`); continue; }
 
-        // 2ᵉ garde-fou : si un client avec ce même email/tél existe déjà, on NE
-        // crée rien (on marque juste l'email comme traité). Doublon impossible.
-        if (await clientExisteDeja(d.email, d.tel)) {
+        // 2ᵉ garde-fou : si un prospect OU un client avec ce même email/tél existe
+        // déjà, on NE crée rien (on marque juste l'email comme traité). Doublon impossible.
+        if (await leadExisteDeja(d.email, d.tel)) {
           if (!dry) nouveauxIds.push(messageId);
           result.skipped++;
           continue;
@@ -194,16 +200,26 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
 
         if (!dry) {
           try {
-            await appendPrestation({
-              nom: d.nom, prenom: d.prenom, tel: d.tel, email: d.email,
-              typePresta: d.typePresta || "Demande de devis", quantite: "1",
-              adresse: d.adresse, date: "", heure: "",
-              message: d.message, prix: d.prix,
-              source: "Site (formulaire)", statutClient: "NOUVEAU",
+            // Le lead entrant devient un PROSPECT au statut NOUVEAU (pipeline de
+            // recontact), pas un client : on qualifie avant de convertir.
+            if (!supabase) throw new Error("Supabase non configuré");
+            const { error } = await supabase.from("prospects").insert({
+              prenom     : d.prenom || "",
+              nom        : d.nom || "",
+              tel        : d.tel || null,
+              email      : d.email || null,
+              source     : "Site (formulaire)",
+              type_presta: d.typePresta || "Demande de devis",
+              adresse    : d.adresse || null,
+              budget     : d.prix || null,     // estimation du formulaire
+              notes      : d.message || null,
+              statut     : "NOUVEAU",
+              commentaires: [],
             });
+            if (error) throw new Error(error.message);
             nouveauxIds.push(messageId);
           } catch (e) {
-            result.errors.push(`Création client (${d.email || d.tel}) : ${e instanceof Error ? e.message : "erreur"}`);
+            result.errors.push(`Création prospect (${d.email || d.tel}) : ${e instanceof Error ? e.message : "erreur"}`);
             continue;
           }
         }

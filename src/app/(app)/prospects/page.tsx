@@ -6,6 +6,7 @@ import {
   Users, TrendingUp, Clock, CheckCircle2, Pencil, Check,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import { useToast } from "@/components/Toast";
 import { SkeletonList } from "@/components/Skeleton";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
@@ -732,6 +733,8 @@ export default function ProspectsPage() {
   const [filterStatut,  setFilterStatut]  = useState<string>("ACTIFS");
   const [showAdd, setShowAdd]     = useState(false);
   const [selected, setSelected]   = useState<Prospect | null>(null);
+  const [importing, setImporting] = useState(false);
+  const toast = useToast();
 
   async function load() {
     setLoading(true);
@@ -741,6 +744,24 @@ export default function ProspectsPage() {
     } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, []);
+
+  // Relève manuelle des nouveaux leads reçus par email (formulaire du site) →
+  // crée les prospects manquants. L'import tourne aussi automatiquement chaque jour.
+  async function importerLeads() {
+    setImporting(true);
+    try {
+      const res = await fetch("/api/cron/inbox?days=14");
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "Import impossible");
+      const n = d.crees ?? 0;
+      if (n > 0) { toast.success(`${n} nouveau${n > 1 ? "x" : ""} lead${n > 1 ? "s" : ""} importé${n > 1 ? "s" : ""} 🎉`); await load(); }
+      else toast.success("Aucun nouveau lead — tout est déjà à jour ✅");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erreur d'import");
+    } finally {
+      setImporting(false);
+    }
+  }
 
   // ── Dates de référence ──
   const todayIso = useMemo(() => new Date().toISOString().split("T")[0], []);
@@ -835,11 +856,19 @@ export default function ProspectsPage() {
         loading={loading}
         alerts={counts.urgent}
         action={
-          <button onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors">
-            <Plus size={15} />
-            Nouveau prospect
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={importerLeads} disabled={importing}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-blue-200 text-blue-700 text-sm font-medium hover:bg-blue-50 transition-colors disabled:opacity-60"
+              title="Relever les nouveaux leads reçus par email (formulaire du site)">
+              {importing ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
+              <span className="hidden sm:inline">{importing ? "Import…" : "Importer les leads"}</span>
+            </button>
+            <button onClick={() => setShowAdd(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors">
+              <Plus size={15} />
+              <span className="hidden sm:inline">Nouveau prospect</span>
+            </button>
+          </div>
         }
       />
 
