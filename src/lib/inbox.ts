@@ -190,6 +190,20 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
       if (debug) result.totalTrouves = list.length;
 
       for (const uid of list) {
+        // Baseline : on ne télécharge QUE l'enveloppe (messageId) — pas tout
+        // l'email — pour marquer rapidement tout l'historique comme traité sans
+        // rien créer. Le filtre from/subject de la recherche IMAP suffit.
+        if (baseline && !dry) {
+          let mid: string | null = null;
+          for await (const msg of client.fetch(uid, { envelope: true }, { uid: true })) {
+            mid = msg.envelope?.messageId || `uid-${uid}`;
+          }
+          if (!mid) continue;
+          if (!traites.has(mid)) nouveauxIds.push(mid);
+          result.skipped++;
+          continue;
+        }
+
         let raw: Buffer | null = null;
         for await (const msg of client.fetch(uid, { source: true }, { uid: true })) {
           raw = msg.source as Buffer;
@@ -201,10 +215,6 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
 
         const messageId = parsed.messageId || `uid-${uid}`;
         if (traites.has(messageId)) { result.skipped++; continue; }
-
-        // Baseline : on marque l'email comme traité SANS créer de client (sert à
-        // ignorer l'historique et ne traiter que les nouvelles demandes ensuite).
-        if (baseline && !dry) { nouveauxIds.push(messageId); result.skipped++; continue; }
 
         const body = (parsed.text && parsed.text.trim()) ? parsed.text : stripHtml(parsed.html || "");
         const d = parseDemande(body, subject);
