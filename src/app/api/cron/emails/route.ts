@@ -185,6 +185,40 @@ export async function GET(req: Request) {
   const etat = await lireEtat();
   let etatModifie = false;
 
+  // DIAG (simulation only) : pour chaque relance suivie, récupère l'état réel de
+  // la prestation SANS filtre archive → explique pourquoi une séquence est gelée.
+  let diagCles: unknown[] = [];
+  if (mode === "simulation") {
+    const ids = Object.keys(etat).filter(k => etat[k]?.relance);
+    if (ids.length) {
+      const { data: allp } = await supabase
+        .from("prestations")
+        .select("id, archive, date_intervention, statut, type_prestation, clients(prenom, nom)")
+        .in("id", ids);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const byId: Record<string, any> = {};
+      for (const r of allp || []) byId[r.id as string] = r;
+      diagCles = ids.map(id => {
+        const r = byId[id];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const c: any = r ? (Array.isArray(r.clients) ? r.clients[0] : r.clients) || {} : {};
+        return {
+          id, niveau: etat[id]?.relance,
+          existe: !!r,
+          archive: r?.archive ?? null,
+          aDate: !!(r?.date_intervention),
+          statut: r?.statut ?? null,
+          nom: r ? `${c.prenom || ""} ${c.nom || ""}`.trim() : "(prestation supprimée)",
+          gelePar: !r ? "prestation supprimée"
+            : r.archive ? "prestation archivée"
+            : r.date_intervention ? "date posée (RDV) → relances stoppées"
+            : ["CONFIRMÉ","PAYÉ","TERMINÉ","ANNULÉ"].includes(r.statut) ? `statut ${r.statut}`
+            : null,
+        };
+      });
+    }
+  }
+
   // Préférence fiscale par client (avance immédiate / crédit d'impôt).
   const fiscalClients = await getSettingJSON<Record<string, string>>("fiscal_clients", {});
 
@@ -345,6 +379,7 @@ export async function GET(req: Request) {
     erreurs,
     aDemarrer,
     diagRelances,
+    diagCles,
     // Carte EXACTE que renvoie /api/emails/action (source du badge « Relance x/3 »).
     niveauxBadge: Object.fromEntries(
       Object.entries(etat).filter(([, e]) => e.relance).map(([k, e]) => [k, e.relance])
