@@ -39,9 +39,21 @@ export async function GET(req: Request) {
   // Sans prestationId → renvoie le niveau de relance de TOUTES les prestations
   // (pour afficher un badge dans le tableau sans ouvrir chaque prestation).
   if (!id) {
+    // Ne renvoie un badge QUE pour les relances encore vivantes : prestation
+    // existante, non archivée. Une prestation archivée/supprimée fige sa séquence
+    // et ne doit plus afficher « Relance x/3 » (badge trompeur).
+    const ids = Object.entries(etat).filter(([, e]) => e.relance).map(([pid]) => pid);
     const niveaux: Record<string, number> = {};
-    for (const [pid, e] of Object.entries(etat)) {
-      if (e.relance) niveaux[pid] = e.relance;
+    if (ids.length && supabase) {
+      const { data } = await supabase
+        .from("prestations")
+        .select("id")
+        .in("id", ids)
+        .eq("archive", false);
+      const actifs = new Set((data || []).map(r => r.id as string));
+      for (const pid of ids) {
+        if (actifs.has(pid)) niveaux[pid] = etat[pid].relance as number;
+      }
     }
     return NextResponse.json({ niveaux });
   }

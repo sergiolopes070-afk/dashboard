@@ -185,10 +185,13 @@ export async function GET(req: Request) {
   const etat = await lireEtat();
   let etatModifie = false;
 
-  // DIAG (simulation only) : pour chaque relance suivie, récupère l'état réel de
-  // la prestation SANS filtre archive → explique pourquoi une séquence est gelée.
-  let diagCles: unknown[] = [];
-  if (mode === "simulation") {
+  // ── Nettoyage auto + diagnostic des relances suivies ───────────────────────
+  // À chaque passage, on vérifie l'état réel (SANS filtre archive) de chaque
+  // prestation ayant une relance en cours. Les entrées dont la prestation est
+  // archivée ou supprimée sont PURGÉES (leur séquence est terminée) : elles ne
+  // doivent plus figer un badge « Relance x/3 ».
+  const diagCles: unknown[] = [];
+  {
     const ids = Object.keys(etat).filter(k => etat[k]?.relance);
     if (ids.length) {
       const { data: allp } = await supabase
@@ -198,24 +201,25 @@ export async function GET(req: Request) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const byId: Record<string, any> = {};
       for (const r of allp || []) byId[r.id as string] = r;
-      diagCles = ids.map(id => {
+      for (const id of ids) {
         const r = byId[id];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const c: any = r ? (Array.isArray(r.clients) ? r.clients[0] : r.clients) || {} : {};
-        return {
-          id, niveau: etat[id]?.relance,
-          existe: !!r,
-          archive: r?.archive ?? null,
-          aDate: !!(r?.date_intervention),
+        const gelePar = !r ? "prestation supprimée"
+          : r.archive ? "prestation archivée"
+          : r.date_intervention ? "date posée (RDV) → relances stoppées"
+          : ["CONFIRMÉ", "PAYÉ", "TERMINÉ", "ANNULÉ"].includes(r.statut) ? `statut ${r.statut}`
+          : null;
+        // Purge des séquences définitivement terminées (archivée / supprimée).
+        if (!r || r.archive) { delete etat[id]; etatModifie = true; }
+        diagCles.push({
+          id, niveau: etat[id]?.relance ?? null,
+          existe: !!r, archive: r?.archive ?? null, aDate: !!(r?.date_intervention),
           statut: r?.statut ?? null,
           nom: r ? `${c.prenom || ""} ${c.nom || ""}`.trim() : "(prestation supprimée)",
-          gelePar: !r ? "prestation supprimée"
-            : r.archive ? "prestation archivée"
-            : r.date_intervention ? "date posée (RDV) → relances stoppées"
-            : ["CONFIRMÉ","PAYÉ","TERMINÉ","ANNULÉ"].includes(r.statut) ? `statut ${r.statut}`
-            : null,
-        };
-      });
+          gelePar, purge: !r || !!r?.archive,
+        });
+      }
     }
   }
 
