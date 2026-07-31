@@ -243,11 +243,7 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
         // Un mail reçu à partir de `since` peut être réimporté même s'il figure
         // déjà dans les traités (récupération après un reset trop large).
         const forceReimport = !!(sinceValide && parsed.date && new Date(parsed.date) >= sinceValide);
-        const trace = !!sinceValide; // diagnostic actif seulement en mode récupération
-        if (traites.has(messageId) && !forceReimport) {
-          if (trace) result.errors.push(`SKIP traité (date=${parsed.date ? new Date(parsed.date).toISOString() : "?"}, force=${forceReimport}) : ${subject}`);
-          result.skipped++; continue;
-        }
+        if (traites.has(messageId) && !forceReimport) { result.skipped++; continue; }
 
         const body = (parsed.text && parsed.text.trim()) ? parsed.text : stripHtml(parsed.html || "");
         const d = parseDemande(body, subject);
@@ -263,16 +259,12 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
           continue;
         }
 
-        if (!d.email && !d.tel) {
-          if (trace) result.errors.push(`SKIP sans-contact : ${subject}`);
-          result.errors.push(`Email ${messageId} : ni email ni téléphone détectés.`); continue;
-        }
+        if (!d.email && !d.tel) { result.errors.push(`Email ${messageId} : ni email ni téléphone détectés.`); continue; }
 
         // 3ᵉ garde-fou : même identité déjà créée DANS CETTE exécution (deux mails
         // du même contact dans le même lot) → on ne recrée pas.
         const identite = normEmail(d.email) || normTel(d.tel);
         if (identite && vusRun.has(identite)) {
-          if (trace) result.errors.push(`SKIP vu-ce-run (${identite}) : ${subject}`);
           if (!dry) nouveauxIds.push(messageId);
           result.skipped++;
           continue;
@@ -280,9 +272,7 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
 
         // 2ᵉ garde-fou : si un prospect OU un client avec ce même email/tél existe
         // déjà, on NE crée rien (on marque juste l'email comme traité). Doublon impossible.
-        const dejaVia = await leadExisteDeja(d.email, d.tel);
-        if (dejaVia) {
-          if (trace) result.errors.push(`SKIP doublon [${dejaVia}] (email=${d.email}, tel=${d.tel}) : ${subject}`);
+        if (await leadExisteDeja(d.email, d.tel)) {
           if (!dry) nouveauxIds.push(messageId);
           result.skipped++;
           continue;
