@@ -23,13 +23,23 @@ function AvisContent() {
 
   const effective = hovered || rating;
 
-  // Note pré-sélectionnée depuis les étoiles de l'email (?note=1..5) : on
-  // PRÉ-REMPLIT simplement la note. Le client voit l'adaptation en direct
-  // (≥4 → « publié sur Google », ≤3 → commentaire privé) et confirme via le
-  // bouton — rien n'est envoyé ni redirigé sans son action.
+  // Note choisie via les étoiles de l'email (?note=1..5) → routage DIRECT, sans
+  // page intermédiaire : ≥4 → redirection immédiate vers Google ; ≤3 → formulaire
+  // de commentaire privé (note pré-remplie).
   const noteParam = parseInt(searchParams.get("note") || "0", 10);
   useEffect(() => {
-    if (noteParam >= 1 && noteParam <= 5) setRating(noteParam);
+    if (!noteParam || noteParam < 1 || noteParam > 5) return;
+    setRating(noteParam);
+    if (noteParam >= 4) {
+      setRedirecting(true);
+      fetch("/api/avis", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, clientName, prestation, rating: noteParam, comment: "" }),
+      }).catch(() => {}).finally(() => {
+        setTimeout(() => { window.location.href = GOOGLE_REVIEW_URL; }, 1000);
+      });
+    }
+    // ≤3 : on reste sur la page, note pré-remplie, pour recueillir le commentaire privé.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
