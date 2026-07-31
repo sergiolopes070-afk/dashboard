@@ -38,26 +38,26 @@ export const normTel   = (t: string) => (t || "").replace(/\D/g, "");
 // → doublon impossible même en cas de bug.) Email comparé en insensible à la
 // casse ; téléphone comparé sur les chiffres uniquement (les espaces/format ne
 // cassent plus la détection).
-async function leadExisteDeja(email: string, tel: string): Promise<boolean> {
-  if (!supabase) return false;
+async function leadExisteDeja(email: string, tel: string): Promise<string | null> {
+  if (!supabase) return null;
   const e = normEmail(email);
   const t = normTel(tel);
-  if (!e && !t) return false;
+  if (!e && !t) return null;
 
   for (const table of ["prospects", "clients"] as const) {
     // Email : match exact insensible à la casse (ilike sans jokers).
     if (e) {
       const { data } = await supabase.from(table).select("id").ilike("email", e).limit(1);
-      if ((data?.length ?? 0) > 0) return true;
+      if ((data?.length ?? 0) > 0) return `email dans ${table}`;
     }
     // Téléphone : on récupère les tél non nuls et on compare sur les chiffres
     // (les fiches peuvent stocker « 06 20… » alors que le lead a « 0620… »).
     if (t) {
       const { data } = await supabase.from(table).select("tel").not("tel", "is", null).limit(5000);
-      if ((data || []).some(r => normTel(r.tel as string) === t)) return true;
+      if ((data || []).some(r => normTel(r.tel as string) === t)) return `tel dans ${table}`;
     }
   }
-  return false;
+  return null;
 }
 
 // ─── Parsing du corps de l'email en champs ──────────────────────────────────────
@@ -280,8 +280,9 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
 
         // 2ᵉ garde-fou : si un prospect OU un client avec ce même email/tél existe
         // déjà, on NE crée rien (on marque juste l'email comme traité). Doublon impossible.
-        if (await leadExisteDeja(d.email, d.tel)) {
-          if (trace) result.errors.push(`SKIP doublon-en-base (email=${d.email}, tel=${d.tel}) : ${subject}`);
+        const dejaVia = await leadExisteDeja(d.email, d.tel);
+        if (dejaVia) {
+          if (trace) result.errors.push(`SKIP doublon [${dejaVia}] (email=${d.email}, tel=${d.tel}) : ${subject}`);
           if (!dry) nouveauxIds.push(messageId);
           result.skipped++;
           continue;
