@@ -729,7 +729,7 @@ export default function ProspectsPage() {
   const [prospects, setProspects] = useState<Prospect[]>(() => cacheGet<Prospect[]>(CACHE_KEYS.prospects) ?? []);
   const [loading, setLoading]     = useState(() => !cacheHas(CACHE_KEYS.prospects));
   const [search, setSearch]       = useState("");
-  const [filterRelance, setFilterRelance] = useState<string>("urgent");
+  const [filterRelance, setFilterRelance] = useState<string>("ACTIFS"); // montre tous les actifs (leads sans date de relance inclus)
   const [filterStatut,  setFilterStatut]  = useState<string>("ACTIFS");
   const [showAdd, setShowAdd]     = useState(false);
   const [selected, setSelected]   = useState<Prospect | null>(null);

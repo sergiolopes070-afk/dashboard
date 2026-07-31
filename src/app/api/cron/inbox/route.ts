@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { importInbox } from "@/lib/inbox";
+import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -26,6 +27,16 @@ export async function GET(req: Request) {
   if (!cronOk) {
     const unauth = await requireAuth(); // bouton du dashboard : session requise
     if (unauth) return unauth;
+  }
+
+  // Contrôle ciblé : ?find=<email> → où se trouve ce contact (prospects/clients) + ses champs.
+  const find = url.searchParams.get("find");
+  if (find && supabase) {
+    const [pros, cli] = await Promise.all([
+      supabase.from("prospects").select("id, prenom, nom, email, tel, statut, date_relance, created_at").ilike("email", find).limit(5),
+      supabase.from("clients").select("id, prenom, nom, email, tel").ilike("email", find).limit(5),
+    ]);
+    return NextResponse.json({ email: find, prospects: pros.data || [], clients: cli.data || [] });
   }
 
   const dry = url.searchParams.get("dry") === "1";

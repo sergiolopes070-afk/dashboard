@@ -158,6 +158,7 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
   const sinceDate = opts.since ? new Date(opts.since) : null;
   const sinceValide = sinceDate && !isNaN(sinceDate.getTime()) ? sinceDate : null;
   const days = opts.days && opts.days > 0 ? opts.days : 60;
+  const todayIso = new Date().toISOString().split("T")[0]; // date de relance par défaut du lead
   const result: ImportResult = { imported: [], skipped: 0, errors: [], dry };
   if (debug) result.debugSample = [];
 
@@ -294,6 +295,7 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
               budget     : d.prix || null,     // estimation du formulaire
               notes      : d.message || null,
               statut     : "NOUVEAU",
+              date_relance: todayIso,          // à rappeler dès aujourd'hui → visible d'emblée
               commentaires: [],
             });
             if (error) throw new Error(error.message);
