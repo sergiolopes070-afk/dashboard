@@ -39,6 +39,20 @@ export async function GET(req: Request) {
     return NextResponse.json({ email: find, prospects: pros.data || [], clients: cli.data || [] });
   }
 
+  // Maintenance ponctuelle : donne une date de relance = aujourd'hui aux leads
+  // déjà importés qui n'en ont pas (source formulaire), pour qu'ils apparaissent
+  // dans « À rappeler ». Réservé au déclenchement à clé.
+  if (url.searchParams.get("reviveLeads") === "1" && supabase) {
+    const today = new Date().toISOString().split("T")[0];
+    const { data, error } = await supabase
+      .from("prospects")
+      .update({ date_relance: today })
+      .eq("source", "Site (formulaire)")
+      .is("date_relance", null)
+      .select("prenom, email");
+    return NextResponse.json({ revived: data?.length ?? 0, details: data || [], error: error?.message });
+  }
+
   const dry = url.searchParams.get("dry") === "1";
   const debug = url.searchParams.get("debug") === "1";
   const baseline = url.searchParams.get("baseline") === "1";
