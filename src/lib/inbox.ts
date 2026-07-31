@@ -145,6 +145,7 @@ export interface ImportResult {
   errors: string[];
   dry: boolean;
   debugSample?: { from: string; subject: string; text: string; htmlStripped: string; parsed: DemandeParsee }[];
+  debugAll?: { date: string; from: string; subject: string; messageId: string; traite: boolean }[];
   totalTrouves?: number;
 }
 
@@ -190,6 +191,27 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
       if (debug) result.totalTrouves = list.length;
 
       for (const uid of list) {
+        // Debug : liste TOUS les mails trouvés (même déjà traités) avec date/statut.
+        if (debug) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let env: any = null;
+          for await (const msg of client.fetch(uid, { envelope: true }, { uid: true })) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            env = (msg as any).envelope || null;
+          }
+          const mid = env?.messageId || `uid-${uid}`;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const fromStr = Array.isArray(env?.from) ? env.from.map((a: any) => a.address || a.name).filter(Boolean).join(", ") : "";
+          (result.debugAll ??= []).push({
+            date: env?.date ? new Date(env.date).toISOString() : "",
+            from: fromStr,
+            subject: env?.subject || "",
+            messageId: mid,
+            traite: traites.has(mid),
+          });
+          continue;
+        }
+
         // Baseline : on ne télécharge QUE l'enveloppe (messageId) — pas tout
         // l'email — pour marquer rapidement tout l'historique comme traité sans
         // rien créer. Le filtre from/subject de la recherche IMAP suffit.
