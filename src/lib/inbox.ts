@@ -149,10 +149,14 @@ export interface ImportResult {
   totalTrouves?: number;
 }
 
-export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?: number; baseline?: boolean } = {}): Promise<ImportResult> {
+export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?: number; baseline?: boolean; since?: string } = {}): Promise<ImportResult> {
   const dry = !!opts.dry;
   const debug = !!opts.debug;
   const baseline = !!opts.baseline; // marque comme traité sans créer (ignore l'historique)
+  // `since` (YYYY-MM-DD) : réimporte les mails reçus à partir de cette date même
+  // s'ils ont déjà été marqués traités (récupération ponctuelle, ex. après un reset).
+  const sinceDate = opts.since ? new Date(opts.since) : null;
+  const sinceValide = sinceDate && !isNaN(sinceDate.getTime()) ? sinceDate : null;
   const days = opts.days && opts.days > 0 ? opts.days : 60;
   const result: ImportResult = { imported: [], skipped: 0, errors: [], dry };
   if (debug) result.debugSample = [];
@@ -236,7 +240,10 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
         if (!subject.toLowerCase().includes(SUBJECT_MATCH.toLowerCase())) continue;
 
         const messageId = parsed.messageId || `uid-${uid}`;
-        if (traites.has(messageId)) { result.skipped++; continue; }
+        // Un mail reçu à partir de `since` peut être réimporté même s'il figure
+        // déjà dans les traités (récupération après un reset trop large).
+        const forceReimport = !!(sinceValide && parsed.date && new Date(parsed.date) >= sinceValide);
+        if (traites.has(messageId) && !forceReimport) { result.skipped++; continue; }
 
         const body = (parsed.text && parsed.text.trim()) ? parsed.text : stripHtml(parsed.html || "");
         const d = parseDemande(body, subject);

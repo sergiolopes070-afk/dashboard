@@ -33,8 +33,9 @@ export async function GET(req: Request) {
   const baseline = url.searchParams.get("baseline") === "1";
   const daysParam = parseInt(url.searchParams.get("days") || "", 10);
   const days = Number.isFinite(daysParam) && daysParam > 0 ? daysParam : undefined;
+  const since = url.searchParams.get("since") || undefined;
 
-  const res = await importInbox({ dry: dry || debug, debug, baseline, days });
+  const res = await importInbox({ dry: dry || debug, debug, baseline, days, since });
   if (debug) return NextResponse.json({ mode: "DEBUG", totalTrouves: res.totalTrouves, debugAll: res.debugAll, debugSample: res.debugSample, erreurs: res.errors.slice(0, 3) });
   return NextResponse.json({
     mode: baseline ? "BASELINE (historique marqué traité, rien créé)" : dry ? "SIMULATION (aucune création)" : "IMPORT",
