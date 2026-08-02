@@ -18,8 +18,11 @@ export const dynamic = "force-dynamic";
     seuil         NUMERIC DEFAULT 0,
     prix_unitaire NUMERIC,
     notes         TEXT,
-    historique    JSONB DEFAULT '[]'::jsonb
+    historique    JSONB DEFAULT '[]'::jsonb,
+    conso         JSONB DEFAULT '{}'::jsonb
   );
+  -- conso = dose consommée par type de prestation, ex. {"Lavage véhicule": 0.15}
+  -- → à la clôture d'un RDV, le produit se décrémente automatiquement.
 */
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,6 +38,7 @@ export function rowToItem(r: Record<string, any>) {
     prixUnitaire : r.prix_unitaire != null ? Number(r.prix_unitaire) : null,
     notes        : r.notes         || "",
     historique   : Array.isArray(r.historique) ? r.historique : [],
+    conso        : (r.conso && typeof r.conso === "object" && !Array.isArray(r.conso)) ? r.conso as Record<string, number> : {},
   };
 }
 
@@ -72,6 +76,7 @@ export async function POST(req: Request) {
       prix_unitaire: b.prixUnitaire != null && b.prixUnitaire !== "" ? Number(b.prixUnitaire) : null,
       notes        : b.notes || null,
       historique   : [],
+      conso        : (b.conso && typeof b.conso === "object") ? b.conso : {},
     })
     .select("*")
     .single();

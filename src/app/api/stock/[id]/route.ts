@@ -49,6 +49,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (u.seuil !== undefined)        patch.seuil = Number(u.seuil) || 0;
   if (u.prixUnitaire !== undefined) patch.prix_unitaire = u.prixUnitaire !== "" && u.prixUnitaire != null ? Number(u.prixUnitaire) : null;
   if (u.notes !== undefined)        patch.notes = u.notes || null;
+  if (u.conso !== undefined)        patch.conso = (u.conso && typeof u.conso === "object") ? u.conso : {};
 
   const { data, error } = await supabase.from("stock_items").update(patch).eq("id", id).select("*").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

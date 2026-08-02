@@ -13,11 +13,38 @@ interface Mouvement { date: string; type: "entree" | "sortie"; quantite: number;
 interface StockItem {
   id: string; createdAt: string; nom: string; categorie: string; unite: string;
   quantite: number; seuil: number; prixUnitaire: number | null; notes: string;
-  historique: Mouvement[];
+  historique: Mouvement[]; conso: Record<string, number>;
 }
 
 const CATS = ["Matériel", "Produits", "Consommables", "Équipement", "Autre"];
 const UNITES = ["unité", "L", "ml", "kg", "g", "rouleau", "paquet", "carton", "paire"];
+// Types de prestation qui peuvent consommer du produit (véhicule, canapé…).
+const TYPES_PRESTA = [
+  "Lavage véhicule", "Lavage Canapé", "Lavage de matelas", "Lavage tapis",
+  "Ménage", "Vitres", "Repassage", "Après travaux", "Bureaux",
+];
+
+// Autonomie lisible à partir d'un nombre de semaines.
+function autonomieLabel(semaines: number | null): string {
+  if (semaines == null) return "—";
+  if (semaines >= 8)  return `≈ ${Math.round(semaines / 4.345)} mois`;
+  if (semaines >= 2)  return `≈ ${Math.round(semaines)} sem.`;
+  const jours = Math.round(semaines * 7);
+  return jours <= 1 ? "≈ 1 jour" : `≈ ${jours} jours`;
+}
+
+// Autonomie estimée = stock actuel / consommation hebdo réelle (sorties des 30
+// derniers jours, historisées à chaque clôture de RDV). null si pas d'historique.
+const WINDOW_DAYS = 30;
+function autonomieSemaines(item: StockItem): number | null {
+  const depuis = Date.now() - WINDOW_DAYS * 86_400_000;
+  const consomme = (item.historique || [])
+    .filter(m => m.type === "sortie" && m.date && new Date(m.date).getTime() >= depuis)
+    .reduce((s, m) => s + (Number(m.quantite) || 0), 0);
+  if (consomme <= 0) return null;
+  const parSemaine = consomme / (WINDOW_DAYS / 7);
+  return parSemaine > 0 ? item.quantite / parSemaine : null;
+}
 
 const inputCls = "w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white";
 
@@ -32,12 +59,21 @@ function ItemModal({ initial, onClose, onSaved }: { initial: StockItem | null; o
   const [prix, setPrix]       = useState(initial?.prixUnitaire != null ? String(initial.prixUnitaire) : "");
   const [notes, setNotes]     = useState(initial?.notes ?? "");
   const [saving, setSaving]   = useState(false);
+  // Recette de consommation : lignes { type de prestation, dose }.
+  const [recette, setRecette] = useState<{ type: string; dose: string }[]>(
+    initial ? Object.entries(initial.conso || {}).map(([type, dose]) => ({ type, dose: String(dose) })) : []
+  );
+  const addRecette    = () => setRecette(r => [...r, { type: TYPES_PRESTA[0], dose: "" }]);
+  const rmRecette     = (i: number) => setRecette(r => r.filter((_, j) => j !== i));
+  const updRecette    = (i: number, k: "type" | "dose", v: string) => setRecette(r => { const c = [...r]; c[i] = { ...c[i], [k]: v }; return c; });
 
   async function save() {
     if (!nom.trim()) { toast.error("Nom requis"); return; }
     setSaving(true);
     try {
-      const payload = { nom, categorie, unite, quantite, seuil, prixUnitaire: prix, notes };
+      const conso: Record<string, number> = {};
+      for (const r of recette) { const d = parseFloat(r.dose); if (r.type && d > 0) conso[r.type] = d; }
+      const payload = { nom, categorie, unite, quantite, seuil, prixUnitaire: prix, notes, conso };
       const res = initial
         ? await fetch(`/api/stock/${initial.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ updates: payload }) })
         : await fetch("/api/stock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -87,6 +123,37 @@ function ItemModal({ initial, onClose, onSaved }: { initial: StockItem | null; o
           <div>
             <label className="block text-xs text-gray-500 mb-1">Notes</label>
             <input value={notes} onChange={e => setNotes(e.target.value)} className={inputCls} placeholder="Fournisseur, référence…" />
+          </div>
+
+          {/* Recette de consommation → décrément auto à la clôture d'un RDV */}
+          <div className="border border-gray-100 rounded-xl p-3 bg-gray-50/60">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <p className="text-xs font-semibold text-gray-600">Consommation par prestation</p>
+                <p className="text-[11px] text-gray-400">Dose déduite automatiquement quand un RDV de ce type est clôturé.</p>
+              </div>
+              <button type="button" onClick={addRecette} className="text-xs text-blue-600 font-medium hover:text-blue-700">+ Ajouter</button>
+            </div>
+            {recette.length === 0 ? (
+              <p className="text-[11px] text-gray-400 italic">Aucune règle — ce produit ne se décrémente pas tout seul.</p>
+            ) : (
+              <div className="space-y-2">
+                {recette.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <select value={r.type} onChange={e => updRecette(i, "type", e.target.value)}
+                      className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
+                      {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <div className="relative">
+                      <input type="number" step="0.001" value={r.dose} onChange={e => updRecette(i, "dose", e.target.value)}
+                        placeholder="dose" className="w-24 bg-white border border-gray-200 rounded-lg pl-2 pr-9 py-1.5 text-xs" />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">{unite}</span>
+                    </div>
+                    <button type="button" onClick={() => rmRecette(i)} className="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
@@ -292,6 +359,7 @@ export default function StockPage() {
                   <th className="text-left px-4 py-3 font-medium">Article</th>
                   <th className="text-left px-4 py-3 font-medium">Catégorie</th>
                   <th className="text-center px-4 py-3 font-medium">Stock</th>
+                  <th className="text-center px-4 py-3 font-medium">Autonomie</th>
                   <th className="text-right px-4 py-3 font-medium">Valeur</th>
                   <th className="text-center px-4 py-3 font-medium">Mouvement</th>
                   <th className="px-4 py-3"></th>
@@ -303,7 +371,13 @@ export default function StockPage() {
                   return (
                     <tr key={i.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900">{i.nom}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-medium text-gray-900">{i.nom}</p>
+                          {Object.keys(i.conso || {}).length > 0 && (
+                            <span title={`Se décrémente auto : ${Object.entries(i.conso).map(([t, d]) => `${t} −${d}${i.unite}`).join(", ")}`}
+                              className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-semibold">auto</span>
+                          )}
+                        </div>
                         {i.notes && <p className="text-xs text-gray-400 truncate max-w-xs">{i.notes}</p>}
                       </td>
                       <td className="px-4 py-3 text-gray-600">{i.categorie}</td>
@@ -313,6 +387,11 @@ export default function StockPage() {
                           {low && <AlertTriangle size={11} />}
                         </span>
                         {i.seuil > 0 && <p className="text-[10px] text-gray-400 mt-0.5">seuil {i.seuil}</p>}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {(() => { const a = autonomieSemaines(i); return (
+                          <span className={`text-xs font-medium ${a != null && a < 2 ? "text-red-600" : a != null ? "text-gray-700" : "text-gray-300"}`}>{autonomieLabel(a)}</span>
+                        ); })()}
                       </td>
                       <td className="px-4 py-3 text-right text-gray-600">{i.prixUnitaire != null ? `${(i.quantite * i.prixUnitaire).toFixed(2)} €` : "—"}</td>
                       <td className="px-4 py-3">
