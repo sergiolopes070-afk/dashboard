@@ -624,6 +624,45 @@ export default function DepensesPage() {
           </div>
         </div>
 
+        {/* ── Panneau dédié : gestion des charges récurrentes ─────────────── */}
+        {depenses.some(d => d.type === "mensuel") && (
+          <div className="bg-white rounded-2xl shadow-sm border border-purple-100 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+                <RefreshCw size={16} className="text-purple-500" />
+                Charges récurrentes
+                <span className="text-xs font-normal text-gray-400">prélevées chaque mois</span>
+              </h2>
+              <span className="text-sm font-bold text-purple-700">{totalMensuel.toFixed(2)} € / mois</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {depenses.filter(d => d.type === "mensuel").map(d => (
+                <div key={d.id}
+                  className="flex items-center gap-3 p-3 rounded-xl border border-purple-100 bg-purple-50/40">
+                  <div className="w-9 h-9 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center flex-shrink-0">
+                    <RefreshCw size={15} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-gray-900 truncate">{d.nom}</p>
+                    <p className="text-xs text-gray-400 truncate">{d.categorie} · {d.montant.toFixed(2)} €/mois</p>
+                  </div>
+                  <button onClick={() => setModal(d)} title="Modifier"
+                    className="p-2 rounded-lg text-gray-400 hover:bg-white hover:text-blue-600 transition-colors flex-shrink-0">
+                    <Pencil size={14} />
+                  </button>
+                  <button onClick={() => handleDelete(d.id)} disabled={deleting === d.id}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-50 text-red-600 text-xs font-semibold hover:bg-red-100 transition-colors disabled:opacity-40 flex-shrink-0">
+                    <Trash2 size={14} /> Supprimer
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400 mt-3">
+              💡 « Supprimer » retire une charge que tu ne paies plus (ex. un ancien loyer). Un bouton <strong>Annuler</strong> apparaît juste après si c&apos;est une erreur.
+            </p>
+          </div>
+        )}
+
         {/* Filtres liste */}
         <div className="flex flex-wrap gap-3 items-center">
           <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
