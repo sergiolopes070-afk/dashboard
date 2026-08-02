@@ -55,4 +55,5 @@ export const CACHE_KEYS = {
   depenses    : "depenses",
   archive     : "archive",
   agenda      : "agenda",       // liste fusionnée (prestations + archivés) propre à l'agenda
+  stock       : "stock",
 } as const;

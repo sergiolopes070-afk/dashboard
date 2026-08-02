@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useSidebar } from "./SidebarContext";
 import {
   LayoutDashboard, Users, Briefcase, Archive,
-  FileText, Settings, ChevronRight, Wrench, CalendarDays, TrendingDown, LogOut, X, UserSearch,
+  FileText, Settings, ChevronRight, Wrench, CalendarDays, TrendingDown, LogOut, X, UserSearch, Package,
 } from "lucide-react";
 import { cachePrefetch, CACHE_KEYS } from "@/lib/dataCache";
 
@@ -12,6 +12,7 @@ import { cachePrefetch, CACHE_KEYS } from "@/lib/dataCache";
 const PREFETCH: Record<string, { key: string; url: string; transform?: (d: unknown) => unknown }> = {
   "/prospects":    { key: CACHE_KEYS.prospects,    url: "/api/prospects" },
   "/depenses":     { key: CACHE_KEYS.depenses,     url: "/api/depenses" },
+  "/stock":        { key: CACHE_KEYS.stock,        url: "/api/stock" },
   "/prestataires": { key: CACHE_KEYS.prestataires, url: "/api/prestataires" },
   "/prestations":  { key: CACHE_KEYS.prestations,  url: "/api/prestations" },
   "/clients":      { key: CACHE_KEYS.prestations,  url: "/api/prestations" },
@@ -32,6 +33,7 @@ const nav = [
   { href: "/agenda",        label: "Agenda",            icon: CalendarDays },
   { href: "/devis",         label: "Devis",             icon: FileText },
   { href: "/depenses",      label: "Dépenses",          icon: TrendingDown },
+  { href: "/stock",         label: "Stock",             icon: Package },
   { href: "/archive",       label: "Historique",        icon: Archive },
   { href: "/configuration", label: "Configuration",     icon: Settings },
 ];
