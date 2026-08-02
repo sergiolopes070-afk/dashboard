@@ -1,17 +1,14 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
-  Users, Briefcase, TrendingUp, Wrench,
-  AlertTriangle, Clock, FileText, CalendarCheck, UserPlus, UserCheck, CalendarDays, ChevronRight, TrendingDown,
-  BellRing, RefreshCcw, CheckCircle2, ChevronDown, UserSearch, X, Loader2,
+  AlertTriangle, Clock, CalendarCheck, UserPlus, UserCheck,
+  CalendarDays, ChevronRight, BellRing, ChevronDown, UserSearch, X, Loader2,
+  Package, Sparkles, Phone, ArrowRight,
 } from "lucide-react";
-import StatCard from "@/components/StatCard";
-import PrestationTable from "@/components/PrestationTable";
 import Topbar from "@/components/Topbar";
 import StatusBadge from "@/components/StatusBadge";
 import NewClientModal from "@/components/NewClientModal";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
-import dynamic from "next/dynamic";
 import { Prestation, Prestataire, Depense } from "@/lib/constants";
 
 // ── Mini agenda helpers ──────────────────────────────────────────────────────
@@ -21,46 +18,37 @@ const JOURS_MINI = ["L","M","M","J","V","S","D"];
 function getMondayOfWeek(d: Date): Date {
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;
-  const mon = new Date(d);
-  mon.setDate(d.getDate() + diff);
-  mon.setHours(0, 0, 0, 0);
+  const mon = new Date(d); mon.setDate(d.getDate() + diff); mon.setHours(0, 0, 0, 0);
   return mon;
 }
-function addDaysMini(d: Date, n: number): Date {
-  const r = new Date(d); r.setDate(r.getDate() + n); return r;
-}
+const addDaysMini = (d: Date, n: number) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
 function frToDateMini(fr: string): Date | null {
   if (!fr) return null;
   const p = fr.split("/");
   return p.length === 3 ? new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0])) : null;
 }
-function sameDayMini(a: Date, b: Date) {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-
-const RevenueChart = dynamic(() => import("@/components/RevenueChart"), { ssr: false });
-const TypeChart    = dynamic(() => import("@/components/TypeChart"),    { ssr: false });
+const sameDayMini = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
 interface Stats {
-  totalPrestations : number;
-  totalClients     : number;
-  totalPrestataires: number;
-  totalCA          : number;
-  caParEntite      : Record<string, number>;
-  upcoming         : number;
-  toReassign       : number;
-  waitingPresta    : number;
-  devisGeneres     : number;
-  nouveauxClients  : number;
-  prestations      : Prestation[];
-  prestataires     : Prestataire[];
-  archive          : Prestation[];
-  upcomingList     : Prestation[];
-  toReassignList   : Prestation[];
+  totalPrestations: number; totalClients: number; totalPrestataires: number;
+  totalCA: number; caParEntite: Record<string, number>; upcoming: number;
+  toReassign: number; waitingPresta: number; devisGeneres: number; nouveauxClients: number;
+  prestations: Prestation[]; prestataires: Prestataire[]; archive: Prestation[];
+  upcomingList: Prestation[]; toReassignList: Prestation[];
 }
+interface Prospect { id: string; prenom: string; nom: string; tel: string; statut: string; dateRelance: string; typePresta: string; }
+interface StockItem { id: string; nom: string; unite: string; quantite: number; seuil: number; conso: Record<string, number>; historique: { date: string; type: string; quantite: number }[]; }
 
 const SOURCES_PROSPECT   = ["Google","Réseaux sociaux","Bouche à oreille","Recommandation","Formulaire web","Autre"];
 const TYPES_PRESTA_QUICK = ["Ménage","Repassage","Vitres","Débarras","Après travaux","Bureaux","Lavage Canapé","Lavage véhicule","Lavage de matelas","Autre"];
+
+// Autonomie d'un produit = stock / consommation hebdo réelle (sorties 30 j).
+function autonomieSemaines(it: StockItem): number | null {
+  const depuis = Date.now() - 30 * 86_400_000;
+  const conso = (it.historique || []).filter(m => m.type === "sortie" && m.date && new Date(m.date).getTime() >= depuis).reduce((s, m) => s + (Number(m.quantite) || 0), 0);
+  if (conso <= 0) return null;
+  return it.quantite / (conso / (30 / 7));
+}
 
 function QuickProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState({ genre: "", prenom: "", nom: "", tel: "", email: "", typePresta: "", source: "", adresse: "", notes: "" });
@@ -74,15 +62,11 @@ function QuickProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved
     if (!form.prenom || !form.nom) { setError("Prénom et nom sont requis."); return; }
     setSaving(true); setError("");
     try {
-      const res = await fetch("/api/prospects", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+      const res = await fetch("/api/prospects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       if (!res.ok) throw new Error((await res.json()).error || "Erreur");
       onSaved();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Erreur");
-    } finally { setSaving(false); }
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : "Erreur"); }
+    finally { setSaving(false); }
   }
 
   return (
@@ -90,77 +74,43 @@ function QuickProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-              <UserSearch size={15} className="text-purple-600" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-gray-900">Nouveau prospect</h2>
-              <p className="text-xs text-gray-400">Ajout rapide — détails dans l&apos;onglet Prospects</p>
-            </div>
+            <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center"><UserSearch size={15} className="text-purple-600" /></div>
+            <div><h2 className="font-semibold text-gray-900">Nouveau prospect</h2><p className="text-xs text-gray-400">Ajout rapide</p></div>
           </div>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={18} className="text-gray-400" /></button>
         </div>
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
           {error && <p className="text-xs text-red-500 bg-red-50 p-2 rounded-lg">{error}</p>}
-
-          <div>
-            <label className="text-xs text-gray-500 mb-2 block">Civilité</label>
-            <div className="flex gap-2">
-              {["Monsieur","Madame"].map(g => (
-                <button key={g} type="button" onClick={() => set("genre", form.genre === g ? "" : g)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${form.genre === g ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"}`}>
-                  {g}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500 mb-1 block">Prénom *</label>
-              <input value={form.prenom} onChange={e => set("prenom", e.target.value)} className={inputCls} /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Nom *</label>
-              <input value={form.nom} onChange={e => set("nom", e.target.value)} className={inputCls} /></div>
+          <div className="flex gap-2">
+            {["Monsieur","Madame"].map(g => (
+              <button key={g} type="button" onClick={() => set("genre", form.genre === g ? "" : g)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${form.genre === g ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"}`}>{g}</button>
+            ))}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500 mb-1 block">Téléphone</label>
-              <input value={form.tel} onChange={e => set("tel", e.target.value)} className={inputCls} placeholder="06 00 00 00 00" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Email</label>
-              <input type="email" value={form.email} onChange={e => set("email", e.target.value)} className={inputCls} /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Prénom *</label><input value={form.prenom} onChange={e => set("prenom", e.target.value)} className={inputCls} /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Nom *</label><input value={form.nom} onChange={e => set("nom", e.target.value)} className={inputCls} /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs text-gray-500 mb-1 block">Téléphone</label><input value={form.tel} onChange={e => set("tel", e.target.value)} className={inputCls} placeholder="06 00 00 00 00" /></div>
+            <div><label className="text-xs text-gray-500 mb-1 block">Email</label><input type="email" value={form.email} onChange={e => set("email", e.target.value)} className={inputCls} /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="text-xs text-gray-500 mb-1 block">Type de prestation</label>
               <select value={form.typePresta} onChange={e => set("typePresta", e.target.value)} className={inputCls}>
-                <option value="">— Sélectionner —</option>
-                {TYPES_PRESTA_QUICK.map(t => <option key={t} value={t}>{t}</option>)}
+                <option value="">— Sélectionner —</option>{TYPES_PRESTA_QUICK.map(t => <option key={t} value={t}>{t}</option>)}
               </select></div>
             <div><label className="text-xs text-gray-500 mb-1 block">Source</label>
               <select value={form.source} onChange={e => set("source", e.target.value)} className={inputCls}>
-                <option value="">— Source —</option>
-                {SOURCES_PROSPECT.map(s => <option key={s} value={s}>{s}</option>)}
+                <option value="">— Source —</option>{SOURCES_PROSPECT.map(s => <option key={s} value={s}>{s}</option>)}
               </select></div>
           </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">Adresse / Zone</label>
-            <AddressAutocomplete
-              value={form.adresse}
-              onChange={v => set("adresse", v)}
-              onSelect={(adresse, cp, ville) => set("adresse", `${adresse}, ${cp} ${ville}`.trim())}
-              className={inputCls}
-              placeholder="Ville ou adresse approximative"
-            />
-            <p className="text-xs text-gray-400 mt-1">Tapez au moins 4 caractères pour rechercher</p>
-          </div>
-          <div><label className="text-xs text-gray-500 mb-1 block">Notes</label>
-            <textarea rows={2} value={form.notes} onChange={e => set("notes", e.target.value)}
-              className={`${inputCls} resize-none`} placeholder="Infos clés, demandes particulières…" /></div>
-
+          <div><label className="text-xs text-gray-500 mb-1 block">Adresse / Zone</label>
+            <AddressAutocomplete value={form.adresse} onChange={v => set("adresse", v)} onSelect={(a, cp, v) => set("adresse", `${a}, ${cp} ${v}`.trim())} className={inputCls} placeholder="Ville ou adresse" /></div>
           <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose}
-              className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
-            <button type="submit" disabled={saving}
-              className="flex-1 py-2 rounded-xl bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2">
-              {saving ? <Loader2 size={14} className="animate-spin" /> : null}
-              {saving ? "Enregistrement…" : "Ajouter le prospect"}
+            <button type="button" onClick={onClose} className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
+            <button type="submit" disabled={saving} className="flex-1 py-2 rounded-xl bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : null}{saving ? "Enregistrement…" : "Ajouter"}
             </button>
           </div>
         </form>
@@ -171,28 +121,27 @@ function QuickProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved
 
 export default function HomePage() {
   const [stats, setStats]         = useState<Stats | null>(null);
+  const [depenses, setDepenses]   = useState<Depense[]>([]);
+  const [prospects, setProspects] = useState<Prospect[]>([]);
+  const [stock, setStock]         = useState<StockItem[]>([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
   const [showNewClient, setShowNewClient]     = useState(false);
   const [showNewProspect, setShowNewProspect] = useState(false);
   const [showDropdown, setShowDropdown]       = useState(false);
+  const [rentaPeriod, setRentaPeriod]         = useState<"semaine" | "mois">("mois");
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [depenses, setDepenses]   = useState<Depense[]>([]);
-  const [rentaPeriod, setRentaPeriod] = useState<"semaine" | "mois">("mois");
 
-  // Fermer le dropdown si clic en dehors
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowDropdown(false);
-    }
+    function handleClick(e: MouseEvent) { if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowDropdown(false); }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  // Mini agenda : semaine courante
   const weekStart = useMemo(() => getMondayOfWeek(new Date()), []);
   const weekDays  = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysMini(weekStart, i)), [weekStart]);
   const today     = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
+  const todayIso  = useMemo(() => new Date().toISOString().split("T")[0], []);
 
   const colorByPresta = useMemo(() => {
     const map: Record<string, string> = {};
@@ -202,77 +151,70 @@ export default function HomePage() {
 
   const weekPrestations = useMemo(() => {
     if (!stats) return [];
-    return stats.prestations.filter(p => {
-      if (!p.date) return false;
-      const d = frToDateMini(p.date);
-      return d && weekDays.some(wd => sameDayMini(d, wd));
-    });
+    return stats.prestations.filter(p => { if (!p.date) return false; const d = frToDateMini(p.date); return d && weekDays.some(wd => sameDayMini(d, wd)); });
   }, [stats, weekDays]);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
-      const [dashRes, depRes] = await Promise.all([
-        fetch("/api/dashboard"),
-        fetch("/api/depenses"),
+      const [dashRes, depRes, proRes, stkRes] = await Promise.all([
+        fetch("/api/dashboard"), fetch("/api/depenses"), fetch("/api/prospects"), fetch("/api/stock"),
       ]);
       if (!dashRes.ok) throw new Error((await dashRes.json()).error || "Erreur serveur");
       setStats(await dashRes.json());
       if (depRes.ok) setDepenses(await depRes.json());
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Erreur inconnue");
-    } finally {
-      setLoading(false);
-    }
+      if (proRes.ok) { const p = await proRes.json(); setProspects(Array.isArray(p) ? p : []); }
+      if (stkRes.ok) { const s = await stkRes.json(); setStock(Array.isArray(s) ? s : []); }
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : "Erreur inconnue"); }
+    finally { setLoading(false); }
   }, []);
-
   useEffect(() => { load(); }, [load]);
 
+  // ── Tâches du jour ──────────────────────────────────────────────────────────
+  const leadsNouveaux = prospects.filter(p => p.statut === "NOUVEAU");
+  const aRelancer = prospects.filter(p => p.dateRelance && p.dateRelance <= todayIso && !["CONVERTI", "PERDU"].includes(p.statut));
+  const rdvAujourdhui = (stats?.prestations ?? []).filter(p => { const d = frToDateMini(p.date); return d && sameDayMini(d, today); });
+  const toReassign = stats?.toReassign ?? 0;
+
+  // ── Alerte produits intelligente ────────────────────────────────────────────
+  const produitsAlerte = useMemo(() => stock.filter(it => {
+    const sousSeuil = it.seuil > 0 && it.quantite <= it.seuil;
+    const a = autonomieSemaines(it);
+    return sousSeuil || (a != null && a < 2);
+  }), [stock]);
+
+  const greeting = (() => { const h = new Date().getHours(); return h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; })();
+  const dateLabel = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+
+  const taches = [
+    { show: leadsNouveaux.length > 0, count: leadsNouveaux.length, label: "nouveau lead à contacter", icon: Sparkles, color: "purple", href: "/prospects" },
+    { show: aRelancer.length > 0,     count: aRelancer.length,     label: "client à relancer aujourd'hui", icon: Phone, color: "amber", href: "/prospects" },
+    { show: rdvAujourdhui.length > 0, count: rdvAujourdhui.length, label: "rendez-vous aujourd'hui", icon: CalendarCheck, color: "blue", href: "/agenda" },
+    { show: toReassign > 0,           count: toReassign,           label: "prestation à réaffecter", icon: AlertTriangle, color: "red", href: "/prestations" },
+  ].filter(t => t.show);
+  const COLOR: Record<string, string> = { purple: "bg-purple-50 text-purple-700 border-purple-100", amber: "bg-amber-50 text-amber-700 border-amber-100", blue: "bg-blue-50 text-blue-700 border-blue-100", red: "bg-red-50 text-red-700 border-red-100" };
+  const ICONBG: Record<string, string> = { purple: "bg-purple-100 text-purple-600", amber: "bg-amber-100 text-amber-600", blue: "bg-blue-100 text-blue-600", red: "bg-red-100 text-red-600" };
+
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen bg-gray-50">
       <Topbar
-        title="Tableau de bord"
-        subtitle="Vue d'ensemble KinouClean"
-        onRefresh={load}
-        loading={loading}
-        alerts={(stats?.toReassign || 0)}
+        title="Tableau de bord" subtitle={dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)}
+        onRefresh={load} loading={loading} alerts={toReassign + produitsAlerte.length}
         action={
           <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setShowDropdown(v => !v)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition-colors"
-            >
-              <UserPlus size={15} />
-              Nouveau
-              <ChevronDown size={14} className={`transition-transform ${showDropdown ? "rotate-180" : ""}`} />
+            <button onClick={() => setShowDropdown(v => !v)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700">
+              <UserPlus size={15} /> Nouveau <ChevronDown size={14} className={`transition-transform ${showDropdown ? "rotate-180" : ""}`} />
             </button>
             {showDropdown && (
               <div className="absolute right-0 top-full mt-1.5 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-30 w-52">
-                <button
-                  onClick={() => { setShowNewClient(true); setShowDropdown(false); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-green-50 transition-colors text-left"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center shrink-0">
-                    <UserPlus size={13} className="text-green-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Nouveau client</p>
-                    <p className="text-xs text-gray-400">Créer + 1er RDV</p>
-                  </div>
+                <button onClick={() => { setShowNewClient(true); setShowDropdown(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-green-50 text-left">
+                  <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center"><UserPlus size={13} className="text-green-600" /></div>
+                  <div><p className="font-medium">Nouveau client</p><p className="text-xs text-gray-400">Créer + 1er RDV</p></div>
                 </button>
                 <div className="border-t border-gray-50" />
-                <button
-                  onClick={() => { setShowNewProspect(true); setShowDropdown(false); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-purple-50 transition-colors text-left"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center shrink-0">
-                    <UserSearch size={13} className="text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Nouveau prospect</p>
-                    <p className="text-xs text-gray-400">À relancer plus tard</p>
-                  </div>
+                <button onClick={() => { setShowNewProspect(true); setShowDropdown(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-purple-50 text-left">
+                  <div className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center"><UserSearch size={13} className="text-purple-600" /></div>
+                  <div><p className="font-medium">Nouveau prospect</p><p className="text-xs text-gray-400">À relancer plus tard</p></div>
                 </button>
               </div>
             )}
@@ -280,321 +222,126 @@ export default function HomePage() {
         }
       />
 
-      <div className="flex-1 p-3 sm:p-6 space-y-3 sm:space-y-6">
+      <div className="flex-1 p-3 sm:p-6 space-y-4 max-w-5xl w-full mx-auto">
 
         {error && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex gap-4">
             <AlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" size={20} />
-            <div>
-              <p className="font-semibold text-amber-800">Erreur de connexion Supabase</p>
-              <p className="text-sm text-amber-700 mt-1">{error}</p>
-              <p className="text-sm text-amber-600 mt-2">
-                Vérifiez <code className="bg-amber-100 px-1 rounded">.env.local</code> (SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY) —{" "}
-                <a href="/configuration" className="underline font-medium">voir Configuration</a>.
+            <div><p className="font-semibold text-amber-800">Erreur de connexion</p><p className="text-sm text-amber-700 mt-1">{error}</p></div>
+          </div>
+        )}
+
+        {/* ── Alerte produits intelligente ───────────────────────────────── */}
+        {produitsAlerte.length > 0 && (
+          <div className="bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-2xl p-4 flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center flex-shrink-0"><Package size={18} className="text-orange-600" /></div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-orange-800 text-sm">⚠️ Attention aux produits</p>
+              <p className="text-sm text-orange-700 mt-0.5">
+                {produitsAlerte.length} produit{produitsAlerte.length > 1 ? "s" : ""} bientôt épuisé{produitsAlerte.length > 1 ? "s" : ""} au rythme de tes prestations : <strong>{produitsAlerte.slice(0, 3).map(p => p.nom).join(", ")}</strong>{produitsAlerte.length > 3 ? "…" : ""}. Pense à racheter.
               </p>
             </div>
+            <a href="/stock" className="text-sm text-orange-700 font-medium underline flex-shrink-0 mt-1">Voir</a>
           </div>
         )}
 
-        {stats && stats.toReassign > 0 && (
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3">
-            <AlertTriangle className="text-red-500 flex-shrink-0" size={18} />
-            <p className="text-sm text-red-700 font-medium">
-              {stats.toReassign} prestation{stats.toReassign > 1 ? "s" : ""} refusée{stats.toReassign > 1 ? "s" : ""} à réaffecter
-            </p>
-            <a href="/prestations" className="ml-auto text-sm text-red-600 underline font-medium">Voir</a>
+        {/* ── À faire aujourd'hui ─────────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-lg">👋</span>
+            <h2 className="font-bold text-gray-900">{greeting} — à faire aujourd&apos;hui</h2>
           </div>
-        )}
-
-        {/* ── Relances automatiques ─────────────────────────────── */}
-        {stats && (() => {
-          const now = Date.now();
-          const toRelance = stats.prestations.filter(p => {
-            if (p.statut !== "EMAIL ENVOYÉ") return false;
-            if (!p.timestamp) return false;
-            const diffDays = (now - new Date(p.timestamp).getTime()) / 86400000;
-            return diffDays > 3;
-          });
-          if (toRelance.length === 0) return null;
-          return (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <BellRing size={16} className="text-amber-600" />
-                <p className="text-sm font-semibold text-amber-800">
-                  {toRelance.length} client{toRelance.length > 1 ? "s" : ""} à relancer
-                  <span className="font-normal text-amber-600 ml-1">(email envoyé depuis +3 jours, pas de réponse)</span>
-                </p>
-                <a href="/prestations?statut=EMAIL+ENVOY%C3%89" className="ml-auto text-xs text-amber-700 underline font-medium">Voir tout</a>
-              </div>
-              <div className="space-y-2">
-                {toRelance.slice(0, 3).map(p => {
-                  const days = Math.floor((now - new Date(p.timestamp).getTime()) / 86400000);
-                  const waLink = p.tel ? `https://wa.me/${p.tel.replace(/\s/g,"").replace(/^0/,"33")}?text=${encodeURIComponent(`Bonjour ${p.prenom} 👋, suite à votre demande de prestation ${p.typePresta}, avez-vous eu le temps de confirmer ? 🙏`)}` : null;
-                  return (
-                    <div key={p.row} className="flex items-center gap-3 bg-white rounded-xl p-3 border border-amber-100">
-                      <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-xs flex-shrink-0">
-                        {(p.prenom?.[0] ?? "?").toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{p.prenom} {p.nom}</p>
-                        <p className="text-xs text-gray-500">{p.typePresta} · il y a {days} jours</p>
-                      </div>
-                      {waLink && (
-                        <a href={waLink} target="_blank" rel="noopener noreferrer"
-                          className="text-xs px-2 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex-shrink-0">
-                          WhatsApp
-                        </a>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+          {loading && !stats ? (
+            <p className="text-sm text-gray-400">Chargement…</p>
+          ) : taches.length === 0 ? (
+            <div className="flex items-center gap-3 py-4 justify-center text-center">
+              <span className="text-2xl">🎉</span>
+              <p className="text-gray-600 font-medium">Rien d&apos;urgent — tout est à jour. Profites-en !</p>
             </div>
-          );
-        })()}
-
-        {/* ── Notifications récentes (acceptations/refus prestataire) ── */}
-        {stats && (() => {
-          const now = Date.now();
-          const recent = stats.prestations.filter(p => {
-            if (!["ACCEPTÉ", "REFUSÉ"].includes(p.statutPresta as string)) return false;
-            if (!p.updatedAt) return false;
-            const diffH = (now - new Date(p.updatedAt).getTime()) / 3600000;
-            return diffH < 48;
-          });
-          if (recent.length === 0) return null;
-          return (
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <RefreshCcw size={16} className="text-blue-600" />
-                <p className="text-sm font-semibold text-blue-800">
-                  {recent.length} réponse{recent.length > 1 ? "s" : ""} de prestataire — dernières 48h
-                </p>
-              </div>
-              <div className="space-y-2">
-                {recent.map(p => (
-                  <div key={p.row} className="flex items-center gap-3 bg-white rounded-xl p-3 border border-blue-100">
-                    <div className={`p-1.5 rounded-lg ${p.statutPresta === "ACCEPTÉ" ? "bg-green-100" : "bg-red-100"}`}>
-                      {p.statutPresta === "ACCEPTÉ"
-                        ? <CheckCircle2 size={14} className="text-green-600" />
-                        : <AlertTriangle size={14} className="text-red-500" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{p.prestataire}</p>
-                      <p className="text-xs text-gray-500">{p.statutPresta === "ACCEPTÉ" ? "a accepté" : "a refusé"} · {p.prenom} {p.nom} – {p.typePresta}</p>
-                    </div>
-                    <a href="/prestations" className="text-xs text-blue-600 hover:underline flex-shrink-0">Voir</a>
-                  </div>
-                ))}
-              </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {taches.map((t, i) => (
+                <a key={i} href={t.href} className={`flex items-center gap-3 p-3 rounded-xl border ${COLOR[t.color]} hover:brightness-[0.98] transition-all group`}>
+                  <div className={`w-9 h-9 rounded-lg ${ICONBG[t.color]} flex items-center justify-center flex-shrink-0`}><t.icon size={16} /></div>
+                  <p className="flex-1 text-sm font-medium leading-tight"><span className="text-lg font-bold mr-1">{t.count}</span>{t.label}{t.count > 1 ? "s" : ""}</p>
+                  <ArrowRight size={16} className="opacity-40 group-hover:translate-x-0.5 transition-transform" />
+                </a>
+              ))}
             </div>
-          );
-        })()}
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard title="Chiffre d'affaires" value={stats ? `${stats.totalCA.toFixed(0)} €` : "—"} subtitle={stats?.caParEntite ? `SAS ${(stats.caParEntite["Kinouclean SAS"] || 0).toFixed(0)}€ · Kinourent ${(stats.caParEntite["Kinourent"] || 0).toFixed(0)}€` : "Total toutes prestations"} icon={TrendingUp} color="green" href="/prestations" />
-          <StatCard title="Prestations actives" value={stats?.totalPrestations ?? "—"} subtitle="En cours" icon={Briefcase} color="blue" href="/prestations" />
-          <StatCard title="Clients" value={stats?.totalClients ?? "—"} subtitle="Clients uniques" icon={Users} color="purple" href="/clients" />
-          <StatCard title="Prestataires" value={stats?.totalPrestataires ?? "—"} subtitle="Équipe active" icon={Wrench} color="orange" href="/prestataires" />
+          )}
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          <StatCard title="Nouveaux clients" value={stats?.nouveauxClients ?? "—"} subtitle="Prospects à traiter" icon={UserPlus} color="purple" alert={(stats?.nouveauxClients || 0) > 0} href="/prospects" />
-          <StatCard title="Interventions à venir" value={stats?.upcoming ?? "—"} subtitle="Confirmées" icon={CalendarCheck} color="blue" href="/agenda" />
-          <StatCard title="En attente prestataire" value={stats?.waitingPresta ?? "—"} subtitle="Proposition envoyée" icon={Clock} color="orange" href="/prestations" />
-          <StatCard title="À réaffecter" value={stats?.toReassign ?? "—"} subtitle="Prestataire refusé" icon={AlertTriangle} color="red" alert={(stats?.toReassign || 0) > 0} href="/prestations" />
-          <StatCard title="Devis générés" value={stats?.devisGeneres ?? "—"} subtitle="PDF créés" icon={FileText} color="gray" href="/devis" />
-        </div>
-
-        {/* Rentabilité */}
+        {/* ── L'argent (CA réalisé = archivé, honnête) ────────────────────── */}
         {stats && (() => {
           const now = new Date();
-
-          // ── Période mois ──
           const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
           const daysInMonth  = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+          const inMonth = (fr: string) => { const p = fr.split("/"); return p.length === 3 && `${p[2]}-${p[1]}` === currentMonth; };
 
-          // Bénéfice net = uniquement les prestations archivées (terminées)
-          const caMois = stats.archive
-            .filter(p => {
-              if (!p.date) return false;
-              const parts = p.date.split("/");
-              if (parts.length !== 3) return false;
-              return `${parts[2]}-${parts[1]}` === currentMonth;
-            })
-            .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+          const dow = now.getDay(); const diffMon = dow === 0 ? -6 : 1 - dow;
+          const wStart = new Date(now); wStart.setDate(now.getDate() + diffMon); wStart.setHours(0,0,0,0);
+          const wEnd = new Date(wStart); wEnd.setDate(wStart.getDate() + 6); wEnd.setHours(23,59,59,999);
+          const inWeek = (fr: string) => { const p = fr.split("/"); if (p.length !== 3) return false; const d = new Date(+p[2], +p[1]-1, +p[0]); return d >= wStart && d <= wEnd; };
 
-          const commMois = stats.archive
-            .filter(p => {
-              if (!p.date) return false;
-              const parts = p.date.split("/");
-              if (parts.length !== 3) return false;
-              return `${parts[2]}-${parts[1]}` === currentMonth;
-            })
-            .reduce((s, p) => {
-              const prix = parseFloat(p.prix) || 0;
-              const val  = parseFloat(p.commission) || 0;
-              const comm = (p.commissionType || "%") === "%" ? prix * val / 100 : val;
-              return s + comm;
-            }, 0);
-
-          const depPonctuMois = depenses
-            .filter(d => d.type === "ponctuel" && d.date?.startsWith(currentMonth))
-            .reduce((s, d) => s + d.montant, 0);
-          const depMensuelTotal = depenses
-            .filter(d => d.type === "mensuel")
-            .reduce((s, d) => s + d.montant, 0);
-          const depMois = depPonctuMois + depMensuelTotal;
-
-          // ── Période semaine ──
-          const dayOfWeek = now.getDay();
-          const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-          const weekStart = new Date(now); weekStart.setDate(now.getDate() + diffToMon); weekStart.setHours(0,0,0,0);
-          const weekEnd   = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6); weekEnd.setHours(23,59,59,999);
-
-          const caWeek = stats.archive
-            .filter(p => {
-              if (!p.date) return false;
-              const parts = p.date.split("/");
-              if (parts.length !== 3) return false;
-              const d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
-              return d >= weekStart && d <= weekEnd;
-            })
-            .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
-
-          const commWeek = stats.archive
-            .filter(p => {
-              if (!p.date) return false;
-              const parts = p.date.split("/");
-              if (parts.length !== 3) return false;
-              const d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
-              return d >= weekStart && d <= weekEnd;
-            })
-            .reduce((s, p) => {
-              const prix = parseFloat(p.prix) || 0;
-              const val  = parseFloat(p.commission) || 0;
-              const comm = (p.commissionType || "%") === "%" ? prix * val / 100 : val;
-              return s + comm;
-            }, 0);
-
-          const depPonctuWeek = depenses
-            .filter(d => {
-              if (d.type !== "ponctuel") return false;
-              const d2 = new Date(d.date + "T00:00:00");
-              return d2 >= weekStart && d2 <= weekEnd;
-            })
-            .reduce((s, d) => s + d.montant, 0);
-          // prorata mensuel → hebdo (charges fixes / jours du mois × 7)
-          const depMensuelWeek = (depMensuelTotal / daysInMonth) * 7;
-          const depWeek = depPonctuWeek + depMensuelWeek;
-
-          const isSemaine = rentaPeriod === "semaine";
-          const ca       = isSemaine ? caWeek  : caMois;
-          const dep      = isSemaine ? depWeek : depMois;
-          const comm     = isSemaine ? commWeek : commMois;
+          const filt = rentaPeriod === "semaine" ? inWeek : inMonth;
+          const arch = stats.archive.filter(p => p.date && filt(p.date));
+          const ca = arch.reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+          const comm = arch.reduce((s, p) => { const prix = parseFloat(p.prix) || 0; const v = parseFloat(p.commission) || 0; return s + ((p.commissionType || "%") === "%" ? prix * v / 100 : v); }, 0);
+          const depPonc = depenses.filter(d => d.type === "ponctuel" && (rentaPeriod === "semaine" ? (() => { const d2 = new Date(d.date + "T00:00:00"); return d2 >= wStart && d2 <= wEnd; })() : d.date?.startsWith(currentMonth))).reduce((s, d) => s + d.montant, 0);
+          const depFixe = depenses.filter(d => d.type === "mensuel").reduce((s, d) => s + d.montant, 0);
+          const dep = depPonc + (rentaPeriod === "semaine" ? (depFixe / daysInMonth) * 7 : depFixe);
           const benefice = ca - dep - comm;
-
-          const weekLabel = `${weekStart.getDate()}/${weekStart.getMonth()+1} – ${weekEnd.getDate()}/${weekEnd.getMonth()+1}`;
-          const monthName = now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+          // CA planifié = prestations à venir (potentiel, pas encore réalisé)
+          const caAvenir = stats.upcomingList.reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
 
           return (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-gray-800">Rentabilité</h2>
+                <h2 className="font-bold text-gray-900">💶 L&apos;argent</h2>
                 <div className="flex items-center gap-3">
                   <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
                     {(["semaine", "mois"] as const).map(p => (
-                      <button
-                        key={p}
-                        onClick={() => setRentaPeriod(p)}
-                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-all
-                          ${rentaPeriod === p ? "bg-white shadow text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
-                      >
-                        {p === "semaine" ? "Cette semaine" : "Ce mois"}
-                      </button>
+                      <button key={p} onClick={() => setRentaPeriod(p)} className={`px-3 py-1 rounded-lg text-xs font-medium ${rentaPeriod === p ? "bg-white shadow text-gray-800" : "text-gray-500"}`}>{p === "semaine" ? "Cette semaine" : "Ce mois"}</button>
                     ))}
                   </div>
                   <a href="/depenses" className="text-sm text-blue-600 hover:underline font-medium">Gérer</a>
                 </div>
               </div>
-              <p className="text-xs text-gray-400 mb-3">
-                {isSemaine ? `Semaine du ${weekLabel}` : monthName.charAt(0).toUpperCase() + monthName.slice(1)}
-                {isSemaine && depMensuelTotal > 0 && " · charges fixes au prorata"}
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                <div className="rounded-xl bg-green-50 p-4 flex items-center gap-3">
-                  <TrendingUp size={20} className="text-green-600 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs text-gray-500">CA</p>
-                    <p className="text-xl font-bold text-green-700">{ca.toFixed(0)} €</p>
-                  </div>
-                </div>
-                <div className="rounded-xl bg-red-50 p-4 flex items-center gap-3">
-                  <TrendingDown size={20} className="text-red-600 flex-shrink-0" />
-                  <div>
-                    <p className="text-xs text-gray-500">Dépenses</p>
-                    <p className="text-xl font-bold text-red-700">{dep.toFixed(0)} €</p>
-                  </div>
-                </div>
-                <div className={`rounded-xl p-4 flex items-center gap-3 ${benefice >= 0 ? "bg-emerald-50" : "bg-orange-50"}`}>
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${benefice >= 0 ? "bg-emerald-500" : "bg-orange-500"}`} />
-                  <div>
-                    <p className="text-xs text-gray-500">Bénéfice net</p>
-                    <p className={`text-xl font-bold ${benefice >= 0 ? "text-emerald-700" : "text-orange-700"}`}>
-                      {benefice >= 0 ? "+" : ""}{benefice.toFixed(0)} €
-                    </p>
-                  </div>
-                </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl bg-green-50 p-4"><p className="text-xs text-gray-500">CA réalisé</p><p className="text-xl font-bold text-green-700">{ca.toFixed(0)} €</p><p className="text-[11px] text-gray-400 mt-0.5">{arch.length} presta terminée{arch.length > 1 ? "s" : ""}</p></div>
+                <div className="rounded-xl bg-red-50 p-4"><p className="text-xs text-gray-500">Dépenses</p><p className="text-xl font-bold text-red-700">{dep.toFixed(0)} €</p><p className="text-[11px] text-gray-400 mt-0.5">charges incluses</p></div>
+                <div className={`rounded-xl p-4 ${benefice >= 0 ? "bg-emerald-50" : "bg-orange-50"}`}><p className="text-xs text-gray-500">Bénéfice net</p><p className={`text-xl font-bold ${benefice >= 0 ? "text-emerald-700" : "text-orange-700"}`}>{benefice >= 0 ? "+" : ""}{benefice.toFixed(0)} €</p><p className="text-[11px] text-gray-400 mt-0.5">{ca > 0 ? `marge ${((benefice / ca) * 100).toFixed(0)}%` : "—"}</p></div>
               </div>
+              {caAvenir > 0 && (
+                <p className="text-xs text-gray-400 mt-3 flex items-center gap-1.5"><CalendarCheck size={12} /> <strong className="text-gray-600">{caAvenir.toFixed(0)} €</strong> de RDV à venir déjà planifiés</p>
+              )}
             </div>
           );
         })()}
 
-        {stats && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-              <h2 className="font-semibold text-gray-800 mb-4">Bénéfice net mensuel {new Date().getFullYear()}</h2>
-              <RevenueChart prestations={stats.archive} />
-            </div>
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-              <h2 className="font-semibold text-gray-800 mb-4">Types de prestations</h2>
-              <TypeChart prestations={[...stats.prestations, ...stats.archive]} />
-            </div>
-          </div>
-        )}
-
+        {/* ── Prochains rendez-vous ───────────────────────────────────────── */}
         {stats && stats.upcomingList.length > 0 && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-800">Prochaines interventions</h2>
-              <a href="/prestations" className="text-sm text-blue-600 hover:underline font-medium">Voir tout</a>
+              <h2 className="font-bold text-gray-900">📅 Prochains rendez-vous</h2>
+              <a href="/agenda" className="text-sm text-blue-600 hover:underline font-medium">Agenda</a>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {stats.upcomingList.map((p) => (
-                <div key={p.row} className="flex items-center gap-4 p-3 rounded-xl bg-blue-50 border border-blue-100">
-                  <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <CalendarCheck size={18} className="text-blue-600" />
+                <div key={p.row} className="flex items-center gap-3 p-3 rounded-xl bg-blue-50/60 border border-blue-100">
+                  <div className="text-center flex-shrink-0 w-12">
+                    <p className="text-sm font-bold text-blue-700 leading-tight">{p.date?.slice(0, 5)}</p>
+                    {p.heure && <p className="text-[11px] text-gray-400">{p.heure}</p>}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 truncate">{p.prenom} {p.nom}</p>
-                    <p className="text-sm text-gray-500 truncate">{p.typePresta} — {p.adresse}</p>
-                    {/* Prestataire assigné */}
-                    {p.prestataire ? (
-                      <p className="flex items-center gap-1 text-xs text-green-700 mt-0.5">
-                        <UserCheck size={11} />
-                        {p.prestataire}
-                      </p>
-                    ) : (
-                      <p className="flex items-center gap-1 text-xs text-amber-600 mt-0.5">
-                        <Clock size={11} />
-                        En attente de prestataire
-                      </p>
-                    )}
+                    <p className="text-xs text-gray-500 truncate">{p.typePresta}{p.adresse ? ` — ${p.adresse}` : ""}</p>
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-sm font-semibold text-blue-700">{p.date}</p>
-                    {p.heure && <p className="text-xs text-gray-400">{p.heure}</p>}
-                  </div>
+                  {p.prestataire ? (
+                    <span className="flex items-center gap-1 text-xs text-green-700 flex-shrink-0"><UserCheck size={11} />{p.prestataire}</span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-amber-600 flex-shrink-0"><Clock size={11} />À affecter</span>
+                  )}
                   <StatusBadge statut={p.statut} small />
                 </div>
               ))}
@@ -602,102 +349,65 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* ── Mini agenda semaine ── */}
-        {stats && (
+        {/* ── Clients à relancer aujourd'hui ──────────────────────────────── */}
+        {aRelancer.length > 0 && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <CalendarDays size={17} className="text-blue-600" />
-                <h2 className="font-semibold text-gray-800">Agenda de la semaine</h2>
-              </div>
-              <a href="/agenda" className="flex items-center gap-1 text-sm text-blue-600 hover:underline font-medium">
-                Ouvrir l&apos;agenda <ChevronRight size={14} />
-              </a>
+              <h2 className="font-bold text-gray-900 flex items-center gap-2"><BellRing size={16} className="text-amber-500" /> À relancer aujourd&apos;hui</h2>
+              <a href="/prospects" className="text-sm text-blue-600 hover:underline font-medium">Tout voir</a>
             </div>
-            <div className="grid grid-cols-7 gap-1">
-              {weekDays.map((day, i) => {
-                const isToday = sameDayMini(day, today);
-                const events  = weekPrestations.filter(p => {
-                  const d = frToDateMini(p.date);
-                  return d && sameDayMini(d, day);
-                }).sort((a,b) => (a.heure||"").localeCompare(b.heure||""));
+            <div className="space-y-2">
+              {aRelancer.slice(0, 4).map(p => {
+                const wa = p.tel ? `https://wa.me/${p.tel.replace(/\s/g,"").replace(/^0/,"33")}?text=${encodeURIComponent(`Bonjour ${p.prenom} 👋`)}` : null;
                 return (
-                  <div key={i} className={`rounded-xl border p-2 min-h-[110px] flex flex-col gap-1 ${isToday ? "border-blue-300 bg-blue-50" : "border-gray-100 bg-gray-50"}`}>
-                    <div className="text-center mb-1">
-                      <p className="text-xs text-gray-400 font-medium uppercase">{JOURS_MINI[i]}</p>
-                      <div className={`mx-auto w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold ${isToday ? "bg-blue-600 text-white" : "text-gray-700"}`}>
-                        {day.getDate()}
-                      </div>
-                    </div>
-                    {events.map(ev => {
-                      const color = colorByPresta[ev.prestataire] ?? "#9CA3AF";
-                      return (
-                        <a
-                          key={ev.row}
-                          href="/agenda"
-                          title={`${ev.heure ? ev.heure + " – " : ""}${ev.prenom} ${ev.nom} · ${ev.typePresta}${ev.prestataire ? " · " + ev.prestataire : ""}`}
-                          className="block rounded px-1.5 py-0.5 text-white text-xs truncate leading-tight hover:opacity-80 transition-opacity"
-                          style={{ backgroundColor: color }}
-                        >
-                          {ev.heure && <span className="opacity-80 mr-1">{ev.heure}</span>}
-                          {ev.prenom} {ev.nom}
-                        </a>
-                      );
-                    })}
-                    {events.length === 0 && (
-                      <p className="text-xs text-gray-300 text-center mt-auto mb-auto">—</p>
-                    )}
+                  <div key={p.id} className="flex items-center gap-3 p-3 rounded-xl bg-amber-50/60 border border-amber-100">
+                    <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-xs flex-shrink-0">{(p.prenom?.[0] ?? "?").toUpperCase()}</div>
+                    <div className="flex-1 min-w-0"><p className="text-sm font-medium text-gray-900 truncate">{p.prenom} {p.nom}</p><p className="text-xs text-gray-500 truncate">{p.typePresta || "Prospect"}</p></div>
+                    {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="text-xs px-2.5 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 flex-shrink-0">WhatsApp</a>}
                   </div>
                 );
               })}
             </div>
-            {/* Légende prestataires */}
-            {stats.prestataires.length > 0 && (
-              <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-gray-100">
-                {stats.prestataires.map((p, i) => (
-                  <div key={p.id} className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PALETTE_MINI[i % PALETTE_MINI.length] }} />
-                    <span className="text-xs text-gray-600">{p.nom}</span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
+        {/* ── Agenda de la semaine ────────────────────────────────────────── */}
         {stats && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-800">Prestations récentes</h2>
-              <a href="/prestations" className="text-sm text-blue-600 hover:underline font-medium">Voir tout</a>
+              <h2 className="font-bold text-gray-900 flex items-center gap-2"><CalendarDays size={17} className="text-blue-600" /> Ta semaine</h2>
+              <a href="/agenda" className="flex items-center gap-1 text-sm text-blue-600 hover:underline font-medium">Ouvrir <ChevronRight size={14} /></a>
             </div>
-            <PrestationTable prestations={stats.prestations.slice(0, 8)} />
+            <div className="grid grid-cols-7 gap-1">
+              {weekDays.map((day, i) => {
+                const isToday = sameDayMini(day, today);
+                const events = weekPrestations.filter(p => { const d = frToDateMini(p.date); return d && sameDayMini(d, day); }).sort((a,b) => (a.heure||"").localeCompare(b.heure||""));
+                return (
+                  <div key={i} className={`rounded-xl border p-2 min-h-[104px] flex flex-col gap-1 ${isToday ? "border-blue-300 bg-blue-50" : "border-gray-100 bg-gray-50"}`}>
+                    <div className="text-center mb-1">
+                      <p className="text-xs text-gray-400 font-medium uppercase">{JOURS_MINI[i]}</p>
+                      <div className={`mx-auto w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold ${isToday ? "bg-blue-600 text-white" : "text-gray-700"}`}>{day.getDate()}</div>
+                    </div>
+                    {events.map(ev => (
+                      <a key={ev.row} href="/agenda" title={`${ev.heure ? ev.heure + " – " : ""}${ev.prenom} ${ev.nom} · ${ev.typePresta}`} className="block rounded px-1.5 py-0.5 text-white text-xs truncate leading-tight hover:opacity-80" style={{ backgroundColor: colorByPresta[ev.prestataire] ?? "#9CA3AF" }}>
+                        {ev.heure && <span className="opacity-80 mr-1">{ev.heure}</span>}{ev.prenom} {ev.nom}
+                      </a>
+                    ))}
+                    {events.length === 0 && <p className="text-xs text-gray-300 text-center mt-auto mb-auto">—</p>}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
       </div>
 
-      {showNewClient && (
-        <NewClientModal
-          prestataires={stats?.prestataires ?? []}
-          onClose={() => setShowNewClient(false)}
-          onSaved={() => { setShowNewClient(false); load(); }}
-        />
-      )}
-      {showNewProspect && (
-        <QuickProspectModal
-          onClose={() => setShowNewProspect(false)}
-          onSaved={() => { setShowNewProspect(false); }}
-        />
-      )}
+      {showNewClient && <NewClientModal prestataires={stats?.prestataires ?? []} onClose={() => setShowNewClient(false)} onSaved={() => { setShowNewClient(false); load(); }} />}
+      {showNewProspect && <QuickProspectModal onClose={() => setShowNewProspect(false)} onSaved={() => { setShowNewProspect(false); load(); }} />}
 
       {loading && !stats && (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-gray-500 text-sm">Chargement des données...</p>
-          </div>
-        </div>
+        <div className="flex items-center justify-center py-20"><div className="text-center"><div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" /><p className="text-gray-500 text-sm">Chargement…</p></div></div>
       )}
     </div>
   );
