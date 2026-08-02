@@ -440,6 +440,17 @@ export async function createDepense(
   if (error) throw new Error(error.message);
 }
 
+// Insertion groupée (import de relevé bancaire). Renvoie le nombre de lignes créées.
+export async function createDepenses(
+  rows: Omit<Depense, "id" | "created_at">[]
+): Promise<number> {
+  if (!supabase) throw new Error("Supabase non configuré");
+  if (!rows.length) return 0;
+  const { data, error } = await supabase.from("depenses").insert(rows).select("id");
+  if (error) throw new Error(error.message);
+  return data?.length ?? rows.length;
+}
+
 export async function updateDepense(
   id: string,
   fields: Partial<Omit<Depense, "id" | "created_at">>

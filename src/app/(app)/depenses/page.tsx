@@ -10,6 +10,7 @@ import { SkeletonList } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import { Depense, Prestation, CATEGORIES_DEPENSES } from "@/lib/constants";
+import BankImportModal from "@/components/BankImportModal";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -299,6 +300,7 @@ export default function DepensesPage() {
   const [loading,     setLoading]     = useState(() => !cacheHas(CACHE_KEYS.depenses));
   const [error,       setError]       = useState<string | null>(null);
   const [modal,       setModal]       = useState<"new" | Depense | null>(null);
+  const [showImport,  setShowImport]  = useState(false);
   const [filterType,  setFilterType]  = useState<"tous" | "ponctuel" | "mensuel">("tous");
   const [filterCat,   setFilterCat]   = useState("tous");
   const [deleting,    setDeleting]    = useState<string | null>(null);
@@ -493,7 +495,14 @@ export default function DepensesPage() {
               className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
             >
               <Download size={14} />
-              Export CSV
+              <span className="hidden sm:inline">Export CSV</span>
+            </button>
+            <button
+              onClick={() => setShowImport(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-emerald-200 text-emerald-700 text-sm font-medium hover:bg-emerald-50 transition-colors"
+            >
+              <Upload size={14} />
+              <span className="hidden sm:inline">Importer un relevé</span>
             </button>
             <button
               onClick={() => setModal("new")}
@@ -851,6 +860,18 @@ export default function DepensesPage() {
           initial={modal === "new" ? null : modal}
           onClose={() => setModal(null)}
           onSave={() => { setModal(null); load(); }}
+        />
+      )}
+
+      {showImport && (
+        <BankImportModal
+          existing={depenses}
+          onClose={() => setShowImport(false)}
+          onImported={(n) => {
+            setShowImport(false);
+            toast.success(`${n} dépense${n > 1 ? "s" : ""} importée${n > 1 ? "s" : ""} depuis le relevé ✅`);
+            load();
+          }}
         />
       )}
     </div>
