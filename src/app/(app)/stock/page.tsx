@@ -273,7 +273,8 @@ export default function StockPage() {
   seuil         NUMERIC DEFAULT 0,
   prix_unitaire NUMERIC,
   notes         TEXT,
-  historique    JSONB DEFAULT '[]'::jsonb
+  historique    JSONB DEFAULT '[]'::jsonb,
+  conso         JSONB DEFAULT '{}'::jsonb
 );`;
     return (
       <div className="flex flex-col min-h-screen bg-gray-50">
