@@ -62,6 +62,24 @@ export async function GET(req: Request) {
     return NextResponse.json({ count: data?.length ?? 0, prospects: data || [] });
   }
 
+  // Diagnostic archive : combien de prestations clôturées, montants, dates.
+  if (url.searchParams.get("archiveCheck") === "1" && supabase) {
+    const { data } = await supabase
+      .from("prestations")
+      .select("date_intervention, prix, statut, archive, type_prestation, archive_reason")
+      .eq("archive", true);
+    const rows = data || [];
+    const parNull = rows.filter(r => !r.date_intervention).length;
+    const sommePrix = rows.reduce((s, r) => s + (Number(r.prix) || 0), 0);
+    const parMois: Record<string, { n: number; total: number }> = {};
+    for (const r of rows) {
+      const m = r.date_intervention ? String(r.date_intervention).slice(0, 7) : "sans-date";
+      parMois[m] = parMois[m] || { n: 0, total: 0 };
+      parMois[m].n++; parMois[m].total += Number(r.prix) || 0;
+    }
+    return NextResponse.json({ totalArchivees: rows.length, sansDate: parNull, prixNull: rows.filter(r => r.prix == null).length, sommePrixTotale: sommePrix, parMois });
+  }
+
   const dry = url.searchParams.get("dry") === "1";
   const debug = url.searchParams.get("debug") === "1";
   const baseline = url.searchParams.get("baseline") === "1";
