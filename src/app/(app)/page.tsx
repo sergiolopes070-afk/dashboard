@@ -37,7 +37,7 @@ interface Stats {
   upcomingList: Prestation[]; toReassignList: Prestation[];
 }
 interface Prospect { id: string; prenom: string; nom: string; tel: string; statut: string; dateRelance: string; typePresta: string; createdAt: string; }
-interface StockItem { id: string; nom: string; unite: string; quantite: number; seuil: number; conso: Record<string, number>; historique: { date: string; type: string; quantite: number }[]; }
+interface StockItem { id: string; nom: string; unite: string; quantite: number; seuil: number; prixUnitaire: number | null; conso: Record<string, number>; historique: { date: string; type: string; quantite: number }[]; }
 
 const SOURCES_PROSPECT   = ["Google","Réseaux sociaux","Bouche à oreille","Recommandation","Formulaire web","Autre"];
 const TYPES_PRESTA_QUICK = ["Ménage","Repassage","Vitres","Débarras","Après travaux","Bureaux","Lavage Canapé","Lavage véhicule","Lavage de matelas","Autre"];
@@ -48,6 +48,20 @@ function autonomieSemaines(it: StockItem): number | null {
   const conso = (it.historique || []).filter(m => m.type === "sortie" && m.date && new Date(m.date).getTime() >= depuis).reduce((s, m) => s + (Number(m.quantite) || 0), 0);
   if (conso <= 0) return null;
   return it.quantite / (conso / (30 / 7));
+}
+function autonomieLabel(s: number | null): string {
+  if (s == null) return "—";
+  if (s >= 8) return `≈ ${Math.round(s / 4.345)} mois`;
+  if (s >= 2) return `≈ ${Math.round(s)} sem.`;
+  return `≈ ${Math.max(1, Math.round(s * 7))} j`;
+}
+// Dernier achat (dernière entrée) d'un produit, au format JJ/MM.
+function dernierAchat(it: StockItem): string | null {
+  const dates = (it.historique || []).filter(m => m.type === "entree" && m.date).map(m => m.date).sort();
+  const last = dates[dates.length - 1];
+  if (!last) return null;
+  const d = new Date(last);
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function QuickProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -328,9 +342,14 @@ export default function HomePage() {
           const wEnd = new Date(wStart); wEnd.setDate(wStart.getDate() + 6); wEnd.setHours(23,59,59,999);
           const inWeek = (fr: string) => { const p = fr.split("/"); if (p.length !== 3) return false; const d = new Date(+p[2], +p[1]-1, +p[0]); return d >= wStart && d <= wEnd; };
 
+          const CANCEL = ["Annulation client", "Client injoignable", "Doublon"];
+          const notCancelled = (p: Prestation) => !CANCEL.some(r => (p.archiveReason || "").startsWith(r));
           const filt = rentaPeriod === "semaine" ? inWeek : inMonth;
-          const arch = stats.archive.filter(p => p.date && filt(p.date));
+          const arch = stats.archive.filter(p => p.date && filt(p.date) && notCancelled(p));
           const ca = arch.reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+          // Références cumulées (le « depuis le début » que montrait l'ancien dashboard).
+          const caTotal = stats.archive.filter(notCancelled).reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+          const caAnnee = stats.archive.filter(p => notCancelled(p) && p.date && p.date.split("/")[2] === String(now.getFullYear())).reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
           // Période précédente (semaine/mois d'avant) → tendance.
           const prevFilt = (fr: string) => {
             const p = fr.split("/"); if (p.length !== 3) return false;
@@ -375,9 +394,11 @@ export default function HomePage() {
                 <div className="rounded-xl bg-red-50 p-4"><p className="text-xs text-gray-500">Dépenses</p><p className="text-xl font-bold text-red-700">{dep.toFixed(0)} €</p><p className="text-[11px] text-gray-400 mt-0.5">charges incluses</p></div>
                 <div className={`rounded-xl p-4 ${benefice >= 0 ? "bg-emerald-50" : "bg-orange-50"}`}><p className="text-xs text-gray-500">Bénéfice net</p><p className={`text-xl font-bold ${benefice >= 0 ? "text-emerald-700" : "text-orange-700"}`}>{benefice >= 0 ? "+" : ""}{benefice.toFixed(0)} €</p><p className="text-[11px] text-gray-400 mt-0.5">{ca > 0 ? `marge ${((benefice / ca) * 100).toFixed(0)}%` : "—"}</p></div>
               </div>
-              {caAvenir > 0 && (
-                <p className="text-xs text-gray-400 mt-3 flex items-center gap-1.5"><CalendarCheck size={12} /> <strong className="text-gray-600">{caAvenir.toFixed(0)} €</strong> de RDV à venir déjà planifiés</p>
-              )}
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-3 pt-3 border-t border-gray-50 text-xs text-gray-400">
+                <span>CA réalisé <strong className="text-gray-700">cette année {caAnnee.toFixed(0)} €</strong></span>
+                <span>· depuis le début <strong className="text-gray-700">{caTotal.toFixed(0)} €</strong></span>
+                {caAvenir > 0 && <span className="flex items-center gap-1"><CalendarCheck size={12} /> <strong className="text-gray-600">{caAvenir.toFixed(0)} €</strong> de RDV à venir</span>}
+              </div>
             </div>
           );
         })()}
@@ -468,6 +489,40 @@ export default function HomePage() {
             </div>
           </div>
         )}
+
+        {/* ── Stock & matériel ────────────────────────────────────────────── */}
+        {stock.length > 0 && (() => {
+          const valeur = stock.reduce((s, it) => s + it.quantite * (it.prixUnitaire ?? 0), 0);
+          const bas = stock.filter(it => it.seuil > 0 && it.quantite <= it.seuil);
+          return (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold text-gray-900 flex items-center gap-2"><Package size={17} className="text-orange-500" /> Stock &amp; matériel</h2>
+                <a href="/stock" className="text-sm text-blue-600 hover:underline font-medium">Gérer le stock</a>
+              </div>
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="rounded-xl bg-gray-50 p-3 text-center"><p className="text-lg font-bold text-gray-900">{stock.length}</p><p className="text-[11px] text-gray-400">Articles</p></div>
+                <div className="rounded-xl bg-emerald-50 p-3 text-center"><p className="text-lg font-bold text-emerald-700">{valeur.toFixed(0)} €</p><p className="text-[11px] text-gray-400">Valeur du stock</p></div>
+                <div className={`rounded-xl p-3 text-center ${bas.length ? "bg-red-50" : "bg-gray-50"}`}><p className={`text-lg font-bold ${bas.length ? "text-red-600" : "text-gray-400"}`}>{bas.length}</p><p className="text-[11px] text-gray-400">À réapprovisionner</p></div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[...stock].sort((a, b) => (autonomieSemaines(a) ?? 999) - (autonomieSemaines(b) ?? 999)).slice(0, 6).map(it => {
+                  const a = autonomieSemaines(it); const low = it.seuil > 0 && it.quantite <= it.seuil; const buy = dernierAchat(it);
+                  return (
+                    <div key={it.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100">
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${low ? "bg-red-100 text-red-600" : "bg-orange-50 text-orange-500"}`}><Package size={15} /></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 truncate">{it.nom}</p>
+                        <p className="text-[11px] text-gray-400">{it.quantite} {it.unite}{buy ? ` · acheté le ${buy}` : " · jamais réapprovisionné"}</p>
+                      </div>
+                      <span className={`text-xs font-medium flex-shrink-0 ${a != null && a < 2 ? "text-red-600" : "text-gray-500"}`}>{autonomieLabel(a)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
       </div>
 
