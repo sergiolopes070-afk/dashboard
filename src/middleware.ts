@@ -14,7 +14,12 @@ export async function middleware(request: NextRequest) {
     pathname === "/api/stripe/webhook" ||      // Stripe : appel serveur-à-serveur, vérifié par signature
     pathname.startsWith("/avis") ||
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon")
+    pathname.startsWith("/favicon") ||
+    // Assets PWA publics (icône + manifeste) : accessibles sans connexion pour
+    // que l'installation « écran d'accueil » fonctionne.
+    pathname === "/manifest.webmanifest" ||
+    pathname.startsWith("/icon") ||
+    pathname.startsWith("/apple-icon")
   ) {
     return NextResponse.next();
   }
