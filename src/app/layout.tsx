@@ -1,9 +1,18 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "KinouClean – Dashboard",
   description: "Tableau de bord de gestion KinouClean",
+  manifest: "/manifest.webmanifest",
+  // Installable comme une app sur iPhone (plein écran, nom court).
+  appleWebApp: { capable: true, title: "KinouClean", statusBarStyle: "default" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#1C3557",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
