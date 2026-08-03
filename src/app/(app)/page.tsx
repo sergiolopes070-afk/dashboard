@@ -36,7 +36,7 @@ interface Stats {
   prestations: Prestation[]; prestataires: Prestataire[]; archive: Prestation[];
   upcomingList: Prestation[]; toReassignList: Prestation[];
 }
-interface Prospect { id: string; prenom: string; nom: string; tel: string; statut: string; dateRelance: string; typePresta: string; }
+interface Prospect { id: string; prenom: string; nom: string; tel: string; statut: string; dateRelance: string; typePresta: string; createdAt: string; }
 interface StockItem { id: string; nom: string; unite: string; quantite: number; seuil: number; conso: Record<string, number>; historique: { date: string; type: string; quantite: number }[]; }
 
 const SOURCES_PROSPECT   = ["Google","Réseaux sociaux","Bouche à oreille","Recommandation","Formulaire web","Autre"];
@@ -245,6 +245,49 @@ export default function HomePage() {
           </div>
         )}
 
+        {/* ── À optimiser : insights intelligents pour piloter le business ── */}
+        {stats && (() => {
+          const now = Date.now();
+          const cm = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+          const inMonth = (fr: string) => { const p = fr.split("/"); return p.length === 3 && `${p[2]}-${p[1]}` === cm; };
+          const caM  = stats.archive.filter(p => p.date && inMonth(p.date)).reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+          const depM = depenses.filter(d => d.type === "mensuel" || (d.type === "ponctuel" && d.date?.startsWith(cm))).reduce((s, d) => s + d.montant, 0);
+          const benefM = caM - depM;
+          const rdvPasses    = stats.prestations.filter(p => { const d = frToDateMini(p.date); return d && d < today; });
+          const leadsFroids  = prospects.filter(p => p.statut === "NOUVEAU" && p.createdAt && (now - new Date(p.createdAt).getTime()) / 86_400_000 > 3);
+          const relanceRetard = prospects.filter(p => p.dateRelance && p.dateRelance < todayIso && !["CONVERTI", "PERDU"].includes(p.statut));
+
+          type Ins = { icon: string; color: string; title: string; text: string; href: string; cta: string };
+          const ins: Ins[] = [];
+          if (rdvPasses.length > 0)
+            ins.push({ icon: "🗓️", color: "blue", title: `${rdvPasses.length} RDV passé${rdvPasses.length > 1 ? "s" : ""} à clôturer`, text: `Clôture-les (archive) pour que ton CA réalisé${caM === 0 ? " (actuellement 0 €)" : ""} et ton stock soient justes.`, href: "/agenda", cta: "Clôturer" });
+          if (benefM < 0)
+            ins.push({ icon: "📉", color: "orange", title: "Bénéfice du mois négatif", text: `${caM.toFixed(0)} € réalisé pour ${depM.toFixed(0)} € de charges. Encaisse tes prestations faites ou allège les charges fixes.`, href: "/depenses", cta: "Voir charges" });
+          if (leadsFroids.length > 0)
+            ins.push({ icon: "🔥", color: "purple", title: `${leadsFroids.length} lead${leadsFroids.length > 1 ? "s" : ""} en attente depuis +3 j`, text: "Un lead contacté vite convertit bien mieux. Rappelle-les tant qu'ils sont chauds.", href: "/prospects", cta: "Contacter" });
+          if (relanceRetard.length > 0)
+            ins.push({ icon: "⏰", color: "amber", title: `${relanceRetard.length} relance${relanceRetard.length > 1 ? "s" : ""} en retard`, text: "Des prospects devaient être relancés avant aujourd'hui.", href: "/prospects", cta: "Relancer" });
+          if (ins.length === 0)
+            ins.push({ icon: "💪", color: "emerald", title: "Tout roule !", text: benefM > 0 ? `Bénéfice positif ce mois (+${benefM.toFixed(0)} €). Continue comme ça.` : "Aucune action urgente. Pense à démarcher pour remplir l'agenda.", href: "/agenda", cta: "Agenda" });
+
+          const C: Record<string, string> = { blue: "border-blue-100 bg-blue-50", orange: "border-orange-100 bg-orange-50", purple: "border-purple-100 bg-purple-50", amber: "border-amber-100 bg-amber-50", emerald: "border-emerald-100 bg-emerald-50" };
+          const CT: Record<string, string> = { blue: "text-blue-700", orange: "text-orange-700", purple: "text-purple-700", amber: "text-amber-700", emerald: "text-emerald-700" };
+          return (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+              <h2 className="font-bold text-gray-900 mb-3 flex items-center gap-2">🧭 À optimiser <span className="text-xs font-normal text-gray-400">tes priorités business</span></h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                {ins.slice(0, 3).map((x, i) => (
+                  <a key={i} href={x.href} className={`flex flex-col gap-1 p-3 rounded-xl border ${C[x.color]} hover:brightness-[0.98] transition-all`}>
+                    <p className={`text-sm font-semibold ${CT[x.color]} flex items-center gap-1.5`}><span>{x.icon}</span>{x.title}</p>
+                    <p className="text-xs text-gray-600 leading-snug">{x.text}</p>
+                    <span className={`text-xs font-medium ${CT[x.color]} inline-flex items-center gap-1 mt-1`}>{x.cta} <ArrowRight size={12} /></span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         <div className="xl:col-span-2 space-y-4">
         {/* ── À faire aujourd'hui ─────────────────────────────────────────── */}
@@ -288,6 +331,15 @@ export default function HomePage() {
           const filt = rentaPeriod === "semaine" ? inWeek : inMonth;
           const arch = stats.archive.filter(p => p.date && filt(p.date));
           const ca = arch.reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+          // Période précédente (semaine/mois d'avant) → tendance.
+          const prevFilt = (fr: string) => {
+            const p = fr.split("/"); if (p.length !== 3) return false;
+            const d = new Date(+p[2], +p[1]-1, +p[0]);
+            if (rentaPeriod === "semaine") { const ps = new Date(wStart); ps.setDate(ps.getDate()-7); const pe = new Date(wEnd); pe.setDate(pe.getDate()-7); return d >= ps && d <= pe; }
+            const pm = new Date(now.getFullYear(), now.getMonth()-1, 1); const pmE = new Date(now.getFullYear(), now.getMonth(), 0); pmE.setHours(23,59,59,999); return d >= pm && d <= pmE;
+          };
+          const caPrev = stats.archive.filter(p => p.date && prevFilt(p.date)).reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+          const trend = caPrev > 0 ? Math.round((ca - caPrev) / caPrev * 100) : null;
           const comm = arch.reduce((s, p) => { const prix = parseFloat(p.prix) || 0; const v = parseFloat(p.commission) || 0; return s + ((p.commissionType || "%") === "%" ? prix * v / 100 : v); }, 0);
           const depPonc = depenses.filter(d => d.type === "ponctuel" && (rentaPeriod === "semaine" ? (() => { const d2 = new Date(d.date + "T00:00:00"); return d2 >= wStart && d2 <= wEnd; })() : d.date?.startsWith(currentMonth))).reduce((s, d) => s + d.montant, 0);
           const depFixe = depenses.filter(d => d.type === "mensuel").reduce((s, d) => s + d.montant, 0);
@@ -310,7 +362,16 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-xl bg-green-50 p-4"><p className="text-xs text-gray-500">CA réalisé</p><p className="text-xl font-bold text-green-700">{ca.toFixed(0)} €</p><p className="text-[11px] text-gray-400 mt-0.5">{arch.length} presta terminée{arch.length > 1 ? "s" : ""}</p></div>
+                <div className="rounded-xl bg-green-50 p-4">
+                  <p className="text-xs text-gray-500">CA réalisé</p>
+                  <p className="text-xl font-bold text-green-700">{ca.toFixed(0)} €</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1.5">
+                    {arch.length} presta terminée{arch.length > 1 ? "s" : ""}
+                    {trend != null && (
+                      <span className={`font-semibold ${trend >= 0 ? "text-emerald-600" : "text-red-500"}`}>{trend >= 0 ? "▲" : "▼"} {Math.abs(trend)}%</span>
+                    )}
+                  </p>
+                </div>
                 <div className="rounded-xl bg-red-50 p-4"><p className="text-xs text-gray-500">Dépenses</p><p className="text-xl font-bold text-red-700">{dep.toFixed(0)} €</p><p className="text-[11px] text-gray-400 mt-0.5">charges incluses</p></div>
                 <div className={`rounded-xl p-4 ${benefice >= 0 ? "bg-emerald-50" : "bg-orange-50"}`}><p className="text-xs text-gray-500">Bénéfice net</p><p className={`text-xl font-bold ${benefice >= 0 ? "text-emerald-700" : "text-orange-700"}`}>{benefice >= 0 ? "+" : ""}{benefice.toFixed(0)} €</p><p className="text-[11px] text-gray-400 mt-0.5">{ca > 0 ? `marge ${((benefice / ca) * 100).toFixed(0)}%` : "—"}</p></div>
               </div>
