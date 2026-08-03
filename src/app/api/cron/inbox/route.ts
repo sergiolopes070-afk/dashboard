@@ -53,6 +53,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ revived: data?.length ?? 0, details: data || [], error: error?.message });
   }
 
+  // Diagnostic : liste des prospects (origine + date) pour comprendre les leads « revenus ».
+  if (url.searchParams.get("listProspects") === "1" && supabase) {
+    const { data } = await supabase
+      .from("prospects")
+      .select("prenom, nom, email, tel, source, statut, date_relance, created_at")
+      .order("created_at", { ascending: false });
+    return NextResponse.json({ count: data?.length ?? 0, prospects: data || [] });
+  }
+
   const dry = url.searchParams.get("dry") === "1";
   const debug = url.searchParams.get("debug") === "1";
   const baseline = url.searchParams.get("baseline") === "1";

@@ -222,7 +222,7 @@ export default function HomePage() {
         }
       />
 
-      <div className="flex-1 p-3 sm:p-6 space-y-4 max-w-5xl w-full mx-auto">
+      <div className="flex-1 p-3 sm:p-6 space-y-4 w-full">
 
         {error && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex gap-4">
@@ -245,6 +245,8 @@ export default function HomePage() {
           </div>
         )}
 
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+        <div className="xl:col-span-2 space-y-4">
         {/* ── À faire aujourd'hui ─────────────────────────────────────────── */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
           <div className="flex items-center gap-2 mb-4">
@@ -319,6 +321,8 @@ export default function HomePage() {
           );
         })()}
 
+        </div>{/* fin colonne principale */}
+        <div className="space-y-4">
         {/* ── Prochains rendez-vous ───────────────────────────────────────── */}
         {stats && stats.upcomingList.length > 0 && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -370,6 +374,9 @@ export default function HomePage() {
             </div>
           </div>
         )}
+
+        </div>{/* fin colonne latérale */}
+        </div>{/* fin grille 2 colonnes */}
 
         {/* ── Agenda de la semaine ────────────────────────────────────────── */}
         {stats && (
