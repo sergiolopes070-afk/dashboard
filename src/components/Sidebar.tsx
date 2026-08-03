@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useSidebar } from "./SidebarContext";
 import {
   LayoutDashboard, Users, Briefcase, Archive,
-  FileText, Settings, ChevronRight, Wrench, CalendarDays, TrendingDown, LogOut, X, UserSearch, Package,
+  FileText, Settings, ChevronRight, Wrench, CalendarDays, TrendingDown, LogOut, X, UserSearch, Package, BarChart3,
 } from "lucide-react";
 import { cachePrefetch, CACHE_KEYS } from "@/lib/dataCache";
 
@@ -34,6 +34,7 @@ const nav = [
   { href: "/devis",         label: "Devis",             icon: FileText },
   { href: "/depenses",      label: "Dépenses",          icon: TrendingDown },
   { href: "/stock",         label: "Stock",             icon: Package },
+  { href: "/pilotage",      label: "Pilotage",          icon: BarChart3 },
   { href: "/archive",       label: "Historique",        icon: Archive },
   { href: "/configuration", label: "Configuration",     icon: Settings },
 ];
