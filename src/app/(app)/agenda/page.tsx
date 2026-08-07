@@ -355,6 +355,7 @@ export default function AgendaPage() {
   // ── Avis depuis l'agenda ───────────────────────────────────────────────────
   const [avisLinkCopied, setAvisLinkCopied] = useState(false);
   const [avisMsgCopied,  setAvisMsgCopied]  = useState(false);
+  const [rappelCopied,   setRappelCopied]   = useState(false);
   const [ficheClientId, setFicheClientId] = useState<string | null>(null);
 
   // Préférence fiscale du client sélectionné (avance immédiate / crédit d'impôt)
@@ -1431,23 +1432,36 @@ export default function AgendaPage() {
                         📦 Archiver ce RDV
                       </button>
 
-                      {/* ── Rappel WhatsApp client ── */}
-                      {ev.tel && (
-                        <a
-                          href={`https://wa.me/${ev.tel.replace(/\s/g, "").replace(/^0/, "33")}?text=${encodeURIComponent(
-                            `Rappel de votre rendez-vous demain :\n\n` +
-                            `🧹 ${ev.typePresta || "Prestation KinouClean"}\n` +
-                            `📅 ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
-                            `📍 ${ev.adresse || "—"}\n\n` +
-                            `En cas d'empêchement, merci de nous prévenir le plus tôt possible.`
-                          )}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full py-2 rounded-xl border border-sky-200 text-sky-700 text-sm font-medium hover:bg-sky-50 transition-colors flex items-center justify-center gap-1.5"
-                        >
-                          🔔 Envoyer un rappel à {ev.prenom}
-                        </a>
-                      )}
+                      {/* ── Rappel client : WhatsApp si numéro + copie toujours dispo ── */}
+                      {(() => {
+                        const rappelMsg =
+                          `Bonjour ${ev.prenom || ""},\n\n` +
+                          `Petit rappel de votre rendez-vous KinouClean 🙂\n\n` +
+                          `🧹 ${ev.typePresta || "Prestation KinouClean"}\n` +
+                          `📅 ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
+                          `📍 ${ev.adresse || "—"}\n` +
+                          (ev.prix && ev.prix !== "0" ? `💶 Montant : ${ev.prix} €\n` : "") +
+                          `\nEn cas d'empêchement, merci de nous prévenir au plus tôt.\n\nÀ très bientôt,\nL'équipe KinouClean`;
+                        return (
+                          <div className="flex flex-col gap-2">
+                            {ev.tel && (
+                              <a
+                                href={`https://wa.me/${ev.tel.replace(/\s/g, "").replace(/^0/, "33")}?text=${encodeURIComponent(rappelMsg)}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="w-full py-2 rounded-xl border border-sky-200 text-sky-700 text-sm font-medium hover:bg-sky-50 transition-colors flex items-center justify-center gap-1.5"
+                              >
+                                🔔 Rappel WhatsApp à {ev.prenom}
+                              </a>
+                            )}
+                            <button
+                              onClick={() => navigator.clipboard.writeText(rappelMsg).then(() => { setRappelCopied(true); setTimeout(() => setRappelCopied(false), 2000); })}
+                              className={`w-full py-2 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${rappelCopied ? "bg-green-50 text-green-700 border-green-200" : "border-sky-200 text-sky-700 hover:bg-sky-50"}`}
+                            >
+                              📋 {rappelCopied ? "Rappel copié !" : "Copier le message de rappel"}
+                            </button>
+                          </div>
+                        );
+                      })()}
 
                       {/* ── WhatsApp prestataire : envoyer la mission (avec réponse directe) ── */}
                       {ev.prestataire && (() => {
