@@ -30,7 +30,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/");
+      router.push(data.role === "presta" ? "/espace-pro" : "/");
       router.refresh();
     } catch {
       setError("Erreur réseau, veuillez réessayer");
@@ -65,15 +65,15 @@ export default function LoginPage() {
             {/* Email */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1.5">
-                Adresse mail
+                Adresse mail ou identifiant
               </label>
               <input
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                autoComplete="email"
-                placeholder="exemple@mail.com"
+                autoComplete="username"
+                placeholder="email (patron) ou identifiant (prestataire)"
                 className="w-full bg-[#0f172a] border border-white/10 text-white placeholder-gray-500
                            rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500
                            focus:border-transparent transition"
@@ -83,7 +83,7 @@ export default function LoginPage() {
             {/* Mot de passe */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1.5">
-                Mot de passe
+                Mot de passe ou code
               </label>
               <div className="relative">
                 <input

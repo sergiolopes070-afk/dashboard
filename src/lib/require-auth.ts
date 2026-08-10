@@ -1,25 +1,29 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// requireAuth() — garde d'authentification pour les route handlers (runtime Node).
-//
-// Vérifie le jeton de session signé (voir src/lib/auth.ts). À appeler EN TÊTE de
-// chaque handler de route protégée :
-//
-//   const unauth = await requireAuth();
-//   if (unauth) return unauth;   // → 401 sans exécuter la logique
-//
-// Fichier séparé de auth.ts car il importe next/headers (indisponible dans le
-// middleware Edge). auth.ts reste, lui, compatible Edge.
+// Gardes d'authentification pour les route handlers (runtime Node).
+//   • requireAuth()   → réservé au PATRON (rôle owner). 401 sinon.
+//   • requirePresta() → réservé au PRESTATAIRE connecté ; renvoie son id.
 // ─────────────────────────────────────────────────────────────────────────────
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
+import { SESSION_COOKIE, readSessionToken } from "@/lib/auth";
 
 export async function requireAuth(): Promise<NextResponse | null> {
   const secret = process.env.AUTH_SECRET;
   const token  = cookies().get(SESSION_COOKIE)?.value;
-
-  if (!secret || !(await verifySessionToken(token, secret))) {
+  const sess   = secret ? await readSessionToken(token, secret) : null;
+  if (!sess || sess.role !== "owner") {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
   }
   return null;
+}
+
+// Renvoie { pid } si un prestataire est connecté, sinon une réponse 401.
+export async function requirePresta(): Promise<{ pid: string } | NextResponse> {
+  const secret = process.env.AUTH_SECRET;
+  const token  = cookies().get(SESSION_COOKIE)?.value;
+  const sess   = secret ? await readSessionToken(token, secret) : null;
+  if (!sess || sess.role !== "presta" || !sess.pid) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
+  return { pid: sess.pid };
 }

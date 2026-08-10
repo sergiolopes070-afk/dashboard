@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Phone, Mail, Wrench, UserPlus, Pencil, Trash2, X, Save, Loader2, BarChart2, Euro, CheckCircle2, XCircle, CalendarOff } from "lucide-react";
+import { Phone, Mail, Wrench, UserPlus, Pencil, Trash2, X, Save, Loader2, BarChart2, Euro, CheckCircle2, XCircle, CalendarOff, KeyRound, Copy } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { SkeletonCards } from "@/components/Skeleton";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
@@ -113,6 +113,21 @@ export default function PrestatairesPage() {
   const [editing, setEditing]       = useState<Prestataire | null>(null);
   const [confirmDel, setConfirmDel] = useState<Prestataire | null>(null);
   const [deleting, setDeleting]     = useState(false);
+  // Accès prestataire : génération d'un code d'accès (affiché une seule fois).
+  const [genId, setGenId]           = useState<string | null>(null);
+  const [codeInfo, setCodeInfo]     = useState<{ nom: string; login: string; code: string } | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
+
+  async function generateCode(p: Prestataire) {
+    setGenId(p.id);
+    try {
+      const res = await fetch("/api/prestataires/code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: p.id }) });
+      const d = await res.json();
+      if (res.ok) setCodeInfo({ nom: p.nom, login: d.login, code: d.code });
+      else alert(d.error || "Erreur");
+    } catch { alert("Erreur réseau"); }
+    finally { setGenId(null); }
+  }
   // Disponibilités : map prestataire.id → jours off (0=Lun … 6=Dim)
   const [dispos, setDispos] = useState<Record<string, number[]>>({});
   const [savingDispo] = useState<string | null>(null);
@@ -233,6 +248,28 @@ export default function PrestatairesPage() {
         </div>
       )}
 
+      {/* ── Code d'accès généré (affiché UNE fois) ── */}
+      {codeInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) { setCodeInfo(null); setCodeCopied(false); } }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-3"><KeyRound size={20} className="text-blue-600" /></div>
+            <h3 className="font-bold text-gray-900 text-center mb-1">Accès de {codeInfo.nom}</h3>
+            <p className="text-xs text-gray-500 text-center mb-4">Transmets-lui ces identifiants. Le code n&apos;est affiché <strong>qu&apos;une seule fois</strong> — il faudra en régénérer un si tu le perds.</p>
+            <div className="space-y-2 mb-4">
+              <div className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2"><span className="text-xs text-gray-500">Identifiant</span><span className="font-mono font-semibold text-gray-900">{codeInfo.login}</span></div>
+              <div className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2"><span className="text-xs text-gray-500">Code</span><span className="font-mono font-bold text-lg text-blue-700 tracking-widest">{codeInfo.code}</span></div>
+            </div>
+            <button
+              onClick={() => { navigator.clipboard.writeText(`Ton accès KinouClean :\nSite : ${typeof window !== "undefined" ? window.location.origin : ""}/login\nIdentifiant : ${codeInfo.login}\nCode : ${codeInfo.code}`).then(() => { setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }); }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 mb-2">
+              <Copy size={15} /> {codeCopied ? "Copié !" : "Copier le message à envoyer"}
+            </button>
+            <button onClick={() => { setCodeInfo(null); setCodeCopied(false); }} className="w-full py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">Fermer</button>
+          </div>
+        </div>
+      )}
+
       <Topbar
         title="Prestataires"
         subtitle={`${data.length} prestataire${data.length > 1 ? "s" : ""} dans l'équipe`}
@@ -293,6 +330,9 @@ export default function PrestatairesPage() {
                         )}
                       </div>
                       <div className="flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => generateCode(p)} disabled={genId === p.id} className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors disabled:opacity-40" title="Code d'accès prestataire">
+                          {genId === p.id ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                        </button>
                         <button onClick={() => setEditing(p)} className="p-1.5 rounded-lg hover:bg-orange-50 text-gray-400 hover:text-orange-600 transition-colors" title="Modifier">
                           <Pencil size={14} />
                         </button>

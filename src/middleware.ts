@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, verifySessionToken, createSessionToken, sessionCookieOptions } from "@/lib/auth";
+import { SESSION_COOKIE, readSessionToken, createSessionToken, sessionCookieOptions } from "@/lib/auth";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -15,8 +15,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/avis") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
-    // Assets PWA publics (icône + manifeste) : accessibles sans connexion pour
-    // que l'installation « écran d'accueil » fonctionne.
+    // Assets PWA publics (icône + manifeste) : accessibles sans connexion.
     pathname === "/manifest.webmanifest" ||
     pathname.startsWith("/icon") ||
     pathname.startsWith("/apple-icon")
@@ -24,24 +23,29 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Vérifie la signature HMAC + l'expiration du jeton.
-  const isAuthenticated = !!secret && await verifySessionToken(session, secret);
+  const sess = secret ? await readSessionToken(session, secret) : null;
 
   // Pas connecté → rediriger vers /login
-  if (!isAuthenticated && pathname !== "/login") {
+  if (!sess && pathname !== "/login") {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  // Déjà connecté → rediriger vers le dashboard
-  if (isAuthenticated && pathname === "/login") {
-    return NextResponse.redirect(new URL("/", request.url));
+  // Déjà connecté sur /login → rediriger vers l'espace adapté au rôle.
+  if (sess && pathname === "/login") {
+    return NextResponse.redirect(new URL(sess.role === "presta" ? "/espace-pro" : "/", request.url));
   }
 
-  // Session glissante : ré-émettre un jeton frais à chaque requête active,
-  // pour ne pas déconnecter l'utilisateur en pleine session de travail.
+  // ── Cloisonnement par rôle ─────────────────────────────────────────────────
+  // Le prestataire n'accède QU'À son espace (pages + API dédiées) et à /api/auth.
+  if (sess && sess.role === "presta") {
+    const autorise = pathname.startsWith("/espace-pro") || pathname.startsWith("/api/espace-pro");
+    if (!autorise) return NextResponse.redirect(new URL("/espace-pro", request.url));
+  }
+
+  // Session glissante : ré-émettre un jeton frais (même rôle/pid) à chaque requête.
   const response = NextResponse.next();
-  if (isAuthenticated && secret) {
-    const fresh = await createSessionToken(secret);
+  if (sess && secret) {
+    const fresh = await createSessionToken(secret, { role: sess.role, pid: sess.pid });
     response.cookies.set(SESSION_COOKIE, fresh, sessionCookieOptions());
   }
   return response;

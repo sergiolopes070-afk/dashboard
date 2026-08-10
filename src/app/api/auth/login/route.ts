@@ -1,31 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionToken, sessionCookieOptions, SESSION_COOKIE } from "@/lib/auth";
+import { createSessionToken, sessionCookieOptions, SESSION_COOKIE, hashCode } from "@/lib/auth";
+import { getPrestataireByLogin } from "@/lib/sheets";
 
 export async function POST(request: NextRequest) {
-  const { email, password } = await request.json();
-
-  const validEmail = process.env.AUTH_EMAIL;
-  const validPassword = process.env.AUTH_PASSWORD;
+  const { email, password } = await request.json() as { email?: string; password?: string };
   const secret = process.env.AUTH_SECRET;
+  if (!secret) return NextResponse.json({ error: "Configuration manquante côté serveur" }, { status: 500 });
 
-  if (!validEmail || !validPassword || !secret) {
-    return NextResponse.json(
-      { error: "Configuration manquante côté serveur" },
-      { status: 500 }
-    );
+  const id = (email || "").trim();
+  const code = (password || "").trim();
+
+  // 1) Patron : email + mot de passe (variables d'env).
+  if (id && code && id === process.env.AUTH_EMAIL && code === process.env.AUTH_PASSWORD) {
+    const token = await createSessionToken(secret, { role: "owner" });
+    const res = NextResponse.json({ success: true, role: "owner" });
+    res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+    return res;
   }
 
-  if (email !== validEmail || password !== validPassword) {
-    return NextResponse.json(
-      { error: "Adresse mail ou mot de passe incorrect" },
-      { status: 401 }
-    );
-  }
+  // 2) Prestataire : identifiant + code (haché en base).
+  try {
+    const p = await getPrestataireByLogin(id);
+    if (p && p.codeHash && code) {
+      const h = await hashCode(secret, p.login, code);
+      if (h === p.codeHash) {
+        const token = await createSessionToken(secret, { role: "presta", pid: p.id });
+        const res = NextResponse.json({ success: true, role: "presta" });
+        res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+        return res;
+      }
+    }
+  } catch { /* on retombe sur l'erreur générique ci-dessous */ }
 
-  // Cookie = jeton signé (HMAC-SHA256) avec expiration intégrée dans la charge signée.
-  const token = await createSessionToken(secret);
-  const response = NextResponse.json({ success: true });
-  response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
-
-  return response;
+  return NextResponse.json({ error: "Identifiant ou code incorrect" }, { status: 401 });
 }

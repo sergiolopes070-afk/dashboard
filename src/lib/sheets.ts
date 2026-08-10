@@ -383,6 +383,47 @@ export async function deletePrestataire(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+// ─── Accès prestataire (identifiant + code haché) ─────────────────────────────
+// Colonnes à ajouter une fois dans Supabase :
+//   ALTER TABLE prestataires ADD COLUMN IF NOT EXISTS login TEXT;
+//   ALTER TABLE prestataires ADD COLUMN IF NOT EXISTS code_hash TEXT;
+export async function setPrestataireAccess(id: string, login: string, codeHash: string): Promise<void> {
+  if (!supabase) throw new Error("Supabase non configuré");
+  const { error } = await supabase.from("prestataires").update({ login, code_hash: codeHash }).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function getPrestataireByLogin(login: string): Promise<{ id: string; login: string; codeHash: string } | null> {
+  if (!supabase || !login) return null;
+  const { data } = await supabase.from("prestataires").select("id, login, code_hash").ilike("login", login).eq("actif", true).limit(1);
+  const r = data?.[0];
+  return r ? { id: r.id as string, login: (r.login as string) || "", codeHash: (r.code_hash as string) || "" } : null;
+}
+
+// Missions d'un prestataire (pour son espace) — SANS prix ni commission.
+export async function getMissionsForPrestataire(pid: string): Promise<Array<{
+  row: string; nom: string; prenom: string; typePresta: string; adresse: string;
+  date: string; heure: string; statut: string; message: string; tel: string;
+}>> {
+  if (!supabase || !pid) return [];
+  const { data, error } = await supabase
+    .from("prestations")
+    .select("id, type_prestation, adresse, date_intervention, heure_intervention, statut, message, clients(prenom, nom, tel)")
+    .eq("prestataire_id", pid)
+    .eq("archive", false);
+  if (error) throw new Error(error.message);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data || []).map((r: any) => {
+    const c = Array.isArray(r.clients) ? (r.clients[0] || {}) : (r.clients || {});
+    return {
+      row: r.id, nom: c.nom || "", prenom: c.prenom || "", tel: c.tel || "",
+      typePresta: r.type_prestation || "", adresse: r.adresse || "",
+      date: isoToFr(r.date_intervention), heure: ((r.heure_intervention as string) || "").substring(0, 5),
+      statut: r.statut || "", message: r.message || "",
+    };
+  });
+}
+
 export async function updateClientTags(clientId: string, tags: string[]): Promise<void> {
   if (!supabase) return;
   const { error } = await supabase.from("clients").update({ tags }).eq("id", clientId);

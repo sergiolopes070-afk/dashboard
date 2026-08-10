@@ -59,12 +59,46 @@ function safeEqual(a: string, b: string): boolean {
 
 // ─── API publique ──────────────────────────────────────────────────────────────
 
-// Crée un jeton signé valable SESSION_DAYS jours à partir de `now`.
-export async function createSessionToken(secret: string, now: number = Date.now()): Promise<string> {
+// Identité portée par le jeton : rôle (patron/prestataire) + id prestataire.
+export type SessionRole = "owner" | "presta";
+export interface Session { role: SessionRole; pid: string; }
+
+// Crée un jeton signé valable SESSION_DAYS jours. Le rôle + l'id prestataire
+// font partie de la charge signée (les modifier invalide la signature).
+// Format de charge : "<expMs>:<role>:<pid>" (aucun point → sépare proprement du sig).
+export async function createSessionToken(
+  secret: string,
+  opts: { role?: SessionRole; pid?: string } = {},
+  now: number = Date.now(),
+): Promise<string> {
   const exp = now + SESSION_MS;
-  const payload = String(exp);
+  const payload = `${exp}:${opts.role || "owner"}:${opts.pid || ""}`;
   const sig = await hmacHex(secret, payload);
   return `${payload}.${sig}`;
+}
+
+// Lit et vérifie le jeton → renvoie {role, pid} si valide, sinon null.
+export async function readSessionToken(
+  token: string | undefined | null,
+  secret: string,
+  now: number = Date.now(),
+): Promise<Session | null> {
+  if (!token) return null;
+  const dot = token.lastIndexOf(".");
+  if (dot <= 0) return null;
+
+  const payload = token.slice(0, dot);
+  const sig     = token.slice(dot + 1);
+
+  const expected = await hmacHex(secret, payload);
+  if (!safeEqual(sig, expected)) return null;
+
+  const parts = payload.split(":");
+  const exp = Number(parts[0]);
+  if (!Number.isFinite(exp) || exp <= now) return null;
+  const role = (parts[1] === "presta" ? "presta" : "owner") as SessionRole;
+  const pid  = parts[2] || "";
+  return { role, pid };
 }
 
 // Vérifie la signature ET l'expiration. Renvoie false si absent / falsifié / expiré.
@@ -73,18 +107,10 @@ export async function verifySessionToken(
   secret: string,
   now: number = Date.now(),
 ): Promise<boolean> {
-  if (!token) return false;
-  const dot = token.indexOf(".");
-  if (dot <= 0) return false;
+  return (await readSessionToken(token, secret, now)) !== null;
+}
 
-  const payload = token.slice(0, dot);
-  const sig     = token.slice(dot + 1);
-
-  const expected = await hmacHex(secret, payload);
-  if (!safeEqual(sig, expected)) return false;
-
-  const exp = Number(payload);
-  if (!Number.isFinite(exp) || exp <= now) return false;
-
-  return true;
+// Hash déterministe d'un code d'accès prestataire (peppéré par AUTH_SECRET).
+export async function hashCode(secret: string, login: string, code: string): Promise<string> {
+  return hmacHex(secret, `presta-code:${login.toLowerCase()}:${code}`);
 }
