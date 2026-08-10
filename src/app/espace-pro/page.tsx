@@ -10,6 +10,84 @@ interface Mission {
   photos: Photo[];
 }
 
+// ── Appareil photo intégré (capture en direct, jamais la galerie) ──────────────
+function CameraModal({ mission, article, phase, onClose, onUploaded }: {
+  mission: Mission; article: string; phase: "avant" | "apres";
+  onClose: () => void; onUploaded: (p: Photo) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [ready, setReady] = useState(false);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [shots, setShots] = useState<string[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) { setErr("Caméra non disponible sur ce navigateur."); return; }
+        const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+        if (!active) { s.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = s;
+        if (videoRef.current) { videoRef.current.srcObject = s; await videoRef.current.play().catch(() => {}); }
+        setReady(true);
+      } catch { setErr("Autorise l'accès à la caméra pour prendre les photos."); }
+    })();
+    return () => { streamRef.current?.getTracks().forEach(t => t.stop()); };
+  }, []);
+
+  async function snap() {
+    const v = videoRef.current; if (!v || busy || !v.videoWidth) return;
+    setBusy(true);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+      canvas.getContext("2d")!.drawImage(v, 0, 0);
+      const blob: Blob | null = await new Promise(res => canvas.toBlob(b => res(b), "image/jpeg", 0.85));
+      if (!blob) return;
+      const fd = new FormData();
+      fd.append("prestationId", mission.row); fd.append("article", article); fd.append("phase", phase);
+      fd.append("file", new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" }));
+      const r = await fetch("/api/espace-pro/photo", { method: "POST", body: fd });
+      const d = await r.json();
+      if (r.ok && d.photo) { onUploaded(d.photo as Photo); setShots(s => [URL.createObjectURL(blob), ...s]); }
+      else setErr(d.error || "Échec de l'envoi");
+    } catch { setErr("Erreur pendant la capture"); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 text-white" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
+        <span className="text-sm font-medium truncate">{article} · {phase === "avant" ? "Avant" : "Après"}</span>
+        <button onClick={onClose} className="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-sm font-medium">Terminé{shots.length ? ` (${shots.length})` : ""}</button>
+      </div>
+      <div className="flex-1 relative flex items-center justify-center overflow-hidden">
+        {err ? (
+          <div className="text-center px-8"><Camera size={40} className="text-white/40 mx-auto mb-3" /><p className="text-white/80 text-sm">{err}</p></div>
+        ) : (
+          <video ref={videoRef} playsInline muted autoPlay className="w-full h-full object-cover" />
+        )}
+        {shots.length > 0 && (
+          <div className="absolute left-2 bottom-2 flex flex-col-reverse gap-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {shots.slice(0, 4).map((u, i) => <img key={i} src={u} alt="" className="w-12 h-12 rounded-lg object-cover border-2 border-white/60" />)}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center justify-center py-6" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
+        {!err && (
+          <button onClick={snap} disabled={!ready || busy} aria-label="Prendre une photo"
+            className="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40">
+            {busy ? <Loader2 size={28} className="animate-spin text-white" /> : <span className="w-14 h-14 rounded-full bg-white" />}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Articles d'une prestation, dérivés du type (« Lavage Canapé + Lavage de matelas… »).
 function articlesDe(typePresta: string): string[] {
   const parts = (typePresta || "").split("+").map(s => s.trim().replace(/^(lavage|nettoyage)\s+(de\s+|d'|du\s+|des\s+|la\s+|le\s+)?/i, "").trim()).filter(Boolean);
@@ -45,13 +123,10 @@ export default function EspaceProPage() {
   const [indispos, setIndispos]   = useState<Indispo[]>([]);
   const [dispoBusy, setDispoBusy] = useState(false);
   const [perso, setPerso]         = useState({ debut: "", fin: "" });
-  const [uploading, setUploading] = useState<string | null>(null);
-  const [prog, setProg]           = useState<{ done: number; total: number } | null>(null);
+  const [cam, setCam]             = useState<{ article: string; phase: "avant" | "apres" } | null>(null);
   const [dark, setDark]           = useState(false);
   useEffect(() => { setDark(document.documentElement.classList.contains("dark")); }, []);
   const toggleDark = () => { const n = !dark; setDark(n); localStorage.setItem("darkMode", String(n)); document.documentElement.classList.toggle("dark", n); };
-  const pending = useRef<{ article: string; phase: string } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
@@ -85,26 +160,10 @@ export default function EspaceProPage() {
   }
   const libIndispo = (x: Indispo) => (!x.debut && !x.fin) ? "Journée entière" : `${x.debut || "début"} – ${x.fin || "fin"}`;
 
-  function pickPhoto(article: string, phase: string) { pending.current = { article, phase }; fileRef.current?.click(); }
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files || []); e.target.value = "";
-    if (!files.length || !pending.current || !sel) return;
-    const rowId = sel.row;
-    const { article, phase } = pending.current; const key = `${article}-${phase}`;
-    setUploading(key); setProg({ done: 0, total: files.length });
-    const add = (m: Mission, photo: Photo) => ({ ...m, photos: [...(m.photos || []), photo] });
-    let echecs = 0;
-    for (const f of files) {
-      try {
-        const fd = new FormData(); fd.append("prestationId", rowId); fd.append("article", article); fd.append("phase", phase); fd.append("file", f);
-        const r = await fetch("/api/espace-pro/photo", { method: "POST", body: fd }); const d = await r.json();
-        if (r.ok && d.photo) { const photo = d.photo as Photo; setSel(s => s ? add(s, photo) : s); setMissions(ms => ms.map(m => m.row === rowId ? add(m, photo) : m)); }
-        else echecs++;
-      } catch { echecs++; }
-      setProg(p => p ? { ...p, done: p.done + 1 } : p);
-    }
-    setUploading(null); setProg(null); pending.current = null;
-    if (echecs) alert(`${echecs} photo(s) n'ont pas pu être envoyées.`);
+  function addUploaded(photo: Photo) {
+    const add = (m: Mission) => ({ ...m, photos: [...(m.photos || []), photo] });
+    setSel(s => s ? add(s) : s);
+    setMissions(ms => ms.map(m => (sel && m.row === sel.row) ? add(m) : m));
   }
   async function delPhoto(p: Photo) {
     if (!sel || !confirm("Supprimer cette photo ?")) return;
@@ -310,7 +369,6 @@ export default function EspaceProPage() {
                       <p className="text-xs font-semibold text-gray-700 mb-1.5">{art}</p>
                       {(["avant", "apres"] as const).map(phase => {
                         const ph = (sel.photos || []).filter(p => p.article === art && p.phase === phase);
-                        const key = `${art}-${phase}`; const busy = uploading === key;
                         return (
                           <div key={phase} className="flex items-start gap-2 mb-2">
                             <span className={`text-[11px] font-semibold w-12 pt-5 ${phase === "avant" ? "text-orange-600" : "text-green-600"}`}>{phase === "avant" ? "Avant" : "Après"}</span>
@@ -322,9 +380,9 @@ export default function EspaceProPage() {
                                   <button onClick={() => delPhoto(p)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs leading-none shadow">×</button>
                                 </div>
                               ))}
-                              <button onClick={() => pickPhoto(art, phase)} disabled={busy}
-                                className="w-16 h-16 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-0.5 text-gray-400 hover:border-blue-400 hover:text-blue-500 active:scale-95 transition-all disabled:opacity-60">
-                                {busy ? (<><Loader2 size={18} className="animate-spin" />{prog && <span className="text-[9px]">{prog.done}/{prog.total}</span>}</>) : (<><Camera size={20} /><span className="text-[9px]">Ajouter</span></>)}
+                              <button onClick={() => setCam({ article: art, phase })}
+                                className="w-16 h-16 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-0.5 text-gray-400 hover:border-blue-400 hover:text-blue-500 active:scale-95 transition-all">
+                                <Camera size={20} /><span className="text-[9px]">Prendre</span>
                               </button>
                             </div>
                           </div>
@@ -341,8 +399,8 @@ export default function EspaceProPage() {
         );
       })()}
 
-      {/* Input photos — sélection MULTIPLE (plusieurs angles d'un coup) */}
-      <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={onFile} />
+      {/* Appareil photo intégré (capture en direct, rafale, jamais la galerie) */}
+      {cam && sel && <CameraModal mission={sel} article={cam.article} phase={cam.phase} onClose={() => setCam(null)} onUploaded={addUploaded} />}
     </div>
   );
 }
