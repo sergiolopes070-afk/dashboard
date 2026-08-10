@@ -98,23 +98,35 @@ export async function getPrestataires(): Promise<Prestataire[]> {
     nom  : (r.nom    || "").trim(),
     email: (r.email  || "").trim(),
     tel  : (r.tel_wa || "").trim(),
-    indispos: Array.isArray(r.indispos) ? r.indispos as string[] : [],
+    indispos: normIndispos(r.indispos),
   }));
 }
 
-// Jours d'indisponibilité (congés) d'un prestataire.
+// Indisponibilités (jour entier ou créneau) d'un prestataire.
 // SQL : ALTER TABLE prestataires ADD COLUMN IF NOT EXISTS indispos JSONB DEFAULT '[]'::jsonb;
-export async function getPrestataireIndispos(pid: string): Promise<string[]> {
+type Indispo = { date: string; debut: string; fin: string };
+// Normalise l'ancien format (tableau de dates) et le nouveau (objets).
+function normIndispos(raw: unknown): Indispo[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((x: any) => typeof x === "string" ? { date: x, debut: "", fin: "" } : { date: x?.date || "", debut: x?.debut || "", fin: x?.fin || "" })
+    .filter(x => x.date);
+}
+const sameIndispo = (a: Indispo, b: Indispo) => a.date === b.date && a.debut === b.debut && a.fin === b.fin;
+
+export async function getPrestataireIndispos(pid: string): Promise<Indispo[]> {
   if (!supabase || !pid) return [];
   const { data } = await supabase.from("prestataires").select("indispos").eq("id", pid).maybeSingle();
-  return Array.isArray(data?.indispos) ? (data!.indispos as string[]) : [];
+  return normIndispos(data?.indispos);
 }
 
-export async function togglePrestataireIndispo(pid: string, date: string, bloquer: boolean): Promise<string[]> {
+export async function setPrestataireIndispo(pid: string, entry: Indispo, bloquer: boolean): Promise<Indispo[]> {
   if (!supabase) throw new Error("Supabase non configuré");
-  const set = new Set(await getPrestataireIndispos(pid));
-  if (bloquer) set.add(date); else set.delete(date);
-  const next = Array.from(set).sort();
+  const cur = await getPrestataireIndispos(pid);
+  const without = cur.filter(x => !sameIndispo(x, entry));
+  const next = bloquer ? [...without, entry] : without;
+  next.sort((a, b) => (a.date + a.debut).localeCompare(b.date + b.debut));
   const { error } = await supabase.from("prestataires").update({ indispos: next }).eq("id", pid);
   if (error) throw new Error(error.message);
   return next;

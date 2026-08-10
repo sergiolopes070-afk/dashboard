@@ -96,12 +96,16 @@ export interface Prestation {
   photos?: PhotoIntervention[]; // photos avant/après par article (prestataire)
 }
 
+// Indisponibilité d'un prestataire : un jour, ou un créneau dans ce jour.
+// debut/fin vides ("") = journée entière (congé).
+export interface Indispo { date: string; debut: string; fin: string }
+
 export interface Prestataire {
   id: string;
   nom: string;
   email: string;
   tel: string;
-  indispos?: string[]; // jours bloqués/congés (YYYY-MM-DD)
+  indispos?: Indispo[]; // jours/créneaux bloqués
 }
 
 export const STATUT_COLORS: Record<string, string> = {

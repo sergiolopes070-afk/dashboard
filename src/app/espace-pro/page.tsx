@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { MapPin, Phone, Clock, LogOut, RefreshCw, Loader2, Lock, X, ChevronLeft, ChevronRight, Camera } from "lucide-react";
 
 interface Photo { url: string; path: string; article: string; phase: string; at: string }
+interface Indispo { date: string; debut: string; fin: string }
 interface Mission {
   row: string; nom: string; prenom: string; tel: string; telMasque: boolean;
   typePresta: string; adresse: string; date: string; heure: string; statut: string; message: string;
@@ -41,8 +42,9 @@ export default function EspaceProPage() {
   const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
   const [view, setView]           = useState<"jour" | "semaine">("jour");
   const [cursor, setCursor]       = useState<Date>(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
-  const [indispos, setIndispos]   = useState<string[]>([]);
-  const [togglingDispo, setTogglingDispo] = useState(false);
+  const [indispos, setIndispos]   = useState<Indispo[]>([]);
+  const [dispoBusy, setDispoBusy] = useState(false);
+  const [perso, setPerso]         = useState({ debut: "", fin: "" });
   const [uploading, setUploading] = useState<string | null>(null);
   const [prog, setProg]           = useState<{ done: number; total: number } | null>(null);
   const pending = useRef<{ article: string; phase: string } | null>(null);
@@ -69,15 +71,16 @@ export default function EspaceProPage() {
   async function logout() { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; }
 
   const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const estBloque = (d: Date) => indispos.includes(isoOf(d));
-  async function toggleConge(d: Date) {
-    const date = isoOf(d); const bloquer = !indispos.includes(date);
-    setTogglingDispo(true);
+  const indisposOf = (d: Date) => indispos.filter(x => x.date === isoOf(d));
+  const jourEntierBloque = (d: Date) => indisposOf(d).some(x => !x.debut && !x.fin);
+  async function setDispo(entry: Indispo, bloquer: boolean) {
+    setDispoBusy(true);
     try {
-      const r = await fetch("/api/espace-pro/dispo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, bloquer }) });
+      const r = await fetch("/api/espace-pro/dispo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...entry, bloquer }) });
       const j = await r.json(); if (r.ok) setIndispos(Array.isArray(j.indispos) ? j.indispos : []);
-    } finally { setTogglingDispo(false); }
+    } finally { setDispoBusy(false); }
   }
+  const libIndispo = (x: Indispo) => (!x.debut && !x.fin) ? "Journée entière" : `${x.debut || "début"} – ${x.fin || "fin"}`;
 
   function pickPhoto(article: string, phase: string) { pending.current = { article, phase }; fileRef.current?.click(); }
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -116,9 +119,18 @@ export default function EspaceProPage() {
   function DayCol({ day }: { day: Date }) {
     const isToday = sameDay(day, today);
     const evs = missionsOf(day);
+    const inds = indisposOf(day);
+    const jourEntier = inds.some(x => !x.debut && !x.fin);
     return (
-      <div className={`flex-1 border-l border-gray-100 relative ${estBloque(day) ? "bg-amber-50/50" : isToday ? "bg-blue-50/30" : "bg-white"}`} style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
+      <div className={`flex-1 border-l border-gray-100 relative ${jourEntier ? "bg-amber-50" : isToday ? "bg-blue-50/30" : "bg-white"}`} style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
         {HOURS.map((h, i) => <div key={h} className="absolute left-0 right-0 border-t border-gray-100" style={{ top: `${i * HOUR_PX}px` }} />)}
+        {/* Overlays indisponibilité (créneaux) */}
+        {inds.filter(x => x.debut || x.fin).map((x, i) => {
+          const t = x.debut ? topPx(x.debut) : 0;
+          const b = x.fin ? topPx(x.fin) : (HOUR_END - HOUR_START) * HOUR_PX;
+          return <div key={i} className="absolute left-0 right-0 bg-amber-200/60 border-y border-amber-300 pointer-events-none flex items-center justify-center" style={{ top: `${t}px`, height: `${Math.max(b - t, 14)}px`, zIndex: 2 }}><span className="text-[9px] text-amber-800 font-semibold">Indispo</span></div>;
+        })}
+        {jourEntier && <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 2 }}><span className="text-xs text-amber-800 font-semibold bg-amber-100/90 px-2 py-1 rounded-lg">🌴 Indisponible</span></div>}
         {evs.map((m, ei) => {
           const top = m.heure ? topPx(m.heure) : ei * 22;
           return (
@@ -174,16 +186,42 @@ export default function EspaceProPage() {
       ) : view === "jour" ? (
         /* ══ VUE JOUR ══ */
         <div className="flex-1 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-gray-800">{JOURS_FULL[cursor.getDay()]} {cursor.getDate()} {MOIS[cursor.getMonth()]}</p>
-            <button onClick={() => toggleConge(cursor)} disabled={togglingDispo}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${estBloque(cursor) ? "bg-amber-100 text-amber-700" : "border border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
-              {togglingDispo ? <Loader2 size={13} className="animate-spin" /> : "🌴"} {estBloque(cursor) ? "Congé posé — retirer" : "Poser un congé"}
-            </button>
+          <p className="text-sm font-semibold text-gray-800">{JOURS_FULL[cursor.getDay()]} {cursor.getDate()} {MOIS[cursor.getMonth()]}</p>
+
+          {/* Indisponibilités du jour */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-3 space-y-2">
+            <p className="text-xs font-semibold text-gray-600 flex items-center gap-1">🌴 Mes indisponibilités {dispoBusy && <Loader2 size={11} className="animate-spin text-amber-500" />}</p>
+            {indisposOf(cursor).length === 0 ? (
+              <p className="text-[11px] text-gray-400">Dispo toute la journée. Bloque un créneau si besoin :</p>
+            ) : (
+              <div className="space-y-1">
+                {indisposOf(cursor).map((x, i) => (
+                  <div key={i} className="flex items-center justify-between bg-amber-50 rounded-lg px-2.5 py-1.5">
+                    <span className="text-sm text-amber-800 font-medium">{libIndispo(x)}</span>
+                    <button onClick={() => setDispo(x, false)} className="text-xs text-amber-600 hover:text-amber-800 font-medium">Retirer</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {[
+                { label: "Journée entière", d: "", f: "" },
+                { label: "Matin", d: "08:00", f: "13:00" },
+                { label: "Après-midi", d: "13:00", f: "19:00" },
+              ].map(p => (
+                <button key={p.label} onClick={() => setDispo({ date: isoOf(cursor), debut: p.d, fin: p.f }, true)} disabled={dispoBusy}
+                  className="px-2.5 py-1 rounded-lg border border-amber-200 text-amber-700 text-xs font-medium hover:bg-amber-50 disabled:opacity-50">+ {p.label}</button>
+              ))}
+              <div className="flex items-center gap-1 ml-auto">
+                <input type="time" value={perso.debut} onChange={e => setPerso(p => ({ ...p, debut: e.target.value }))} className="border border-gray-200 rounded-lg px-1.5 py-1 text-xs" />
+                <span className="text-gray-400 text-xs">→</span>
+                <input type="time" value={perso.fin} onChange={e => setPerso(p => ({ ...p, fin: e.target.value }))} className="border border-gray-200 rounded-lg px-1.5 py-1 text-xs" />
+                <button onClick={() => { if (perso.debut && perso.fin) { setDispo({ date: isoOf(cursor), debut: perso.debut, fin: perso.fin }, true); setPerso({ debut: "", fin: "" }); } }} disabled={dispoBusy || !perso.debut || !perso.fin}
+                  className="px-2 py-1 rounded-lg bg-amber-500 text-white text-xs font-medium disabled:opacity-40">OK</button>
+              </div>
+            </div>
           </div>
-          {estBloque(cursor) && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-sm text-amber-700 font-medium">🌴 Jour bloqué — tu es indisponible ce jour-là.</div>
-          )}
+
           <div className="flex bg-white rounded-2xl border border-gray-100 overflow-hidden" style={{ minHeight: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
             <div className="w-[42px] shrink-0 relative">
               {HOURS.map((h, i) => <div key={h} className="absolute right-1.5 text-[10px] text-gray-400 font-medium" style={{ top: `${i * HOUR_PX - 6}px` }}>{String(h).padStart(2, "0")}h</div>)}
@@ -203,7 +241,7 @@ export default function EspaceProPage() {
                 return (
                   <div key={i} className="py-1.5 text-center border-l border-gray-100">
                     <p className="text-[10px] text-gray-400 font-medium uppercase">{JOURS_L[i]}</p>
-                    <div className={`mx-auto mt-0.5 w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold ${estBloque(day) ? "bg-amber-400 text-white" : isToday ? "bg-blue-600 text-white" : "text-gray-700"}`}>{day.getDate()}</div>
+                    <div className={`mx-auto mt-0.5 w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold ${jourEntierBloque(day) ? "bg-amber-400 text-white" : isToday ? "bg-blue-600 text-white" : "text-gray-700"}`}>{day.getDate()}</div>
                   </div>
                 );
               })}

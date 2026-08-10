@@ -1,25 +1,28 @@
 import { NextResponse } from "next/server";
 import { requirePresta } from "@/lib/require-auth";
-import { getPrestataireIndispos, togglePrestataireIndispo } from "@/lib/sheets";
+import { getPrestataireIndispos, setPrestataireIndispo } from "@/lib/sheets";
 
 export const dynamic = "force-dynamic";
 
-// GET → { indispos: ["YYYY-MM-DD", …] } du prestataire connecté.
+// GET → { indispos: [{date, debut, fin}, …] } du prestataire connecté.
 export async function GET() {
   const auth = await requirePresta();
   if (auth instanceof NextResponse) return auth;
-  const indispos = await getPrestataireIndispos(auth.pid);
-  return NextResponse.json({ indispos });
+  return NextResponse.json({ indispos: await getPrestataireIndispos(auth.pid) });
 }
 
-// POST { date, bloquer } → pose/retire un jour de congé (prestataire connecté).
+// POST { date, debut?, fin?, bloquer } → ajoute/retire une indispo (jour entier
+// si debut/fin vides, sinon créneau). Prestataire connecté uniquement.
 export async function POST(req: Request) {
   const auth = await requirePresta();
   if (auth instanceof NextResponse) return auth;
-  const { date, bloquer } = await req.json() as { date?: string; bloquer?: boolean };
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return NextResponse.json({ error: "Date invalide" }, { status: 400 });
+  const b = await req.json() as { date?: string; debut?: string; fin?: string; bloquer?: boolean };
+  if (!b.date || !/^\d{4}-\d{2}-\d{2}$/.test(b.date)) return NextResponse.json({ error: "Date invalide" }, { status: 400 });
+  const hm = /^\d{2}:\d{2}$/;
+  const debut = b.debut && hm.test(b.debut) ? b.debut : "";
+  const fin = b.fin && hm.test(b.fin) ? b.fin : "";
   try {
-    const indispos = await togglePrestataireIndispo(auth.pid, date, !!bloquer);
+    const indispos = await setPrestataireIndispo(auth.pid, { date: b.date, debut, fin }, !!b.bloquer);
     return NextResponse.json({ indispos });
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur" }, { status: 500 });
