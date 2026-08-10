@@ -401,6 +401,18 @@ export async function getPrestataireByLogin(login: string): Promise<{ id: string
   return r ? { id: r.id as string, login: (r.login as string) || "", codeHash: (r.code_hash as string) || "" } : null;
 }
 
+// Retire tout montant en euros d'un texte (les consignes multi-articles
+// contiennent le prix par article — le prestataire ne doit jamais le voir).
+function stripPrix(s: string): string {
+  return (s || "")
+    .replace(/\s*[—–-]\s*\d[\d .,]*\s*€/g, "")  // « — 140,00 € »
+    .replace(/\d[\d .,]*\s*€/g, "")             // tout montant restant « 80 € »
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/·\s*(?=·)/g, "")                  // séparateurs « · · » devenus vides
+    .replace(/[·\s]+$/g, "")
+    .trim();
+}
+
 // Missions d'un prestataire (pour son espace) — SANS prix ni commission.
 // Le téléphone du client n'est révélé qu'à partir de 24h avant le RDV (sécurité
 // anti-contournement) : masquage fait ICI, côté serveur.
@@ -433,7 +445,7 @@ export async function getMissionsForPrestataire(pid: string): Promise<Array<{
       tel: telMasque ? "" : (c.tel || ""), telMasque,
       typePresta: r.type_prestation || "", adresse: r.adresse || "",
       date: isoToFr(iso), heure: ((r.heure_intervention as string) || "").substring(0, 5),
-      statut: r.statut || "", message: r.message || "",
+      statut: r.statut || "", message: stripPrix(r.message || ""),
       photos: Array.isArray(r.photos) ? r.photos : [],
     };
   });
