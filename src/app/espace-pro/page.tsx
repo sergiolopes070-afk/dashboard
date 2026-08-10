@@ -39,6 +39,10 @@ export default function EspaceProPage() {
   const [loading, setLoading]   = useState(true);
   const [sel, setSel]           = useState<Mission | null>(null);
   const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
+  const [view, setView]           = useState<"jour" | "semaine">("jour");
+  const [cursor, setCursor]       = useState<Date>(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
+  const [indispos, setIndispos]   = useState<string[]>([]);
+  const [togglingDispo, setTogglingDispo] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const [prog, setProg]           = useState<{ done: number; total: number } | null>(null);
   const pending = useRef<{ article: string; phase: string } | null>(null);
@@ -55,11 +59,25 @@ export default function EspaceProPage() {
 
   async function load() {
     setLoading(true);
-    try { const r = await fetch("/api/espace-pro/missions"); if (r.ok) setMissions(await r.json()); }
-    finally { setLoading(false); }
+    try {
+      const [rm, rd] = await Promise.all([fetch("/api/espace-pro/missions"), fetch("/api/espace-pro/dispo")]);
+      if (rm.ok) setMissions(await rm.json());
+      if (rd.ok) { const d = await rd.json(); setIndispos(Array.isArray(d.indispos) ? d.indispos : []); }
+    } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, []);
   async function logout() { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; }
+
+  const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const estBloque = (d: Date) => indispos.includes(isoOf(d));
+  async function toggleConge(d: Date) {
+    const date = isoOf(d); const bloquer = !indispos.includes(date);
+    setTogglingDispo(true);
+    try {
+      const r = await fetch("/api/espace-pro/dispo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, bloquer }) });
+      const j = await r.json(); if (r.ok) setIndispos(Array.isArray(j.indispos) ? j.indispos : []);
+    } finally { setTogglingDispo(false); }
+  }
 
   function pickPhoto(article: string, phase: string) { pending.current = { article, phase }; fileRef.current?.click(); }
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -94,6 +112,31 @@ export default function EspaceProPage() {
   const end = addDays(weekStart, 6);
   const weekLabel = `${weekStart.getDate()} ${MOIS_C[weekStart.getMonth()]} – ${end.getDate()} ${MOIS_C[end.getMonth()]}`;
 
+  // Colonne d'un jour (grille horaire), partagée par la vue jour et la vue semaine.
+  function DayCol({ day }: { day: Date }) {
+    const isToday = sameDay(day, today);
+    const evs = missionsOf(day);
+    return (
+      <div className={`flex-1 border-l border-gray-100 relative ${estBloque(day) ? "bg-amber-50/50" : isToday ? "bg-blue-50/30" : "bg-white"}`} style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
+        {HOURS.map((h, i) => <div key={h} className="absolute left-0 right-0 border-t border-gray-100" style={{ top: `${i * HOUR_PX}px` }} />)}
+        {evs.map((m, ei) => {
+          const top = m.heure ? topPx(m.heure) : ei * 22;
+          return (
+            <button key={m.row} onClick={() => setSel(m)}
+              className="absolute left-1 right-1 rounded-md text-left overflow-hidden shadow-sm text-white active:scale-[0.98] hover:brightness-95 transition-all"
+              style={{ top: `${top + 1}px`, height: `${HOUR_PX - 3}px`, backgroundColor: colorByType[m.typePresta] || "#4285F4", zIndex: 5 + ei }}>
+              <div className="px-1.5 py-1 leading-tight">
+                {m.heure && <p className="text-[10px] font-bold opacity-90">{m.heure}</p>}
+                <p className="text-[11px] font-semibold truncate">{m.prenom} {m.nom}</p>
+                <p className="text-[9px] opacity-80 truncate">{m.typePresta}</p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="sticky top-0 z-20 bg-[#1C3557] text-white px-4 py-3 flex items-center justify-between shadow" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
@@ -104,64 +147,72 @@ export default function EspaceProPage() {
         </div>
       </header>
 
-      {/* Navigation semaine */}
+      {/* Barre : bascule Jour/Semaine + navigation */}
       <div className="bg-white border-b border-gray-200 px-3 py-2 flex items-center gap-2 sticky top-[56px] z-10">
-        <button onClick={() => setWeekStart(w => addDays(w, -7))} className="p-1.5 rounded-lg hover:bg-gray-100"><ChevronLeft size={18} className="text-gray-600" /></button>
-        <button onClick={() => setWeekStart(mondayOf(new Date()))} className="px-3 py-1 text-xs font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50">Auj.</button>
-        <button onClick={() => setWeekStart(w => addDays(w, 7))} className="p-1.5 rounded-lg hover:bg-gray-100"><ChevronRight size={18} className="text-gray-600" /></button>
-        <span className="text-sm font-semibold text-gray-800 ml-1">{weekLabel}</span>
+        <div className="flex bg-gray-100 rounded-lg p-0.5">
+          {(["jour", "semaine"] as const).map(v => (
+            <button key={v} onClick={() => setView(v)} className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${view === v ? "bg-white shadow text-gray-800" : "text-gray-500"}`}>{v === "jour" ? "Jour" : "Semaine"}</button>
+          ))}
+        </div>
+        {view === "jour" ? (
+          <>
+            <button onClick={() => setCursor(c => addDays(c, -1))} className="p-1.5 rounded-lg hover:bg-gray-100 ml-auto"><ChevronLeft size={18} className="text-gray-600" /></button>
+            <button onClick={() => setCursor(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })} className="px-2.5 py-1 text-xs font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50">Auj.</button>
+            <button onClick={() => setCursor(c => addDays(c, 1))} className="p-1.5 rounded-lg hover:bg-gray-100"><ChevronRight size={18} className="text-gray-600" /></button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => setWeekStart(w => addDays(w, -7))} className="p-1.5 rounded-lg hover:bg-gray-100 ml-auto"><ChevronLeft size={18} className="text-gray-600" /></button>
+            <button onClick={() => setWeekStart(mondayOf(new Date()))} className="px-2.5 py-1 text-xs font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50">Auj.</button>
+            <button onClick={() => setWeekStart(w => addDays(w, 7))} className="p-1.5 rounded-lg hover:bg-gray-100"><ChevronRight size={18} className="text-gray-600" /></button>
+          </>
+        )}
       </div>
 
       {loading && missions.length === 0 ? (
         <div className="flex items-center justify-center py-16 text-gray-400"><Loader2 className="animate-spin mr-2" size={18} /> Chargement…</div>
+      ) : view === "jour" ? (
+        /* ══ VUE JOUR ══ */
+        <div className="flex-1 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-gray-800">{JOURS_FULL[cursor.getDay()]} {cursor.getDate()} {MOIS[cursor.getMonth()]}</p>
+            <button onClick={() => toggleConge(cursor)} disabled={togglingDispo}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${estBloque(cursor) ? "bg-amber-100 text-amber-700" : "border border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+              {togglingDispo ? <Loader2 size={13} className="animate-spin" /> : "🌴"} {estBloque(cursor) ? "Congé posé — retirer" : "Poser un congé"}
+            </button>
+          </div>
+          {estBloque(cursor) && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-sm text-amber-700 font-medium">🌴 Jour bloqué — tu es indisponible ce jour-là.</div>
+          )}
+          <div className="flex bg-white rounded-2xl border border-gray-100 overflow-hidden" style={{ minHeight: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
+            <div className="w-[42px] shrink-0 relative">
+              {HOURS.map((h, i) => <div key={h} className="absolute right-1.5 text-[10px] text-gray-400 font-medium" style={{ top: `${i * HOUR_PX - 6}px` }}>{String(h).padStart(2, "0")}h</div>)}
+            </div>
+            <DayCol day={cursor} />
+          </div>
+        </div>
       ) : (
+        /* ══ VUE SEMAINE ══ */
         <div className="flex-1 overflow-x-auto">
           <div className="min-w-[600px]">
-            {/* En-têtes jours */}
-            <div className="grid bg-white border-b border-gray-200 sticky top-[100px] z-10" style={{ gridTemplateColumns: "38px repeat(7, 1fr)" }}>
+            <div className="flex items-center justify-center py-1.5 bg-white border-b border-gray-100"><span className="text-sm font-semibold text-gray-800">{weekLabel}</span></div>
+            <div className="grid bg-white border-b border-gray-200" style={{ gridTemplateColumns: "42px repeat(7, 1fr)" }}>
               <div />
               {weekDays.map((day, i) => {
                 const isToday = sameDay(day, today);
                 return (
                   <div key={i} className="py-1.5 text-center border-l border-gray-100">
                     <p className="text-[10px] text-gray-400 font-medium uppercase">{JOURS_L[i]}</p>
-                    <div className={`mx-auto mt-0.5 w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold ${isToday ? "bg-blue-600 text-white" : "text-gray-700"}`}>{day.getDate()}</div>
+                    <div className={`mx-auto mt-0.5 w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold ${estBloque(day) ? "bg-amber-400 text-white" : isToday ? "bg-blue-600 text-white" : "text-gray-700"}`}>{day.getDate()}</div>
                   </div>
                 );
               })}
             </div>
-            {/* Grille horaire */}
             <div className="flex" style={{ minHeight: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
-              {/* Colonne heures */}
-              <div className="w-[38px] shrink-0 relative bg-white">
-                {HOURS.map((h, i) => (
-                  <div key={h} className="absolute right-1.5 text-[10px] text-gray-400 font-medium" style={{ top: `${i * HOUR_PX - 6}px` }}>{String(h).padStart(2, "0")}h</div>
-                ))}
+              <div className="w-[42px] shrink-0 relative bg-white">
+                {HOURS.map((h, i) => <div key={h} className="absolute right-1.5 text-[10px] text-gray-400 font-medium" style={{ top: `${i * HOUR_PX - 6}px` }}>{String(h).padStart(2, "0")}h</div>)}
               </div>
-              {/* Colonnes jours */}
-              {weekDays.map((day, di) => {
-                const isToday = sameDay(day, today);
-                const evs = missionsOf(day);
-                return (
-                  <div key={di} className={`flex-1 border-l border-gray-100 relative ${isToday ? "bg-blue-50/30" : "bg-white"}`} style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
-                    {HOURS.map((h, i) => <div key={h} className="absolute left-0 right-0 border-t border-gray-100" style={{ top: `${i * HOUR_PX}px` }} />)}
-                    {evs.map((m, ei) => {
-                      const top = m.heure ? topPx(m.heure) : ei * 22;
-                      return (
-                        <button key={m.row} onClick={() => setSel(m)}
-                          className="absolute left-0.5 right-0.5 rounded-md text-left overflow-hidden shadow-sm text-white active:scale-[0.98] hover:brightness-95 transition-all"
-                          style={{ top: `${top + 1}px`, height: `${HOUR_PX - 3}px`, backgroundColor: colorByType[m.typePresta] || "#4285F4", zIndex: 5 + ei }}>
-                          <div className="px-1.5 py-1 leading-tight">
-                            {m.heure && <p className="text-[10px] font-bold opacity-90">{m.heure}</p>}
-                            <p className="text-[11px] font-semibold truncate">{m.prenom} {m.nom}</p>
-                            <p className="text-[9px] opacity-80 truncate">{m.typePresta}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                );
-              })}
+              {weekDays.map((day, di) => <DayCol key={di} day={day} />)}
             </div>
           </div>
         </div>

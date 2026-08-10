@@ -98,7 +98,26 @@ export async function getPrestataires(): Promise<Prestataire[]> {
     nom  : (r.nom    || "").trim(),
     email: (r.email  || "").trim(),
     tel  : (r.tel_wa || "").trim(),
+    indispos: Array.isArray(r.indispos) ? r.indispos as string[] : [],
   }));
+}
+
+// Jours d'indisponibilité (congés) d'un prestataire.
+// SQL : ALTER TABLE prestataires ADD COLUMN IF NOT EXISTS indispos JSONB DEFAULT '[]'::jsonb;
+export async function getPrestataireIndispos(pid: string): Promise<string[]> {
+  if (!supabase || !pid) return [];
+  const { data } = await supabase.from("prestataires").select("indispos").eq("id", pid).maybeSingle();
+  return Array.isArray(data?.indispos) ? (data!.indispos as string[]) : [];
+}
+
+export async function togglePrestataireIndispo(pid: string, date: string, bloquer: boolean): Promise<string[]> {
+  if (!supabase) throw new Error("Supabase non configuré");
+  const set = new Set(await getPrestataireIndispos(pid));
+  if (bloquer) set.add(date); else set.delete(date);
+  const next = Array.from(set).sort();
+  const { error } = await supabase.from("prestataires").update({ indispos: next }).eq("id", pid);
+  if (error) throw new Error(error.message);
+  return next;
 }
 
 export async function getArchive(): Promise<Prestation[]> {

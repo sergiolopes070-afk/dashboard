@@ -101,6 +101,7 @@ export interface Prestataire {
   nom: string;
   email: string;
   tel: string;
+  indispos?: string[]; // jours bloqués/congés (YYYY-MM-DD)
 }
 
 export const STATUT_COLORS: Record<string, string> = {
