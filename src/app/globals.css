@@ -128,3 +128,36 @@ body {
 
 /* Confort de lecture : évite les coupures brutales de mots dans les longues chaînes. */
 body { text-rendering: optimizeLegibility; }
+
+/* ── Fluidité mobile (ressenti « app native ») ─────────────────────────────── */
+html { -webkit-text-size-adjust: 100%; }
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior-y: contain;   /* pas de scroll qui « déborde » derrière les modales */
+}
+
+/* Plus de flash gris au tap + suppression du délai de 300 ms / double-tap zoom. */
+* { -webkit-tap-highlight-color: transparent; }
+button, a, [role="button"], input, select, textarea, label, summary {
+  touch-action: manipulation;
+}
+
+/* Inertie de défilement fluide sur les zones scrollables (iOS). */
+.overflow-x-auto, .overflow-y-auto, .overflow-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Empêche le zoom automatique d'iOS au focus des champs (police < 16px). */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select, textarea { font-size: 16px !important; }
+}
+
+/* Micro-retour tactile : léger enfoncement au toucher sur les boutons/liens. */
+@media (hover: none) and (pointer: coarse) {
+  button:not(:disabled):active,
+  a:active,
+  [role="button"]:active { transform: scale(0.98); }
+  button, a, [role="button"] { transition: transform 0.08s ease; }
+}
