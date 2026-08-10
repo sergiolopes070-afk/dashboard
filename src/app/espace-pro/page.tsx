@@ -22,6 +22,15 @@ export default function EspaceProPage() {
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const weeks = useMemo(() => { const m = mondayOf(today); return [Array.from({ length: 7 }, (_, i) => addDays(m, i)), Array.from({ length: 7 }, (_, i) => addDays(m, i + 7))]; }, [today]);
 
+  // Une couleur par type de prestation (pour un agenda coloré et lisible).
+  const PALETTE = ["#4285F4", "#34A853", "#F97316", "#8B5CF6", "#EC4899", "#06B6D4", "#EA4335", "#FBBC04", "#10B981", "#6366F1"];
+  const colorByType = useMemo(() => {
+    const map: Record<string, string> = {}; let i = 0;
+    for (const m of missions) { const t = m.typePresta || "Autre"; if (!map[t]) { map[t] = PALETTE[i % PALETTE.length]; i++; } }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missions]);
+
   async function load() {
     setLoading(true);
     try { const r = await fetch("/api/espace-pro/missions"); if (r.ok) setMissions(await r.json()); }
@@ -35,24 +44,26 @@ export default function EspaceProPage() {
 
   function WeekGrid({ days, titre }: { days: Date[]; titre: string }) {
     return (
-      <div>
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{titre}</p>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+        <p className="text-sm font-bold text-gray-800 mb-3">{titre}</p>
         <div className="grid grid-cols-7 gap-1">
           {days.map((day, i) => {
             const isToday = sameDay(day, today);
             const evs = missionsOf(day);
             return (
-              <div key={i} className={`rounded-xl border p-1 min-h-[92px] flex flex-col gap-1 ${isToday ? "border-[#1C3557] bg-blue-50" : "border-gray-100 bg-gray-50"}`}>
-                <div className="text-center">
-                  <p className="text-[10px] text-gray-400 font-medium">{JOURS_L[i]}</p>
-                  <div className={`mx-auto w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${isToday ? "bg-[#1C3557] text-white" : "text-gray-700"}`}>{day.getDate()}</div>
+              <div key={i} className={`rounded-xl border p-1.5 min-h-[104px] flex flex-col gap-1 ${isToday ? "border-blue-300 bg-blue-50" : "border-gray-100 bg-gray-50"}`}>
+                <div className="text-center mb-1">
+                  <p className="text-[10px] sm:text-xs text-gray-400 font-medium uppercase">{JOURS_L[i]}</p>
+                  <div className={`mx-auto w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold ${isToday ? "bg-blue-600 text-white" : "text-gray-700"}`}>{day.getDate()}</div>
                 </div>
                 {evs.map(m => (
-                  <button key={m.row} onClick={() => setSel(m)}
-                    className="block w-full text-left rounded px-1 py-0.5 bg-[#1C3557] text-white text-[9px] leading-tight truncate hover:opacity-90">
-                    {m.heure && <span className="opacity-80">{m.heure}</span>} {m.prenom}
+                  <button key={m.row} onClick={() => setSel(m)} title={`${m.heure ? m.heure + " – " : ""}${m.prenom} ${m.nom} · ${m.typePresta}`}
+                    className="block w-full text-left rounded px-1.5 py-0.5 text-white text-[10px] sm:text-xs leading-tight truncate hover:opacity-80 active:scale-[0.97] transition-all"
+                    style={{ backgroundColor: colorByType[m.typePresta] || "#4285F4" }}>
+                    {m.heure && <span className="opacity-80 mr-0.5">{m.heure}</span>}{m.prenom}
                   </button>
                 ))}
+                {evs.length === 0 && <p className="text-xs text-gray-300 text-center mt-auto mb-auto">—</p>}
               </div>
             );
           })}
@@ -83,6 +94,15 @@ export default function EspaceProPage() {
           <>
             <WeekGrid days={weeks[0]} titre="Cette semaine" />
             <WeekGrid days={weeks[1]} titre="Semaine prochaine" />
+            {Object.keys(colorByType).length > 0 && (
+              <div className="flex flex-wrap gap-x-3 gap-y-1.5 px-1">
+                {Object.entries(colorByType).map(([t, c]) => (
+                  <span key={t} className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c }} />{t}
+                  </span>
+                ))}
+              </div>
+            )}
             {missions.length === 0 && (
               <div className="flex flex-col items-center justify-center py-10 text-gray-400 text-center">
                 <CalendarCheck size={36} className="mb-2 opacity-30" />
