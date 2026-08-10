@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from "react";
 import {
-  X, Phone, Mail, MapPin, Send, Trash2, Calendar, Euro, MessageCircle, Star,
+  X, Phone, Mail, MapPin, Send, Trash2, Calendar, Euro, MessageCircle, Star, Camera,
 } from "lucide-react";
 import { ClientNote, STATUT_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
@@ -27,6 +27,7 @@ export interface FichePrestation {
   modePaiement?: string;
   statut     : string;
   archived?  : boolean;
+  photos?    : { url: string; path: string; article: string; phase: string }[];
 }
 
 export interface ClientFicheData {
@@ -348,6 +349,29 @@ export default function ClientFiche({
                         {p.statut && <span className={`px-1.5 py-0.5 rounded-full font-medium ${cls}`}>{p.statut}</span>}
                         {p.archived && <span className="px-1.5 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">📦 Archivé</span>}
                       </div>
+
+                      {/* Photos d'intervention (prises par le prestataire), par article */}
+                      {Array.isArray(p.photos) && p.photos.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-gray-50">
+                          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 flex items-center gap-1"><Camera size={11} /> Photos ({p.photos.length})</p>
+                          <div className="space-y-1.5">
+                            {Array.from(new Set(p.photos.map(x => x.article))).map(art => (
+                              <div key={art} className="flex items-start gap-2">
+                                <span className="text-[10px] text-gray-500 w-16 shrink-0 pt-1 truncate">{art}</span>
+                                <div className="flex gap-1 flex-wrap">
+                                  {(["avant", "apres"] as const).flatMap(phase => p.photos!.filter(x => x.article === art && x.phase === phase).map(x => (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <a key={x.path} href={x.url} target="_blank" rel="noopener noreferrer" title={phase === "avant" ? "Avant" : "Après"} className="relative">
+                                      <img src={x.url} alt={art} className="w-11 h-11 rounded-lg object-cover border border-gray-200" />
+                                      <span className={`absolute bottom-0 inset-x-0 text-[7px] text-center text-white rounded-b-lg ${phase === "avant" ? "bg-orange-500/80" : "bg-green-600/80"}`}>{phase === "avant" ? "AV" : "AP"}</span>
+                                    </a>
+                                  )))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
