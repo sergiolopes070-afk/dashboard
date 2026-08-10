@@ -1,10 +1,22 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
-import { MapPin, Phone, Clock, LogOut, RefreshCw, Loader2, Lock, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useState, useMemo, useRef } from "react";
+import { MapPin, Phone, Clock, LogOut, RefreshCw, Loader2, Lock, X, ChevronLeft, ChevronRight, Camera } from "lucide-react";
 
+interface Photo { url: string; path: string; article: string; phase: string; at: string }
 interface Mission {
   row: string; nom: string; prenom: string; tel: string; telMasque: boolean;
   typePresta: string; adresse: string; date: string; heure: string; statut: string; message: string;
+  photos: Photo[];
+}
+
+// Articles d'une prestation, dérivés du type (« Lavage Canapé + Lavage de matelas… »).
+function articlesDe(typePresta: string): string[] {
+  const parts = (typePresta || "").split("+").map(s => s.trim().replace(/^(lavage|nettoyage)\s+(de\s+|d'|du\s+|des\s+|la\s+|le\s+)?/i, "").trim()).filter(Boolean);
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const total: Record<string, number> = {}; parts.forEach(p => { total[p] = (total[p] || 0) + 1; });
+  const seen: Record<string, number> = {}; const out: string[] = [];
+  for (const p of parts) { if (total[p] > 1) { seen[p] = (seen[p] || 0) + 1; out.push(`${cap(p)} ${seen[p]}`); } else out.push(cap(p)); }
+  return out.length ? out : ["Prestation"];
 }
 
 // ── Config grille (calquée sur l'agenda du dashboard) ──
@@ -27,6 +39,9 @@ export default function EspaceProPage() {
   const [loading, setLoading]   = useState(true);
   const [sel, setSel]           = useState<Mission | null>(null);
   const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
+  const [uploading, setUploading] = useState<string | null>(null);
+  const pending = useRef<{ article: string; phase: string } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
@@ -44,6 +59,28 @@ export default function EspaceProPage() {
   }
   useEffect(() => { load(); }, []);
   async function logout() { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; }
+
+  function pickPhoto(article: string, phase: string) { pending.current = { article, phase }; fileRef.current?.click(); }
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]; e.target.value = "";
+    if (!f || !pending.current || !sel) return;
+    const { article, phase } = pending.current; const key = `${article}-${phase}`; setUploading(key);
+    try {
+      const fd = new FormData(); fd.append("prestationId", sel.row); fd.append("article", article); fd.append("phase", phase); fd.append("file", f);
+      const r = await fetch("/api/espace-pro/photo", { method: "POST", body: fd }); const d = await r.json();
+      if (r.ok && d.photo) {
+        const add = (m: Mission) => ({ ...m, photos: [...(m.photos || []), d.photo] });
+        setSel(s => s ? add(s) : s); setMissions(ms => ms.map(m => m.row === sel.row ? add(m) : m));
+      } else alert(d.error || "Échec de l'envoi");
+    } catch { alert("Erreur réseau"); }
+    finally { setUploading(null); pending.current = null; }
+  }
+  async function delPhoto(p: Photo) {
+    if (!sel || !confirm("Supprimer cette photo ?")) return;
+    await fetch("/api/espace-pro/photo", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prestationId: sel.row, path: p.path }) });
+    const rm = (m: Mission) => ({ ...m, photos: (m.photos || []).filter(x => x.path !== p.path) });
+    setSel(s => s ? rm(s) : s); setMissions(ms => ms.map(m => m.row === sel.row ? rm(m) : m));
+  }
 
   const missionsOf = (day: Date) => missions.filter(m => { const d = frToDate(m.date); return d && sameDay(d, day); }).sort((a, b) => (a.heure || "").localeCompare(b.heure || ""));
   const nbAvenir = missions.filter(m => { const d = frToDate(m.date); return d && d >= today; }).length;
@@ -161,11 +198,49 @@ export default function EspaceProPage() {
                 <a href={`tel:${sel.tel.replace(/\s/g, "")}`} className="flex items-center gap-2 p-3 rounded-xl bg-green-50 text-green-700 text-sm font-medium"><Phone size={16} /> {sel.tel}</a>
               ) : null}
               {sel.message && <div className="p-3 rounded-xl bg-gray-50"><p className="text-xs font-semibold text-gray-400 mb-1">Consignes</p><p className="text-sm text-gray-700 whitespace-pre-line">{sel.message}</p></div>}
+
+              {/* Photos avant / après, par article */}
+              <div className="border-t border-gray-100 pt-3">
+                <p className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-1.5"><Camera size={15} /> Photos avant / après</p>
+                <div className="space-y-3">
+                  {articlesDe(sel.typePresta).map(art => (
+                    <div key={art}>
+                      <p className="text-xs font-medium text-gray-600 mb-1.5">{art}</p>
+                      {(["avant", "apres"] as const).map(phase => {
+                        const ph = (sel.photos || []).filter(p => p.article === art && p.phase === phase);
+                        const key = `${art}-${phase}`;
+                        return (
+                          <div key={phase} className="flex items-start gap-2 mb-1.5">
+                            <span className={`text-[11px] font-medium w-11 pt-4 ${phase === "avant" ? "text-orange-600" : "text-green-600"}`}>{phase === "avant" ? "Avant" : "Après"}</span>
+                            <div className="flex gap-1.5 flex-wrap">
+                              {ph.map(p => (
+                                <div key={p.path} className="relative">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <a href={p.url} target="_blank" rel="noopener noreferrer"><img src={p.url} alt={art} className="w-14 h-14 rounded-lg object-cover border border-gray-200" /></a>
+                                  <button onClick={() => delPhoto(p)} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[11px] leading-none">×</button>
+                                </div>
+                              ))}
+                              <button onClick={() => pickPhoto(art, phase)} disabled={uploading === key}
+                                className="w-14 h-14 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 hover:border-blue-300 hover:text-blue-500 transition-colors disabled:opacity-50">
+                                {uploading === key ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <p className="flex items-center gap-1.5 text-xs text-gray-400"><Clock size={12} /> {d && d < today ? "Rendez-vous passé" : "À venir"}</p>
             </div>
           </div>
         );
       })()}
+
+      {/* Input caméra (déclenché par les boutons photo) */}
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFile} />
     </div>
   );
 }

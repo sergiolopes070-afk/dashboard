@@ -1356,6 +1356,34 @@ export default function AgendaPage() {
                         </div>
                       )}
 
+                      {/* ── Photos de l'intervention (prises par le prestataire) ── */}
+                      {Array.isArray(ev.photos) && ev.photos.length > 0 && (
+                        <div className="mt-4 border-t border-gray-100 pt-3">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">📷 Photos de l&apos;intervention</p>
+                          {Array.from(new Set(ev.photos.map(p => p.article))).map(art => (
+                            <div key={art} className="mb-2">
+                              <p className="text-[11px] font-medium text-gray-600 mb-1">{art}</p>
+                              <div className="flex gap-3">
+                                {(["avant", "apres"] as const).map(phase => {
+                                  const ph = ev.photos!.filter(p => p.article === art && p.phase === phase);
+                                  return (
+                                    <div key={phase}>
+                                      <p className={`text-[10px] mb-0.5 ${phase === "avant" ? "text-orange-600" : "text-green-600"}`}>{phase === "avant" ? "Avant" : "Après"}</p>
+                                      <div className="flex gap-1">
+                                        {ph.length === 0 ? <span className="text-[10px] text-gray-300">—</span> : ph.map(p => (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <a key={p.path} href={p.url} target="_blank" rel="noopener noreferrer"><img src={p.url} alt={art} className="w-12 h-12 rounded-lg object-cover border border-gray-200" /></a>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {/* ── Contact client (email / WhatsApp) ── */}
                       {!isArchived && (
                         <div className="mt-4 border-t border-gray-100 pt-3">

@@ -66,6 +66,7 @@ function rowToPrestation(row: Record<string, any>): Prestation {
     stripePaymentUrl : (row.stripe_payment_url as string) || "",
     modePaiement     : ((row.mode_paiement as string) || "") as ModePaiement,
     clientNotes      : Array.isArray(client.notes) ? client.notes : [],
+    photos           : Array.isArray(row.photos) ? row.photos : [],
   };
 }
 
@@ -406,11 +407,12 @@ export async function getPrestataireByLogin(login: string): Promise<{ id: string
 export async function getMissionsForPrestataire(pid: string): Promise<Array<{
   row: string; nom: string; prenom: string; typePresta: string; adresse: string;
   date: string; heure: string; statut: string; message: string; tel: string; telMasque: boolean;
+  photos: unknown[];
 }>> {
   if (!supabase || !pid) return [];
   const { data, error } = await supabase
     .from("prestations")
-    .select("id, type_prestation, adresse, date_intervention, heure_intervention, statut, message, clients(prenom, nom, tel)")
+    .select("id, type_prestation, adresse, date_intervention, heure_intervention, statut, message, photos, clients(prenom, nom, tel)")
     .eq("prestataire_id", pid)
     .eq("archive", false);
   if (error) throw new Error(error.message);
@@ -432,8 +434,37 @@ export async function getMissionsForPrestataire(pid: string): Promise<Array<{
       typePresta: r.type_prestation || "", adresse: r.adresse || "",
       date: isoToFr(iso), heure: ((r.heure_intervention as string) || "").substring(0, 5),
       statut: r.statut || "", message: r.message || "",
+      photos: Array.isArray(r.photos) ? r.photos : [],
     };
   });
+}
+
+// Vérifie qu'une prestation appartient bien à ce prestataire (sécurité).
+export async function prestationBelongsTo(prestationId: string, pid: string): Promise<boolean> {
+  if (!supabase) return false;
+  const { data } = await supabase.from("prestations").select("prestataire_id").eq("id", prestationId).maybeSingle();
+  return !!data && data.prestataire_id === pid;
+}
+
+// Ajoute une photo d'intervention à une prestation (colonne JSONB `photos`).
+// SQL : ALTER TABLE prestations ADD COLUMN IF NOT EXISTS photos JSONB DEFAULT '[]'::jsonb;
+export async function addPrestationPhoto(prestationId: string, photo: { url: string; path: string; article: string; phase: string; at: string }): Promise<void> {
+  if (!supabase) throw new Error("Supabase non configuré");
+  const { data } = await supabase.from("prestations").select("photos").eq("id", prestationId).single();
+  const cur = Array.isArray(data?.photos) ? data!.photos : [];
+  const { error } = await supabase.from("prestations").update({ photos: [...cur, photo] }).eq("id", prestationId);
+  if (error) throw new Error(error.message);
+}
+
+// Retire une photo (par son chemin de stockage).
+export async function removePrestationPhoto(prestationId: string, path: string): Promise<void> {
+  if (!supabase) throw new Error("Supabase non configuré");
+  const { data } = await supabase.from("prestations").select("photos").eq("id", prestationId).single();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cur = Array.isArray(data?.photos) ? (data!.photos as any[]) : [];
+  const next = cur.filter(p => p.path !== path);
+  await supabase.from("prestations").update({ photos: next }).eq("id", prestationId);
+  try { await supabase.storage.from("depenses").remove([path]); } catch { /* best effort */ }
 }
 
 export async function updateClientTags(clientId: string, tags: string[]): Promise<void> {

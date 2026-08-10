@@ -52,6 +52,12 @@ export interface ClientNote {
   type?: string;  // 📞 appel, 💬 message, 📧 email, 📄 devis, 🤝 visite…
 }
 
+// Photo d'intervention (prise par le prestataire) — avant/après, par article.
+export interface PhotoIntervention {
+  url: string; path: string; article: string;
+  phase: "avant" | "apres"; at: string; // horodatage ISO
+}
+
 export interface Prestation {
   row: string; // UUID (prestation id)
   clientId: string; // UUID (client id)
@@ -87,6 +93,7 @@ export interface Prestation {
   satisfaction?: number;     // note de satisfaction 1-5
   updatedAt?: string;        // dernière mise à jour (pour notifications)
   stripePaymentUrl?: string; // lien de paiement Stripe Checkout
+  photos?: PhotoIntervention[]; // photos avant/après par article (prestataire)
 }
 
 export interface Prestataire {
