@@ -40,6 +40,7 @@ export default function EspaceProPage() {
   const [sel, setSel]           = useState<Mission | null>(null);
   const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
   const [uploading, setUploading] = useState<string | null>(null);
+  const [prog, setProg]           = useState<{ done: number; total: number } | null>(null);
   const pending = useRef<{ article: string; phase: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
@@ -62,18 +63,24 @@ export default function EspaceProPage() {
 
   function pickPhoto(article: string, phase: string) { pending.current = { article, phase }; fileRef.current?.click(); }
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]; e.target.value = "";
-    if (!f || !pending.current || !sel) return;
-    const { article, phase } = pending.current; const key = `${article}-${phase}`; setUploading(key);
-    try {
-      const fd = new FormData(); fd.append("prestationId", sel.row); fd.append("article", article); fd.append("phase", phase); fd.append("file", f);
-      const r = await fetch("/api/espace-pro/photo", { method: "POST", body: fd }); const d = await r.json();
-      if (r.ok && d.photo) {
-        const add = (m: Mission) => ({ ...m, photos: [...(m.photos || []), d.photo] });
-        setSel(s => s ? add(s) : s); setMissions(ms => ms.map(m => m.row === sel.row ? add(m) : m));
-      } else alert(d.error || "Échec de l'envoi");
-    } catch { alert("Erreur réseau"); }
-    finally { setUploading(null); pending.current = null; }
+    const files = Array.from(e.target.files || []); e.target.value = "";
+    if (!files.length || !pending.current || !sel) return;
+    const rowId = sel.row;
+    const { article, phase } = pending.current; const key = `${article}-${phase}`;
+    setUploading(key); setProg({ done: 0, total: files.length });
+    const add = (m: Mission, photo: Photo) => ({ ...m, photos: [...(m.photos || []), photo] });
+    let echecs = 0;
+    for (const f of files) {
+      try {
+        const fd = new FormData(); fd.append("prestationId", rowId); fd.append("article", article); fd.append("phase", phase); fd.append("file", f);
+        const r = await fetch("/api/espace-pro/photo", { method: "POST", body: fd }); const d = await r.json();
+        if (r.ok && d.photo) { const photo = d.photo as Photo; setSel(s => s ? add(s, photo) : s); setMissions(ms => ms.map(m => m.row === rowId ? add(m, photo) : m)); }
+        else echecs++;
+      } catch { echecs++; }
+      setProg(p => p ? { ...p, done: p.done + 1 } : p);
+    }
+    setUploading(null); setProg(null); pending.current = null;
+    if (echecs) alert(`${echecs} photo(s) n'ont pas pu être envoyées.`);
   }
   async function delPhoto(p: Photo) {
     if (!sel || !confirm("Supprimer cette photo ?")) return;
@@ -89,7 +96,7 @@ export default function EspaceProPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="sticky top-0 z-20 bg-[#1C3557] text-white px-4 py-3 flex items-center justify-between shadow">
+      <header className="sticky top-0 z-20 bg-[#1C3557] text-white px-4 py-3 flex items-center justify-between shadow" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
         <div><p className="font-bold leading-tight">KinouClean</p><p className="text-[11px] text-white/60">Espace prestataire · {nbAvenir} mission{nbAvenir > 1 ? "s" : ""} à venir</p></div>
         <div className="flex items-center gap-2">
           <button onClick={load} className="p-2 rounded-lg hover:bg-white/10" title="Rafraîchir"><RefreshCw size={16} className={loading ? "animate-spin" : ""} /></button>
@@ -175,7 +182,8 @@ export default function EspaceProPage() {
         const jour = d ? `${JOURS_FULL[d.getDay()]} ${d.getDate()} ${MOIS[d.getMonth()]}` : sel.date;
         return (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) setSel(null); }}>
-            <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl p-5 space-y-3 max-h-[85vh] overflow-y-auto">
+            <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl px-5 pt-3 pb-5 space-y-3 max-h-[88vh] overflow-y-auto" style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}>
+              <div className="mx-auto w-10 h-1 rounded-full bg-gray-200 mb-1 sm:hidden" />
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-xs text-gray-400">{jour}{sel.heure ? ` · ${sel.heure}` : ""}</p>
@@ -199,30 +207,31 @@ export default function EspaceProPage() {
               ) : null}
               {sel.message && <div className="p-3 rounded-xl bg-gray-50"><p className="text-xs font-semibold text-gray-400 mb-1">Consignes</p><p className="text-sm text-gray-700 whitespace-pre-line">{sel.message}</p></div>}
 
-              {/* Photos avant / après, par article */}
+              {/* Photos avant / après, par article (plusieurs angles possibles) */}
               <div className="border-t border-gray-100 pt-3">
-                <p className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-1.5"><Camera size={15} /> Photos avant / après</p>
-                <div className="space-y-3">
+                <p className="text-sm font-semibold text-gray-800 flex items-center gap-1.5"><Camera size={15} /> Photos avant / après</p>
+                <p className="text-[11px] text-gray-400 mb-2.5">Tu peux en ajouter plusieurs d&apos;un coup (plusieurs angles).</p>
+                <div className="space-y-3.5">
                   {articlesDe(sel.typePresta).map(art => (
                     <div key={art}>
-                      <p className="text-xs font-medium text-gray-600 mb-1.5">{art}</p>
+                      <p className="text-xs font-semibold text-gray-700 mb-1.5">{art}</p>
                       {(["avant", "apres"] as const).map(phase => {
                         const ph = (sel.photos || []).filter(p => p.article === art && p.phase === phase);
-                        const key = `${art}-${phase}`;
+                        const key = `${art}-${phase}`; const busy = uploading === key;
                         return (
-                          <div key={phase} className="flex items-start gap-2 mb-1.5">
-                            <span className={`text-[11px] font-medium w-11 pt-4 ${phase === "avant" ? "text-orange-600" : "text-green-600"}`}>{phase === "avant" ? "Avant" : "Après"}</span>
-                            <div className="flex gap-1.5 flex-wrap">
+                          <div key={phase} className="flex items-start gap-2 mb-2">
+                            <span className={`text-[11px] font-semibold w-12 pt-5 ${phase === "avant" ? "text-orange-600" : "text-green-600"}`}>{phase === "avant" ? "Avant" : "Après"}</span>
+                            <div className="flex gap-2 flex-wrap">
                               {ph.map(p => (
                                 <div key={p.path} className="relative">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <a href={p.url} target="_blank" rel="noopener noreferrer"><img src={p.url} alt={art} className="w-14 h-14 rounded-lg object-cover border border-gray-200" /></a>
-                                  <button onClick={() => delPhoto(p)} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[11px] leading-none">×</button>
+                                  <a href={p.url} target="_blank" rel="noopener noreferrer"><img src={p.url} alt={art} className="w-16 h-16 rounded-xl object-cover border border-gray-200" /></a>
+                                  <button onClick={() => delPhoto(p)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs leading-none shadow">×</button>
                                 </div>
                               ))}
-                              <button onClick={() => pickPhoto(art, phase)} disabled={uploading === key}
-                                className="w-14 h-14 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 hover:border-blue-300 hover:text-blue-500 transition-colors disabled:opacity-50">
-                                {uploading === key ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+                              <button onClick={() => pickPhoto(art, phase)} disabled={busy}
+                                className="w-16 h-16 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-0.5 text-gray-400 hover:border-blue-400 hover:text-blue-500 active:scale-95 transition-all disabled:opacity-60">
+                                {busy ? (<><Loader2 size={18} className="animate-spin" />{prog && <span className="text-[9px]">{prog.done}/{prog.total}</span>}</>) : (<><Camera size={20} /><span className="text-[9px]">Ajouter</span></>)}
                               </button>
                             </div>
                           </div>
@@ -239,8 +248,8 @@ export default function EspaceProPage() {
         );
       })()}
 
-      {/* Input caméra (déclenché par les boutons photo) */}
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFile} />
+      {/* Input photos — sélection MULTIPLE (plusieurs angles d'un coup) */}
+      <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={onFile} />
     </div>
   );
 }
