@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo, useRef } from "react";
-import { MapPin, Phone, Clock, LogOut, RefreshCw, Loader2, Lock, X, ChevronLeft, ChevronRight, Camera } from "lucide-react";
+import { MapPin, Phone, Clock, LogOut, RefreshCw, Loader2, Lock, X, ChevronLeft, ChevronRight, Camera, Moon, Sun } from "lucide-react";
 
 interface Photo { url: string; path: string; article: string; phase: string; at: string }
 interface Indispo { date: string; debut: string; fin: string }
@@ -47,6 +47,9 @@ export default function EspaceProPage() {
   const [perso, setPerso]         = useState({ debut: "", fin: "" });
   const [uploading, setUploading] = useState<string | null>(null);
   const [prog, setProg]           = useState<{ done: number; total: number } | null>(null);
+  const [dark, setDark]           = useState(false);
+  useEffect(() => { setDark(document.documentElement.classList.contains("dark")); }, []);
+  const toggleDark = () => { const n = !dark; setDark(n); localStorage.setItem("darkMode", String(n)); document.documentElement.classList.toggle("dark", n); };
   const pending = useRef<{ article: string; phase: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
@@ -154,6 +157,7 @@ export default function EspaceProPage() {
       <header className="sticky top-0 z-20 bg-[#1C3557] text-white px-4 py-3 flex items-center justify-between shadow" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
         <div><p className="font-bold leading-tight">KinouClean</p><p className="text-[11px] text-white/60">Espace prestataire · {nbAvenir} mission{nbAvenir > 1 ? "s" : ""} à venir</p></div>
         <div className="flex items-center gap-2">
+          <button onClick={toggleDark} className="p-2 rounded-lg hover:bg-white/10" title={dark ? "Mode clair" : "Mode sombre"}>{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
           <button onClick={load} className="p-2 rounded-lg hover:bg-white/10" title="Rafraîchir"><RefreshCw size={16} className={loading ? "animate-spin" : ""} /></button>
           <button onClick={logout} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm"><LogOut size={14} /> Quitter</button>
         </div>

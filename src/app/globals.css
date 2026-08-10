@@ -41,6 +41,59 @@ body {
 .dark input::placeholder,
 .dark textarea::placeholder { color: #64748b !important; }
 
+/* Fonds neutres additionnels */
+.dark .bg-gray-200        { background-color: #334155 !important; }
+.dark .bg-gray-800        { background-color: #0b1220 !important; }
+.dark .border-gray-50     { border-color: #1e293b !important; }
+.dark .border-gray-300    { border-color: #475569 !important; }
+.dark .divide-gray-50 > * + * { border-color: #1e293b !important; }
+.dark .divide-gray-100 > * + * { border-color: #334155 !important; }
+
+/* Fonds colorés clairs (tints -50) → versions sombres translucides */
+.dark .bg-blue-50    { background-color: rgba(59,130,246,0.14) !important; }
+.dark .bg-sky-50     { background-color: rgba(14,165,233,0.14) !important; }
+.dark .bg-indigo-50  { background-color: rgba(99,102,241,0.14) !important; }
+.dark .bg-green-50   { background-color: rgba(34,197,94,0.14) !important; }
+.dark .bg-emerald-50 { background-color: rgba(16,185,129,0.14) !important; }
+.dark .bg-amber-50   { background-color: rgba(245,158,11,0.14) !important; }
+.dark .bg-yellow-50  { background-color: rgba(234,179,8,0.14) !important; }
+.dark .bg-orange-50  { background-color: rgba(249,115,22,0.14) !important; }
+.dark .bg-red-50     { background-color: rgba(239,68,68,0.14) !important; }
+.dark .bg-purple-50  { background-color: rgba(168,85,247,0.14) !important; }
+.dark .bg-pink-50    { background-color: rgba(236,72,153,0.14) !important; }
+
+/* Fonds colorés -100 (badges) légèrement plus marqués */
+.dark .bg-blue-100   { background-color: rgba(59,130,246,0.20) !important; }
+.dark .bg-green-100  { background-color: rgba(34,197,94,0.20) !important; }
+.dark .bg-emerald-100{ background-color: rgba(16,185,129,0.20) !important; }
+.dark .bg-amber-100  { background-color: rgba(245,158,11,0.20) !important; }
+.dark .bg-orange-100 { background-color: rgba(249,115,22,0.20) !important; }
+.dark .bg-red-100    { background-color: rgba(239,68,68,0.20) !important; }
+.dark .bg-purple-100 { background-color: rgba(168,85,247,0.20) !important; }
+
+/* Bordures colorées claires → discrètes */
+.dark .border-blue-100, .dark .border-blue-200,
+.dark .border-green-100, .dark .border-emerald-100,
+.dark .border-amber-100, .dark .border-amber-200,
+.dark .border-orange-100, .dark .border-orange-200,
+.dark .border-red-100, .dark .border-red-200,
+.dark .border-purple-100, .dark .border-sky-200,
+.dark .border-yellow-200 { border-color: rgba(255,255,255,0.10) !important; }
+
+/* Textes colorés foncés → plus clairs pour rester lisibles sur fond sombre */
+.dark .text-blue-700, .dark .text-blue-800   { color: #93c5fd !important; }
+.dark .text-sky-700                          { color: #7dd3fc !important; }
+.dark .text-green-700, .dark .text-green-600 { color: #86efac !important; }
+.dark .text-emerald-700, .dark .text-emerald-600 { color: #6ee7b7 !important; }
+.dark .text-amber-700, .dark .text-amber-800 { color: #fcd34d !important; }
+.dark .text-orange-700, .dark .text-orange-600 { color: #fdba74 !important; }
+.dark .text-red-700, .dark .text-red-600     { color: #fca5a5 !important; }
+.dark .text-purple-700, .dark .text-purple-600 { color: #c4b5fd !important; }
+.dark .text-yellow-700                       { color: #fde047 !important; }
+
+/* Le fond de page global en sombre */
+.dark .bg-gray-50 { background-color: #0f172a !important; }
+
 /* ── Confort & accessibilité (Palier 4) ─────────────────────── */
 
 /* C1 — Focus clavier toujours visible (uniquement au clavier, pas à la souris). */
