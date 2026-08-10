@@ -401,9 +401,11 @@ export async function getPrestataireByLogin(login: string): Promise<{ id: string
 }
 
 // Missions d'un prestataire (pour son espace) — SANS prix ni commission.
+// Le téléphone du client n'est révélé qu'à partir de 24h avant le RDV (sécurité
+// anti-contournement) : masquage fait ICI, côté serveur.
 export async function getMissionsForPrestataire(pid: string): Promise<Array<{
   row: string; nom: string; prenom: string; typePresta: string; adresse: string;
-  date: string; heure: string; statut: string; message: string; tel: string;
+  date: string; heure: string; statut: string; message: string; tel: string; telMasque: boolean;
 }>> {
   if (!supabase || !pid) return [];
   const { data, error } = await supabase
@@ -412,13 +414,23 @@ export async function getMissionsForPrestataire(pid: string): Promise<Array<{
     .eq("prestataire_id", pid)
     .eq("archive", false);
   if (error) throw new Error(error.message);
+  const now = Date.now();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data || []).map((r: any) => {
     const c = Array.isArray(r.clients) ? (r.clients[0] || {}) : (r.clients || {});
+    const iso = r.date_intervention as string | null;
+    const heure = ((r.heure_intervention as string) || "").substring(0, 5) || "00:00";
+    // Numéro visible seulement si on est à moins de 24h du RDV.
+    let telMasque = true;
+    if (iso) {
+      const rdv = new Date(`${iso}T${heure}:00`).getTime();
+      if (!isNaN(rdv) && now >= rdv - 24 * 3600 * 1000) telMasque = false;
+    }
     return {
-      row: r.id, nom: c.nom || "", prenom: c.prenom || "", tel: c.tel || "",
+      row: r.id, nom: c.nom || "", prenom: c.prenom || "",
+      tel: telMasque ? "" : (c.tel || ""), telMasque,
       typePresta: r.type_prestation || "", adresse: r.adresse || "",
-      date: isoToFr(r.date_intervention), heure: ((r.heure_intervention as string) || "").substring(0, 5),
+      date: isoToFr(iso), heure: ((r.heure_intervention as string) || "").substring(0, 5),
       statut: r.statut || "", message: r.message || "",
     };
   });
