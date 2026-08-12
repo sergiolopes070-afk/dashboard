@@ -39,6 +39,12 @@ const ENVOI_AUTO_ACTIF = true;
 // mécontent. Le cron ne s'occupe donc que des relances devis.
 const AVIS_AUTO_ACTIF = false;
 
+// ⏸️ Création automatique de leads depuis Gmail : EN PAUSE (à la demande).
+// Le cron ne crée plus de prospects tout seul. Le bouton manuel « Importer les
+// leads » (page Prospects → /api/cron/inbox) continue de fonctionner.
+// Repasser à true quand on voudra réactiver l'import automatique.
+const IMPORT_INBOX_AUTO = false;
+
 function daysSince(value: string | null): number | null {
   if (!value) return null;
   const d = new Date(value);
@@ -168,8 +174,8 @@ export async function GET(req: Request) {
   // Import auto des demandes de devis reçues par email (formulaire du site).
   // Fenêtre courte (7 j) + double garde-fou anti-doublon (Message-ID + email/tél).
   // Ne bloque jamais le traitement des relances en cas d'erreur IMAP.
-  let inboxImport: unknown = null;
-  if (mode !== "test" && mode !== "simulation") {
+  let inboxImport: unknown = IMPORT_INBOX_AUTO ? null : "⏸️ import auto en pause";
+  if (IMPORT_INBOX_AUTO && mode !== "test" && mode !== "simulation") {
     try { const r = await importInbox({ days: 7 }); inboxImport = { crees: r.imported.length, ignores: r.skipped, erreurs: r.errors }; }
     catch (e) { inboxImport = { erreur: e instanceof Error ? e.message : "import inbox échoué" }; }
   }
