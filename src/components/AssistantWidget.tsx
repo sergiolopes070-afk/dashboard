@@ -151,7 +151,7 @@ export default function AssistantWidget() {
       {/* ── Bouton flottant ── */}
       <button
         onClick={() => setOpen(v => !v)}
-        className={`fixed bottom-5 right-5 z-50 w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all ${
+        className={`fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all ${
           open ? "bg-gray-700 scale-95" : "bg-blue-600 hover:bg-blue-700 hover:scale-110"
         }`}
         title="Assistant KinouClean"

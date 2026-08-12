@@ -327,7 +327,8 @@ export default function AgendaPage() {
   const [loading,      setLoading]      = useState(() => !cacheHas(CACHE_KEYS.agenda));
   const [weekStart,    setWeekStart]    = useState<Date>(() => getMondayOfWeek(new Date()));
   const [monthDate,    setMonthDate]    = useState<Date>(() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; });
-  const [viewMode,     setViewMode]     = useState<"week"|"month">("week");
+  const [viewMode,     setViewMode]     = useState<"day"|"week"|"month">("week");
+  const [dayDate,      setDayDate]      = useState<Date>(() => { const d = new Date(); d.setHours(0,0,0,0); return d; });
   const [checked,      setChecked]      = useState<Record<string, boolean>>({});
   const [showSansPresta, setShowSansPresta] = useState(true);
   const [selectedEvent,   setSelectedEvent]   = useState<Prestation | null>(null);
@@ -451,10 +452,10 @@ export default function AgendaPage() {
 
   // Auto-scroll vers 08h00
   useEffect(() => {
-    if (!loading && viewMode === "week" && scrollRef.current) {
+    if (!loading && (viewMode === "week" || viewMode === "day") && scrollRef.current) {
       scrollRef.current.scrollTop = (8 - HOUR_START) * HOUR_PX - 8;
     }
-  }, [loading, viewMode]);
+  }, [loading, viewMode, dayDate]);
 
   // ── Couleurs ───────────────────────────────────────────────────────────────
   const colorMap = useMemo(() => {
@@ -508,15 +509,18 @@ export default function AgendaPage() {
 
   // ── Navigation ─────────────────────────────────────────────────────────────
   function navPrev() {
-    if (viewMode === "week") setWeekStart(w => addDays(w, -7));
+    if (viewMode === "day") setDayDate(d => addDays(d, -1));
+    else if (viewMode === "week") setWeekStart(w => addDays(w, -7));
     else setMonthDate(m => new Date(m.getFullYear(), m.getMonth() - 1, 1));
   }
   function navNext() {
-    if (viewMode === "week") setWeekStart(w => addDays(w, 7));
+    if (viewMode === "day") setDayDate(d => addDays(d, 1));
+    else if (viewMode === "week") setWeekStart(w => addDays(w, 7));
     else setMonthDate(m => new Date(m.getFullYear(), m.getMonth() + 1, 1));
   }
   function navToday() {
-    if (viewMode === "week") setWeekStart(getMondayOfWeek(new Date()));
+    if (viewMode === "day") { const d = new Date(); d.setHours(0,0,0,0); setDayDate(d); }
+    else if (viewMode === "week") setWeekStart(getMondayOfWeek(new Date()));
     else { const d = new Date(); setMonthDate(new Date(d.getFullYear(), d.getMonth(), 1)); }
   }
 
@@ -796,18 +800,25 @@ export default function AgendaPage() {
             <ChevronRight size={18} className="text-gray-600" />
           </button>
           <h2 className="text-xs sm:text-sm font-semibold text-gray-800 ml-1 flex-1 truncate">
-            {viewMode === "week" ? weekLabel : monthLabel}
+            {viewMode === "day"
+              ? `${JOURS_LONG[(dayDate.getDay()+6)%7]} ${dayDate.getDate()} ${MOIS[dayDate.getMonth()]}`
+              : viewMode === "week" ? weekLabel : monthLabel}
           </h2>
-          {/* Toggle semaine / mois */}
+          {/* Toggle jour / semaine / mois */}
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium shrink-0">
             <button
+              onClick={() => setViewMode("day")}
+              className={`px-2 sm:px-3 py-1.5 transition-colors ${viewMode==="day" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+              Jour
+            </button>
+            <button
               onClick={() => setViewMode("week")}
-              className={`px-2 sm:px-3 py-1.5 transition-colors ${viewMode==="week" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+              className={`px-2 sm:px-3 py-1.5 border-l border-gray-200 transition-colors ${viewMode==="week" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
               Sem.
             </button>
             <button
               onClick={() => { setViewMode("month"); setMonthDate(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1)); }}
-              className={`px-2 sm:px-3 py-1.5 transition-colors ${viewMode==="month" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+              className={`px-2 sm:px-3 py-1.5 border-l border-gray-200 transition-colors ${viewMode==="month" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
               Mois
             </button>
           </div>
@@ -815,6 +826,48 @@ export default function AgendaPage() {
 
         {loading ? (
           <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">Chargement…</div>
+        ) : viewMode === "day" ? (
+
+          /* ══ VUE JOUR ═════════════════════════════════════════════════════ */
+          <div ref={scrollRef} className="flex-1 overflow-y-auto">
+            <div className="flex" style={{ minHeight: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}>
+              {/* Colonne heures */}
+              <div className="w-10 shrink-0 relative bg-white">
+                {HOURS.map((h, i) => (
+                  <div key={h} className="absolute right-2 text-xs text-gray-400 font-medium" style={{ top: `${i * HOUR_PX - 7}px` }}>{String(h).padStart(2, "0")}:00</div>
+                ))}
+              </div>
+              {/* Colonne du jour */}
+              <div className="flex-1 border-l border-gray-100 relative bg-white cursor-pointer" style={{ height: `${(HOUR_END - HOUR_START) * HOUR_PX}px` }}
+                onClick={e => handleSlotClick(e, dayDate)}>
+                {HOURS.map((h, i) => <div key={h} className="absolute left-0 right-0 border-t border-gray-100" style={{ top: `${i * HOUR_PX}px` }} />)}
+                {eventsForDay(dayDate).map((ev, ei) => {
+                  const isArchived = !!(ev as Prestation & { _archived?: boolean })._archived;
+                  const pid = idByNom[ev.prestataire];
+                  const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg: "#9CA3AF", light: "#F3F4F6", text: "#374151" };
+                  const top_ = ev.heure ? topPx(ev.heure) : 0;
+                  const h_ = ev.heure ? heightPx(ev.heure) : HOUR_PX;
+                  return (
+                    <button key={ev.row} onClick={e => { e.stopPropagation(); setSelectedEvent(ev); }}
+                      className="absolute rounded-lg text-left overflow-hidden shadow-sm hover:brightness-95 transition-all"
+                      style={{ top: `${top_ + 1}px`, height: `${Math.max(h_ - 2, 28)}px`, left: "6px", right: "6px",
+                        backgroundColor: isArchived ? "#F3F4F6" : color.light, borderLeft: `3px solid ${isArchived ? "#9CA3AF" : color.bg}`, opacity: isArchived ? 0.6 : 1, zIndex: 10 + ei }}>
+                      <div className="px-2.5 py-1.5 h-full flex flex-col overflow-hidden">
+                        {ev.heure && <span className="font-bold text-xs" style={{ color: isArchived ? "#9CA3AF" : color.bg }}>{ev.heure}</span>}
+                        <span className={`font-semibold text-sm truncate ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</span>
+                        <span className="text-xs text-gray-500 truncate">{ev.typePresta}{ev.prestataire ? ` · ${ev.prestataire}` : ""}</span>
+                        {ev.modePaiement && PAYMENT_ICONS[ev.modePaiement] && <span className="text-[11px] mt-0.5">{PAYMENT_ICONS[ev.modePaiement]} {PAYMENT_SHORT[ev.modePaiement] ?? ev.modePaiement}</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+                {eventsForDay(dayDate).length === 0 && (
+                  <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-gray-300 text-sm pointer-events-none">Aucun rendez-vous ce jour<br /><span className="text-xs">Touche un créneau pour créer</span></div>
+                )}
+              </div>
+            </div>
+          </div>
+
         ) : viewMode === "week" ? (
 
           /* ══ VUE SEMAINE ══════════════════════════════════════════════════ */
