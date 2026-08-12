@@ -219,11 +219,11 @@ export default function HomePage() {
   const dateLabel = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
   const taches = [
-    { show: leadsNouveaux.length > 0, count: leadsNouveaux.length, label: "nouveau lead à contacter", icon: Sparkles, color: "purple", href: "/prospects" },
-    { show: aRelancer.length > 0,     count: aRelancer.length,     label: "client à relancer aujourd'hui", icon: Phone, color: "amber", href: "/prospects" },
-    { show: rdvAujourdhui.length > 0, count: rdvAujourdhui.length, label: "rendez-vous aujourd'hui", icon: CalendarCheck, color: "blue", href: "/agenda" },
-    { show: demandesNouvelles.length > 0, count: demandesNouvelles.length, label: "demande de matériel", icon: Package, color: "sky", href: "#demandes-materiel" },
-    { show: toReassign > 0,           count: toReassign,           label: "prestation à réaffecter", icon: AlertTriangle, color: "red", href: "/prestations" },
+    { show: leadsNouveaux.length > 0, count: leadsNouveaux.length, sing: "nouveau lead à contacter", plur: "nouveaux leads à contacter", icon: Sparkles, color: "purple", href: "/prospects" },
+    { show: aRelancer.length > 0,     count: aRelancer.length,     sing: "client à relancer aujourd'hui", plur: "clients à relancer aujourd'hui", icon: Phone, color: "amber", href: "/prospects" },
+    { show: rdvAujourdhui.length > 0, count: rdvAujourdhui.length, sing: "rendez-vous aujourd'hui", plur: "rendez-vous aujourd'hui", icon: CalendarCheck, color: "blue", href: "/agenda" },
+    { show: demandesNouvelles.length > 0, count: demandesNouvelles.length, sing: "demande de matériel", plur: "demandes de matériel", icon: Package, color: "sky", href: "#demandes-materiel" },
+    { show: toReassign > 0,           count: toReassign,           sing: "prestation à réaffecter", plur: "prestations à réaffecter", icon: AlertTriangle, color: "red", href: "/prestations" },
   ].filter(t => t.show);
   const COLOR: Record<string, string> = { purple: "bg-purple-50 text-purple-700 border-purple-100", amber: "bg-amber-50 text-amber-700 border-amber-100", blue: "bg-blue-50 text-blue-700 border-blue-100", red: "bg-red-50 text-red-700 border-red-100", sky: "bg-sky-50 text-sky-700 border-sky-100" };
   const ICONBG: Record<string, string> = { purple: "bg-purple-100 text-purple-600", amber: "bg-amber-100 text-amber-600", blue: "bg-blue-100 text-blue-600", red: "bg-red-100 text-red-600", sky: "bg-sky-100 text-sky-600" };
@@ -343,7 +343,7 @@ export default function HomePage() {
                   onClick={t.href === "#demandes-materiel" ? (e) => { e.preventDefault(); setDemandesModalOpen(true); } : undefined}
                   className={`flex items-center gap-3 p-3 rounded-xl border ${COLOR[t.color]} hover:brightness-[0.98] transition-all group cursor-pointer`}>
                   <div className={`w-9 h-9 rounded-lg ${ICONBG[t.color]} flex items-center justify-center flex-shrink-0`}><t.icon size={16} /></div>
-                  <p className="flex-1 text-sm font-medium leading-tight"><span className="text-lg font-bold mr-1">{t.count}</span>{t.label}{t.count > 1 ? "s" : ""}</p>
+                  <p className="flex-1 text-sm font-medium leading-tight"><span className="text-lg font-bold mr-1">{t.count}</span>{t.count > 1 ? t.plur : t.sing}</p>
                   <ArrowRight size={16} className="opacity-40 group-hover:translate-x-0.5 transition-transform" />
                 </a>
               ))}
