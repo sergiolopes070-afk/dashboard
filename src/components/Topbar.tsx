@@ -185,7 +185,11 @@ export default function Topbar({ title, subtitle, onRefresh, loading, alerts, ac
         {action}
         {alerts && alerts > 0 ? (
           <div className="relative">
-            <button aria-label={`${alerts} alerte${alerts > 1 ? "s" : ""}`} className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
+            <button
+              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              title={`${alerts} point${alerts > 1 ? "s" : ""} à voir — remonter en haut`}
+              aria-label={`${alerts} alerte${alerts > 1 ? "s" : ""}`}
+              className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
               <Bell size={18} />
             </button>
             <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
