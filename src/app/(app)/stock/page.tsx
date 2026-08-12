@@ -85,13 +85,13 @@ function ItemModal({ initial, onClose, onSaved }: { initial: StockItem | null; o
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
           <h2 className="font-bold text-gray-900">{initial ? "Modifier l'article" : "Nouvel article"}</h2>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400"><X size={18} /></button>
         </div>
-        <div className="p-6 space-y-3">
+        <div className="p-6 space-y-3 overflow-y-auto flex-1">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Nom de l&apos;article *</label>
             <input value={nom} onChange={e => setNom(e.target.value)} className={inputCls} placeholder="Ex : Détachant textile 5 L" />
@@ -126,16 +126,16 @@ function ItemModal({ initial, onClose, onSaved }: { initial: StockItem | null; o
           </div>
 
           {/* Recette de consommation → décrément auto à la clôture d'un RDV */}
-          <div className="border border-gray-100 rounded-xl p-3 bg-gray-50/60">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <p className="text-xs font-semibold text-gray-600">Consommation par prestation</p>
-                <p className="text-[11px] text-gray-400">Dose déduite automatiquement quand un RDV de ce type est clôturé.</p>
-              </div>
-              <button type="button" onClick={addRecette} className="text-xs text-blue-600 font-medium hover:text-blue-700">+ Ajouter</button>
+          <div className="border border-blue-100 rounded-xl p-3 bg-blue-50/40">
+            <div className="mb-2">
+              <p className="text-sm font-semibold text-gray-700">Utilisé pour quelle(s) prestation(s) ?</p>
+              <p className="text-[11px] text-gray-500">Associe ce produit à un type de prestation + la dose consommée. À chaque RDV clôturé, le stock se décrémente tout seul.</p>
             </div>
             {recette.length === 0 ? (
-              <p className="text-[11px] text-gray-400 italic">Aucune règle — ce produit ne se décrémente pas tout seul.</p>
+              <button type="button" onClick={addRecette}
+                className="w-full py-2 rounded-lg border border-dashed border-blue-300 text-blue-600 text-sm font-medium hover:bg-blue-50 transition-colors">
+                + Associer une prestation
+              </button>
             ) : (
               <div className="space-y-2">
                 {recette.map((r, i) => (
@@ -152,14 +152,15 @@ function ItemModal({ initial, onClose, onSaved }: { initial: StockItem | null; o
                     <button type="button" onClick={() => rmRecette(i)} className="text-red-400 hover:text-red-600 text-lg leading-none px-1">×</button>
                   </div>
                 ))}
+                <button type="button" onClick={addRecette} className="text-xs text-blue-600 font-medium hover:text-blue-700">+ Ajouter une autre prestation</button>
               </div>
             )}
           </div>
         </div>
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100 bg-gray-50 sm:rounded-b-2xl flex-shrink-0" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
           <button onClick={onClose} className="px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-white">Annuler</button>
           <button onClick={save} disabled={saving} className="flex items-center gap-2 px-5 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-            {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}{initial ? "Enregistrer" : "Ajouter"}
+            {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}{initial ? "Enregistrer" : "Valider l'article"}
           </button>
         </div>
       </div>
