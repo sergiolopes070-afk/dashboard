@@ -145,6 +145,7 @@ export default function HomePage() {
   const [showNewClient, setShowNewClient]     = useState(false);
   const [showNewProspect, setShowNewProspect] = useState(false);
   const [showDropdown, setShowDropdown]       = useState(false);
+  const [demandesModalOpen, setDemandesModalOpen] = useState(false);
   const [rentaPeriod, setRentaPeriod]         = useState<"semaine" | "mois">("mois");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -206,6 +207,10 @@ export default function HomePage() {
     setDemandes(ds => ds.filter(d => d.id !== id));
     try { await fetch("/api/stock/demandes", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, statut: "TRAITEE" }) }); } catch { /* ignore */ }
   }
+  async function supprimerDemande(id: string) {
+    setDemandes(ds => ds.filter(d => d.id !== id));
+    try { await fetch("/api/stock/demandes", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }); } catch { /* ignore */ }
+  }
   const congesAvenir = (stats?.prestataires ?? [])
     .flatMap(p => (p.indispos ?? []).filter(x => x.date >= todayIso).map(x => ({ nom: p.nom, ...x })))
     .sort((a, b) => (a.date + a.debut).localeCompare(b.date + b.debut));
@@ -227,7 +232,7 @@ export default function HomePage() {
     <div className="flex flex-col min-h-screen bg-gray-50">
       <Topbar
         title="Tableau de bord" subtitle={dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)}
-        onRefresh={load} loading={loading} alerts={toReassign + produitsAlerte.length}
+        onRefresh={load} loading={loading} alerts={toReassign + produitsAlerte.length + demandesNouvelles.length}
         action={
           <div className="relative" ref={dropdownRef}>
             <button onClick={() => setShowDropdown(v => !v)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700">
@@ -334,7 +339,9 @@ export default function HomePage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {taches.map((t, i) => (
-                <a key={i} href={t.href} className={`flex items-center gap-3 p-3 rounded-xl border ${COLOR[t.color]} hover:brightness-[0.98] transition-all group`}>
+                <a key={i} href={t.href}
+                  onClick={t.href === "#demandes-materiel" ? (e) => { e.preventDefault(); setDemandesModalOpen(true); } : undefined}
+                  className={`flex items-center gap-3 p-3 rounded-xl border ${COLOR[t.color]} hover:brightness-[0.98] transition-all group cursor-pointer`}>
                   <div className={`w-9 h-9 rounded-lg ${ICONBG[t.color]} flex items-center justify-center flex-shrink-0`}><t.icon size={16} /></div>
                   <p className="flex-1 text-sm font-medium leading-tight"><span className="text-lg font-bold mr-1">{t.count}</span>{t.label}{t.count > 1 ? "s" : ""}</p>
                   <ArrowRight size={16} className="opacity-40 group-hover:translate-x-0.5 transition-transform" />
@@ -576,6 +583,37 @@ export default function HomePage() {
 
       {showNewClient && <NewClientModal prestataires={stats?.prestataires ?? []} onClose={() => setShowNewClient(false)} onSaved={() => { setShowNewClient(false); load(); }} />}
       {showNewProspect && <QuickProspectModal onClose={() => setShowNewProspect(false)} onSaved={() => { setShowNewProspect(false); load(); }} />}
+
+      {/* ── Pop-up des demandes de matériel ── */}
+      {demandesModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setDemandesModalOpen(false); }}>
+          <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <h2 className="font-bold text-gray-900 flex items-center gap-2"><Package size={18} className="text-sky-500" /> Demandes de matériel</h2>
+              <button onClick={() => setDemandesModalOpen(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><X size={18} /></button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-4 space-y-2.5">
+              {demandesNouvelles.length === 0 ? (
+                <div className="text-center py-10 text-gray-400"><Package size={36} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Aucune demande en attente 🎉</p></div>
+              ) : demandesNouvelles.map(d => (
+                <div key={d.id} className="rounded-xl border border-gray-100 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-900">{d.categorie}{d.quantite ? ` · ${d.quantite}` : ""}</p>
+                      <p className="text-[11px] text-gray-400">{d.prestataireNom || "Prestataire"} · {new Date(d.at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}</p>
+                    </div>
+                  </div>
+                  {d.details && <p className="text-sm text-gray-600 mt-2 bg-gray-50 rounded-lg p-2 whitespace-pre-line">{d.details}</p>}
+                  <div className="flex gap-2 mt-2.5">
+                    <button onClick={() => traiterDemande(d.id)} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600"><CheckCircle2 size={14} /> Marquer comme fait</button>
+                    <button onClick={() => supprimerDemande(d.id)} className="px-3 py-2 rounded-lg border border-gray-200 text-gray-500 text-sm hover:bg-gray-50">Supprimer</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading && !stats && (
         <div className="flex items-center justify-center py-20"><div className="text-center"><div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" /><p className="text-gray-500 text-sm">Chargement…</p></div></div>
