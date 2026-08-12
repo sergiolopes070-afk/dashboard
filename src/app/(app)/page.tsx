@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   AlertTriangle, Clock, CalendarCheck, UserPlus, UserCheck,
   CalendarDays, ChevronRight, BellRing, ChevronDown, UserSearch, X, Loader2,
-  Package, Sparkles, Phone, ArrowRight,
+  Package, Sparkles, Phone, ArrowRight, CheckCircle2,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import StatusBadge from "@/components/StatusBadge";
@@ -37,6 +37,7 @@ interface Stats {
   upcomingList: Prestation[]; toReassignList: Prestation[];
 }
 interface Prospect { id: string; prenom: string; nom: string; tel: string; statut: string; dateRelance: string; typePresta: string; createdAt: string; }
+interface Demande { id: string; at: string; prestataireNom: string; categorie: string; quantite: string; details: string; statut: string; }
 interface StockItem { id: string; nom: string; unite: string; quantite: number; seuil: number; prixUnitaire: number | null; conso: Record<string, number>; historique: { date: string; type: string; quantite: number }[]; }
 
 const SOURCES_PROSPECT   = ["Google","Réseaux sociaux","Bouche à oreille","Recommandation","Formulaire web","Autre"];
@@ -138,6 +139,7 @@ export default function HomePage() {
   const [depenses, setDepenses]   = useState<Depense[]>([]);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [stock, setStock]         = useState<StockItem[]>([]);
+  const [demandes, setDemandes]   = useState<Demande[]>([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
   const [showNewClient, setShowNewClient]     = useState(false);
@@ -171,14 +173,15 @@ export default function HomePage() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [dashRes, depRes, proRes, stkRes] = await Promise.all([
-        fetch("/api/dashboard"), fetch("/api/depenses"), fetch("/api/prospects"), fetch("/api/stock"),
+      const [dashRes, depRes, proRes, stkRes, demRes] = await Promise.all([
+        fetch("/api/dashboard"), fetch("/api/depenses"), fetch("/api/prospects"), fetch("/api/stock"), fetch("/api/stock/demandes"),
       ]);
       if (!dashRes.ok) throw new Error((await dashRes.json()).error || "Erreur serveur");
       setStats(await dashRes.json());
       if (depRes.ok) setDepenses(await depRes.json());
       if (proRes.ok) { const p = await proRes.json(); setProspects(Array.isArray(p) ? p : []); }
       if (stkRes.ok) { const s = await stkRes.json(); setStock(Array.isArray(s) ? s : []); }
+      if (demRes.ok) { const d = await demRes.json(); setDemandes(Array.isArray(d.demandes) ? d.demandes : []); }
     } catch (e: unknown) { setError(e instanceof Error ? e.message : "Erreur inconnue"); }
     finally { setLoading(false); }
   }, []);
@@ -197,6 +200,16 @@ export default function HomePage() {
     return sousSeuil || (a != null && a < 2);
   }), [stock]);
 
+  // ── Demandes de matériel (prestataires) + congés à venir ─────────────────────
+  const demandesNouvelles = demandes.filter(d => d.statut !== "TRAITEE");
+  async function traiterDemande(id: string) {
+    setDemandes(ds => ds.filter(d => d.id !== id));
+    try { await fetch("/api/stock/demandes", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, statut: "TRAITEE" }) }); } catch { /* ignore */ }
+  }
+  const congesAvenir = (stats?.prestataires ?? [])
+    .flatMap(p => (p.indispos ?? []).filter(x => x.date >= todayIso).map(x => ({ nom: p.nom, ...x })))
+    .sort((a, b) => (a.date + a.debut).localeCompare(b.date + b.debut));
+
   const greeting = (() => { const h = new Date().getHours(); return h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; })();
   const dateLabel = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
@@ -204,10 +217,11 @@ export default function HomePage() {
     { show: leadsNouveaux.length > 0, count: leadsNouveaux.length, label: "nouveau lead à contacter", icon: Sparkles, color: "purple", href: "/prospects" },
     { show: aRelancer.length > 0,     count: aRelancer.length,     label: "client à relancer aujourd'hui", icon: Phone, color: "amber", href: "/prospects" },
     { show: rdvAujourdhui.length > 0, count: rdvAujourdhui.length, label: "rendez-vous aujourd'hui", icon: CalendarCheck, color: "blue", href: "/agenda" },
+    { show: demandesNouvelles.length > 0, count: demandesNouvelles.length, label: "demande de matériel", icon: Package, color: "sky", href: "#demandes-materiel" },
     { show: toReassign > 0,           count: toReassign,           label: "prestation à réaffecter", icon: AlertTriangle, color: "red", href: "/prestations" },
   ].filter(t => t.show);
-  const COLOR: Record<string, string> = { purple: "bg-purple-50 text-purple-700 border-purple-100", amber: "bg-amber-50 text-amber-700 border-amber-100", blue: "bg-blue-50 text-blue-700 border-blue-100", red: "bg-red-50 text-red-700 border-red-100" };
-  const ICONBG: Record<string, string> = { purple: "bg-purple-100 text-purple-600", amber: "bg-amber-100 text-amber-600", blue: "bg-blue-100 text-blue-600", red: "bg-red-100 text-red-600" };
+  const COLOR: Record<string, string> = { purple: "bg-purple-50 text-purple-700 border-purple-100", amber: "bg-amber-50 text-amber-700 border-amber-100", blue: "bg-blue-50 text-blue-700 border-blue-100", red: "bg-red-50 text-red-700 border-red-100", sky: "bg-sky-50 text-sky-700 border-sky-100" };
+  const ICONBG: Record<string, string> = { purple: "bg-purple-100 text-purple-600", amber: "bg-amber-100 text-amber-600", blue: "bg-blue-100 text-blue-600", red: "bg-red-100 text-red-600", sky: "bg-sky-100 text-sky-600" };
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -453,6 +467,40 @@ export default function HomePage() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Demandes de matériel (prestataires) ─────────────────────────── */}
+        {demandesNouvelles.length > 0 && (
+          <div id="demandes-materiel" className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 scroll-mt-20">
+            <h2 className="font-bold text-gray-900 flex items-center gap-2 mb-4"><Package size={16} className="text-sky-500" /> Demandes de matériel</h2>
+            <div className="space-y-2">
+              {demandesNouvelles.slice(0, 6).map(d => (
+                <div key={d.id} className="flex items-start gap-3 p-3 rounded-xl bg-sky-50/60 border border-sky-100">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{d.categorie}{d.quantite ? ` · ${d.quantite}` : ""}</p>
+                    {d.details && <p className="text-xs text-gray-500">{d.details}</p>}
+                    <p className="text-[11px] text-gray-400 mt-0.5">{d.prestataireNom || "Prestataire"} · {new Date(d.at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</p>
+                  </div>
+                  <button onClick={() => traiterDemande(d.id)} className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-green-500 text-white hover:bg-green-600 flex-shrink-0"><CheckCircle2 size={13} /> Fait</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Congés / indisponibilités à venir ───────────────────────────── */}
+        {congesAvenir.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <h2 className="font-bold text-gray-900 flex items-center gap-2 mb-3">🌴 Congés &amp; indispos à venir</h2>
+            <div className="space-y-1.5">
+              {congesAvenir.slice(0, 8).map((c, i) => (
+                <div key={i} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-700 font-medium">{c.nom}</span>
+                  <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">{c.date.split("-").reverse().join("/")}{(c.debut || c.fin) ? ` · ${c.debut || "…"}–${c.fin || "…"}` : " · journée"}</span>
+                </div>
+              ))}
             </div>
           </div>
         )}

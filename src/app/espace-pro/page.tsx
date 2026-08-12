@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo, useRef } from "react";
-import { MapPin, Phone, Clock, LogOut, RefreshCw, Loader2, Lock, X, ChevronLeft, ChevronRight, Camera, Moon, Sun } from "lucide-react";
+import { MapPin, Phone, Clock, LogOut, RefreshCw, Loader2, Lock, X, ChevronLeft, ChevronRight, Camera, Moon, Sun, Package, Send, CheckCircle2 } from "lucide-react";
 
 interface Photo { url: string; path: string; article: string; phase: string; at: string }
 interface Indispo { date: string; debut: string; fin: string }
@@ -88,6 +88,71 @@ function CameraModal({ mission, article, phase, onClose, onUploaded }: {
   );
 }
 
+// ── Modal « Demander du matériel » (prestataire → tableau de bord patron) ──────
+const CATS_MATERIEL = ["Produits textile", "Produits vitres", "Brosses", "Consommables", "Produits sol", "Autre"];
+function DemandeStockModal({ onClose }: { onClose: () => void }) {
+  const [categorie, setCategorie] = useState(CATS_MATERIEL[0]);
+  const [quantite, setQuantite]   = useState("");
+  const [details, setDetails]     = useState("");
+  const [saving, setSaving]       = useState(false);
+  const [done, setDone]           = useState(false);
+  const [err, setErr]             = useState("");
+
+  async function envoyer() {
+    setSaving(true); setErr("");
+    try {
+      const r = await fetch("/api/espace-pro/demande-stock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ categorie, quantite, details }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Erreur");
+      setDone(true);
+    } catch (e) { setErr(e instanceof Error ? e.message : "Erreur"); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[55] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl px-5 pt-3 pb-5" style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}>
+        <div className="mx-auto w-10 h-1 rounded-full bg-gray-200 mb-2 sm:hidden" />
+        {done ? (
+          <div className="text-center py-6">
+            <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-3"><CheckCircle2 size={28} className="text-green-500" /></div>
+            <h2 className="font-bold text-gray-900 mb-1">Demande envoyée ✅</h2>
+            <p className="text-sm text-gray-500 mb-4">Ton patron la voit sur son tableau de bord.</p>
+            <button onClick={onClose} className="w-full py-2.5 rounded-xl bg-[#1C3557] text-white text-sm font-semibold">Fermer</button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-bold text-gray-900 flex items-center gap-2"><Package size={18} className="text-[#1C3557]" /> Demander du matériel</h2>
+              <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><X size={18} /></button>
+            </div>
+            {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 mb-2">{err}</p>}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Type de matériel</label>
+                <select value={categorie} onChange={e => setCategorie(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm">
+                  {CATS_MATERIEL.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Quantité (optionnel)</label>
+                <input value={quantite} onChange={e => setQuantite(e.target.value)} placeholder="ex : 2 bidons, 1 brosse…" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Précisez</label>
+                <textarea value={details} onChange={e => setDetails(e.target.value)} rows={3} placeholder="Détaille ce dont tu as besoin (marque, référence, usage…)" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none" />
+              </div>
+              <button onClick={envoyer} disabled={saving} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#1C3557] text-white text-sm font-semibold disabled:opacity-50">
+                {saving ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Envoyer la demande
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Articles d'une prestation, dérivés du type (« Lavage Canapé + Lavage de matelas… »).
 function articlesDe(typePresta: string): string[] {
   const parts = (typePresta || "").split("+").map(s => s.trim().replace(/^(lavage|nettoyage)\s+(de\s+|d'|du\s+|des\s+|la\s+|le\s+)?/i, "").trim()).filter(Boolean);
@@ -124,6 +189,7 @@ export default function EspaceProPage() {
   const [dispoBusy, setDispoBusy] = useState(false);
   const [perso, setPerso]         = useState({ debut: "", fin: "" });
   const [cam, setCam]             = useState<{ article: string; phase: "avant" | "apres" } | null>(null);
+  const [demandeOpen, setDemandeOpen] = useState(false);
   const [dark, setDark]           = useState(false);
   useEffect(() => { setDark(document.documentElement.classList.contains("dark")); }, []);
   const toggleDark = () => { const n = !dark; setDark(n); localStorage.setItem("darkMode", String(n)); document.documentElement.classList.toggle("dark", n); };
@@ -215,10 +281,11 @@ export default function EspaceProPage() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="sticky top-0 z-20 bg-[#1C3557] text-white px-4 py-3 flex items-center justify-between shadow" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
         <div><p className="font-bold leading-tight">KinouClean</p><p className="text-[11px] text-white/60">Espace prestataire · {nbAvenir} mission{nbAvenir > 1 ? "s" : ""} à venir</p></div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => setDemandeOpen(true)} className="p-2 rounded-lg hover:bg-white/10" title="Demander du matériel"><Package size={16} /></button>
           <button onClick={toggleDark} className="p-2 rounded-lg hover:bg-white/10" title={dark ? "Mode clair" : "Mode sombre"}>{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
           <button onClick={load} className="p-2 rounded-lg hover:bg-white/10" title="Rafraîchir"><RefreshCw size={16} className={loading ? "animate-spin" : ""} /></button>
-          <button onClick={logout} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm"><LogOut size={14} /> Quitter</button>
+          <button onClick={logout} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm"><LogOut size={14} /></button>
         </div>
       </header>
 
@@ -401,6 +468,7 @@ export default function EspaceProPage() {
 
       {/* Appareil photo intégré (capture en direct, rafale, jamais la galerie) */}
       {cam && sel && <CameraModal mission={sel} article={cam.article} phase={cam.phase} onClose={() => setCam(null)} onUploaded={addUploaded} />}
+      {demandeOpen && <DemandeStockModal onClose={() => setDemandeOpen(false)} />}
     </div>
   );
 }
