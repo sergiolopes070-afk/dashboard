@@ -42,12 +42,13 @@ export default function EmailActions({
 }) {
   const [busy, setBusy]            = useState<"" | "relance" | "besoin_infos" | "confirmation">("");
   const [relanceNiveau, setNiveau] = useState<number | null>(null);
+  const [confirmSent, setConfirmSent] = useState(false); // confirmation déjà envoyée ?
   const [feedback, setFeedback]    = useState("");
 
   useEffect(() => {
     fetch(`/api/emails/action?prestationId=${prestationId}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setNiveau(d.relance ?? 0); })
+      .then(d => { if (d) { setNiveau(d.relance ?? 0); setConfirmSent(!!d.confirmEnvoye); } })
       .catch(() => {});
   }, [prestationId]);
 
@@ -83,6 +84,7 @@ export default function EmailActions({
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Erreur");
+      setConfirmSent(true);
       setFeedback(`✅ Récapitulatif ${date ? "de confirmation " : ""}envoyé par email.`);
     } catch (e) {
       setFeedback(`❌ ${e instanceof Error ? e.message : "Erreur d'envoi"}`);
@@ -145,8 +147,9 @@ export default function EmailActions({
         <div className="flex gap-1.5">
           {hasEmail && (
             <button type="button" onClick={sendConfirmation} disabled={busy !== ""}
-              className={`${emailBtn} border-gray-200 text-gray-700 hover:border-blue-300 hover:bg-blue-50`}>
-              {busy === "confirmation" ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Email
+              title={confirmSent ? "Déjà envoyé — cliquer pour renvoyer" : "Envoyer la confirmation par email"}
+              className={`${emailBtn} ${confirmSent ? "border-green-300 bg-green-50 text-green-700 hover:bg-green-100" : "border-gray-200 text-gray-700 hover:border-blue-300 hover:bg-blue-50"}`}>
+              {busy === "confirmation" ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} {confirmSent ? "Envoyé ✅" : "Email"}
             </button>
           )}
           {hasTel && (
