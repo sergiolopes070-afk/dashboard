@@ -238,3 +238,63 @@ export async function sendConfirmationEmail(to: string, d: {
   });
   return true;
 }
+
+// ─── Rappel de rendez-vous + activation de l'avance immédiate (envoi MANUEL) ────
+// Message combiné demandé : rappel du RDV à venir + incitation à s'inscrire à
+// l'avance immédiate (−50 %) via le lien fourni en Configuration. Décliné en
+// email (ci-dessous) et en WhatsApp (construit côté client dans EmailActions).
+export const RAPPEL_RDV_OBJET = "⏰ Rappel — votre rendez-vous KinouClean approche";
+
+export function buildRappelRdvHtml(d: {
+  prenom: string; typePresta: string; quantite: string;
+  adresse: string; date: string; heure: string; lienAvance?: string;
+}): string {
+  const presta  = [d.typePresta, d.quantite && d.quantite !== "1" ? `(${d.quantite})` : ""].filter(Boolean).join(" ");
+  const dateStr = [d.date, d.heure].filter(Boolean).join(" à ");
+  const ligne = (label: string, valeur: string) => `
+    <tr><td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:14px;color:#6B7280;">${label}</td>
+        <td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:14px;color:#1F2937;font-weight:bold;">${valeur || "—"}</td></tr>`;
+
+  // Bloc avance immédiate : avec bouton d'inscription si le lien est configuré,
+  // sinon repli sur le bloc informatif (invite à nous contacter pour le lien).
+  const avanceBloc = d.lienAvance
+    ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#EFF6FF;border-radius:10px;padding:16px 18px;margin:0 0 10px;"><tr><td style="font-size:14px;color:#1E40AF;line-height:1.6;">
+        <strong>💡 Pensez à l'avance immédiate</strong><br/>
+        Vous ne réglez que <strong>50 %</strong> du montant : l'État prend l'autre moitié en charge <strong>immédiatement</strong>, sans avance de trésorerie. Il vous suffit de vous inscrire — c'est gratuit et cela prend 2 minutes :
+      </td></tr></table>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 18px;"><tr><td align="center">
+        <a href="${d.lienAvance}" style="display:inline-block;background:#2563EB;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;padding:13px 30px;border-radius:10px;">M'inscrire à l'avance immédiate</a>
+      </td></tr></table>`
+    : FISCAL_BLOC.avance;
+
+  return shell(`
+    <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour ${d.prenom || ""},</p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 18px;">
+      Votre rendez-vous KinouClean est bien programmé — voici un petit rappel :
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#F9FAFB;border-radius:10px;overflow:hidden;margin:0 0 20px;">
+      ${ligne("Prestation", presta)}
+      ${ligne("Rendez-vous", dateStr)}
+      ${ligne("Adresse", d.adresse)}
+    </table>
+    ${avanceBloc}
+    <p style="font-size:14px;color:#6B7280;line-height:1.7;margin:0 0 18px;text-align:center;">
+      En cas d'empêchement, merci de nous prévenir au plus tôt au <strong>${TEL}</strong>.
+    </p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0;">À très bientôt,<br/><strong>L'équipe KinouClean</strong></p>`);
+}
+
+// Envoie l'email de rappel de RDV (+ avance immédiate) via Gmail. true si envoyé.
+export async function sendRappelEmail(to: string, d: {
+  prenom: string; typePresta: string; quantite: string;
+  adresse: string; date: string; heure: string; lienAvance?: string;
+}): Promise<boolean> {
+  const gmail = await getGmailTransporter();
+  if (!gmail) return false;
+  await gmail.transporter.sendMail({
+    from: `"KinouClean" <${gmail.user}>`, to,
+    subject: RAPPEL_RDV_OBJET,
+    html: buildRappelRdvHtml(d),
+  });
+  return true;
+}

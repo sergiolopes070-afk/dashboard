@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Mail, Bell, Loader2, MessageCircle, CheckCircle2 } from "lucide-react";
+import { Mail, Bell, Loader2, MessageCircle, CheckCircle2, CalendarClock } from "lucide-react";
 
 // Actions de contact client pour une prestation (email + WhatsApp), réutilisé
 // dans la modale Prestations et le panneau détail Agenda.
@@ -40,15 +40,17 @@ export default function EmailActions({
   heure?: string;
   compact?: boolean;
 }) {
-  const [busy, setBusy]            = useState<"" | "relance" | "besoin_infos" | "confirmation">("");
+  const [busy, setBusy]            = useState<"" | "relance" | "besoin_infos" | "confirmation" | "rappel">("");
   const [relanceNiveau, setNiveau] = useState<number | null>(null);
   const [confirmSent, setConfirmSent] = useState(false); // confirmation déjà envoyée ?
+  const [rappelSent, setRappelSent]   = useState(false); // rappel de RDV déjà envoyé ?
+  const [lienAvance, setLienAvance]   = useState("");    // lien d'inscription avance immédiate (Configuration)
   const [feedback, setFeedback]    = useState("");
 
   useEffect(() => {
     fetch(`/api/emails/action?prestationId=${prestationId}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) { setNiveau(d.relance ?? 0); setConfirmSent(!!d.confirmEnvoye); } })
+      .then(d => { if (d) { setNiveau(d.relance ?? 0); setConfirmSent(!!d.confirmEnvoye); setRappelSent(!!d.rappelEnvoye); setLienAvance(d.lienAvance || ""); } })
       .catch(() => {});
   }, [prestationId]);
 
@@ -93,6 +95,25 @@ export default function EmailActions({
     }
   }
 
+  // Rappel de rendez-vous + inscription avance immédiate (email).
+  async function sendRappel() {
+    setBusy("rappel"); setFeedback("");
+    try {
+      const res = await fetch("/api/emails/send-rappel", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prestationId }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur");
+      setRappelSent(true);
+      setFeedback("✅ Rappel de RDV + lien d'inscription envoyé par email.");
+    } catch (e) {
+      setFeedback(`❌ ${e instanceof Error ? e.message : "Erreur d'envoi"}`);
+    } finally {
+      setBusy("");
+    }
+  }
+
   // Messages WhatsApp (envoi manuel) — professionnels, sans emoji, vouvoiement.
   const msgBesoinInfos =
     `Bonjour Madame, Monsieur,\n\n` +
@@ -122,6 +143,19 @@ export default function EmailActions({
       ? `Pour toute modification ou question, répondez simplement à ce message ou appelez-nous au 06 20 79 97 47. À très bientôt !`
       : `Nous revenons vers vous très rapidement pour confirmer les détails. Pour toute question, appelez-nous au 06 20 79 97 47.`) +
     `\n\nL'équipe KinouClean`;
+
+  // Rappel de RDV + inscription avance immédiate — même contenu que l'email.
+  const ligneInscription = lienAvance
+    ? `💡 Pensez à activer l'avance immédiate : vous ne réglez que 50 % du montant, l'État prend l'autre moitié en charge directement. Inscription (gratuit, 2 min) :\n${lienAvance}`
+    : `💡 Pensez à activer l'avance immédiate : vous ne réglez que 50 % du montant, l'État prend l'autre moitié en charge directement. Contactez-nous pour recevoir votre lien d'inscription.`;
+  const msgRappel =
+    `Bonjour ${prenom || ""} 👋,\n\n` +
+    `Votre rendez-vous KinouClean est bien programmé — petit rappel :\n\n` +
+    `🧹 ${prestaWA}\n` +
+    `📅 ${date || "—"}${heure ? ` à ${heure}` : ""}\n` +
+    (adresse ? `📍 ${adresse}\n` : "") +
+    `\n${ligneInscription}\n\n` +
+    `En cas d'empêchement, prévenez-nous au plus tôt au 06 20 79 97 47. À très bientôt !\n\nL'équipe KinouClean`;
 
   const hasEmail = !!clientEmail;
   const hasTel   = !!clientTel;
@@ -159,6 +193,27 @@ export default function EmailActions({
           )}
         </div>
       </div>
+
+      {/* Rappel de RDV + inscription avance immédiate — visible si un RDV est calé */}
+      {rdvFixe && (
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-xs text-gray-600 font-medium">Rappel RDV + inscription</span>
+          <div className="flex gap-1.5">
+            {hasEmail && (
+              <button type="button" onClick={sendRappel} disabled={busy !== ""}
+                title={rappelSent ? "Déjà envoyé — cliquer pour renvoyer" : "Envoyer le rappel de RDV + lien avance immédiate par email"}
+                className={`${emailBtn} ${rappelSent ? "border-green-300 bg-green-50 text-green-700 hover:bg-green-100" : "border-gray-200 text-gray-700 hover:border-blue-300 hover:bg-blue-50"}`}>
+                {busy === "rappel" ? <Loader2 size={13} className="animate-spin" /> : <CalendarClock size={13} />} {rappelSent ? "Envoyé ✅" : "Email"}
+              </button>
+            )}
+            {hasTel && (
+              <a href={waLink(clientTel!, msgRappel)} target="_blank" rel="noopener noreferrer" className={waBtn}>
+                <MessageCircle size={13} /> WhatsApp
+              </a>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Besoin d'infos */}
       <div className="flex items-center justify-between gap-2 flex-wrap">

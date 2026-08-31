@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
-import { getSettingJSON, setSettingRaw } from "@/lib/settings";
+import { getSettingJSON, setSettingRaw, getSettingRaw } from "@/lib/settings";
 import {
   getGmailTransporter, buildRelanceHtml, ACCROCHE,
   buildBesoinInfosHtml, BESOIN_INFOS_OBJET,
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 //                           des infos pour établir votre devis".
 // Suivi anti-doublon partagé avec le cron : settings/emails_auto_etat.
 const ETAT_KEY = "emails_auto_etat";
-type EtatPresta = { relance?: number; relanceStart?: string; avisEnvoye?: boolean; avisAnnule?: boolean; confirmEnvoye?: boolean; confirmDate?: string };
+type EtatPresta = { relance?: number; relanceStart?: string; avisEnvoye?: boolean; avisAnnule?: boolean; confirmEnvoye?: boolean; confirmDate?: string; rappelEnvoye?: boolean; rappelDate?: string };
 type Etat = Record<string, EtatPresta>;
 
 async function lireEtat(): Promise<Etat> {
@@ -58,7 +58,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ niveaux });
   }
   const e = etat[id] || {};
-  return NextResponse.json({ relance: e.relance ?? 0, relanceStart: e.relanceStart ?? null, confirmEnvoye: !!e.confirmEnvoye });
+  const lienAvance = (await getSettingRaw("lien_avance_immediate")) || "";
+  return NextResponse.json({ relance: e.relance ?? 0, relanceStart: e.relanceStart ?? null, confirmEnvoye: !!e.confirmEnvoye, rappelEnvoye: !!e.rappelEnvoye, lienAvance });
 }
 
 // POST { prestationId, type }
