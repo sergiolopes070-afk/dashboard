@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
-import { getSettingJSON, setSettingRaw, getSettingRaw } from "@/lib/settings";
+import { getSettingJSON, setSettingRaw } from "@/lib/settings";
 import {
   getGmailTransporter, buildRelanceHtml, ACCROCHE,
   buildBesoinInfosHtml, BESOIN_INFOS_OBJET,
@@ -58,8 +58,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ niveaux });
   }
   const e = etat[id] || {};
-  const lienAvance = (await getSettingRaw("lien_avance_immediate")) || "";
-  return NextResponse.json({ relance: e.relance ?? 0, relanceStart: e.relanceStart ?? null, confirmEnvoye: !!e.confirmEnvoye, rappelEnvoye: !!e.rappelEnvoye, lienAvance });
+  return NextResponse.json({ relance: e.relance ?? 0, relanceStart: e.relanceStart ?? null, confirmEnvoye: !!e.confirmEnvoye, rappelEnvoye: !!e.rappelEnvoye });
 }
 
 // POST { prestationId, type }

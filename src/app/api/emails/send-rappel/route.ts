@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { sendRappelEmail } from "@/lib/mailer";
-import { getSettingJSON, setSettingRaw, getSettingRaw } from "@/lib/settings";
+import { getSettingJSON, setSettingRaw } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
-// Envoi MANUEL d'un rappel de rendez-vous (+ lien d'inscription à l'avance
-// immédiate) depuis l'agenda / la modale prestation. Le lien est lu depuis les
-// réglages (clé `lien_avance_immediate`, modifiable dans Configuration).
+// Envoi MANUEL d'un rappel de rendez-vous depuis l'agenda / la modale prestation.
+// Le message rappelle le RDV et invite le client à finaliser son inscription à
+// l'avance immédiate via le lien personnel qu'il a déjà reçu (aucun lien inséré).
 
 // yyyy-mm-dd → dd/mm/yyyy (le mailer affiche la date telle quelle).
 function isoToFr(d: string | null): string {
@@ -37,8 +37,6 @@ export async function POST(req: Request) {
   const email = client.email as string | undefined;
   if (!email) return NextResponse.json({ error: "Ce client n'a pas d'adresse email." }, { status: 400 });
 
-  const lienAvance = (await getSettingRaw("lien_avance_immediate")) || "";
-
   try {
     const ok = await sendRappelEmail(email, {
       prenom     : client.prenom || "",
@@ -47,7 +45,6 @@ export async function POST(req: Request) {
       adresse    : p.adresse || "",
       date       : isoToFr(p.date_intervention as string | null),
       heure      : ((p.heure_intervention as string) || "").substring(0, 5),
-      lienAvance,
     });
     if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
     // Mémorise l'envoi (pour afficher le bouton en vert, comme la confirmation).

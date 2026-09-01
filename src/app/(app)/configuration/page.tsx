@@ -68,32 +68,6 @@ function TextField({ label, value, onChange, placeholder, type = "text" }: {
 }
 
 
-// Champ « lien » avec bouton Enregistrer (désactivé tant que rien n'a changé).
-function LinkField({ initial, onSave }: { initial: string; onSave: (v: string) => Promise<void> }) {
-  const [val, setVal]       = useState(initial);
-  const [saving, setSaving] = useState(false);
-  useEffect(() => { setVal(initial); }, [initial]);
-  return (
-    <div className="flex flex-col sm:flex-row gap-2">
-      <input
-        type="url"
-        value={val}
-        onChange={e => setVal(e.target.value)}
-        placeholder="https://…"
-        className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors"
-      />
-      <button
-        type="button"
-        disabled={saving || val.trim() === initial.trim()}
-        onClick={async () => { setSaving(true); try { await onSave(val.trim()); } finally { setSaving(false); } }}
-        className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap"
-      >
-        {saving ? <Loader2 size={14} className="animate-spin" /> : "Enregistrer"}
-      </button>
-    </div>
-  );
-}
-
 // ─── Modal Gmail ─────────────────────────────────────────────────────────────
 
 function GmailModal({ currentEmail, onClose, onSave }: {
@@ -470,18 +444,6 @@ export default function ConfigurationPage() {
     showToast("Connexion enregistrée !");
   };
 
-  // Sauvegarde sans le toast « Connexion enregistrée » (pour les réglages libres).
-  const saveQuiet = async (patch: Record<string, string>) => {
-    const res = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Erreur lors de la sauvegarde");
-    await loadSettings();
-  };
-
   const disconnect = async (keys: string[]) => {
     const patch: Record<string, string> = {};
     for (const k of keys) patch[k] = "";
@@ -594,26 +556,6 @@ export default function ConfigurationPage() {
                     </button>
                   );
                 })()}
-              </div>
-            </section>
-
-            {/* Avance immédiate / inscription */}
-            <section>
-              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
-                Avance immédiate
-              </h2>
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
-                <p className="text-sm font-semibold text-gray-800">Lien d&apos;inscription (−50 %)</p>
-                <p className="text-xs text-gray-500 -mt-1">
-                  Ce lien est inséré dans le <strong>rappel de RDV</strong> envoyé au client (bouton « Rappel RDV + inscription » de l&apos;agenda), par email et WhatsApp. Laissez vide pour ne pas afficher de lien.
-                </p>
-                <LinkField
-                  initial={settings.lien_avance_immediate || ""}
-                  onSave={async (v) => {
-                    try { await saveQuiet({ lien_avance_immediate: v }); showToast(v ? "Lien enregistré !" : "Lien retiré"); }
-                    catch (e) { showToast(e instanceof Error ? e.message : "Erreur", "error"); }
-                  }}
-                />
               </div>
             </section>
 

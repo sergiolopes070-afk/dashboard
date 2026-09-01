@@ -44,13 +44,12 @@ export default function EmailActions({
   const [relanceNiveau, setNiveau] = useState<number | null>(null);
   const [confirmSent, setConfirmSent] = useState(false); // confirmation déjà envoyée ?
   const [rappelSent, setRappelSent]   = useState(false); // rappel de RDV déjà envoyé ?
-  const [lienAvance, setLienAvance]   = useState("");    // lien d'inscription avance immédiate (Configuration)
   const [feedback, setFeedback]    = useState("");
 
   useEffect(() => {
     fetch(`/api/emails/action?prestationId=${prestationId}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) { setNiveau(d.relance ?? 0); setConfirmSent(!!d.confirmEnvoye); setRappelSent(!!d.rappelEnvoye); setLienAvance(d.lienAvance || ""); } })
+      .then(d => { if (d) { setNiveau(d.relance ?? 0); setConfirmSent(!!d.confirmEnvoye); setRappelSent(!!d.rappelEnvoye); } })
       .catch(() => {});
   }, [prestationId]);
 
@@ -144,10 +143,10 @@ export default function EmailActions({
       : `Nous revenons vers vous très rapidement pour confirmer les détails. Pour toute question, appelez-nous au 06 20 79 97 47.`) +
     `\n\nL'équipe KinouClean`;
 
-  // Rappel de RDV + inscription avance immédiate — même contenu que l'email.
-  const ligneInscription = lienAvance
-    ? `💡 Pensez à activer l'avance immédiate : vous ne réglez que 50 % du montant, l'État prend l'autre moitié en charge directement. Inscription (gratuit, 2 min) :\n${lienAvance}`
-    : `💡 Pensez à activer l'avance immédiate : vous ne réglez que 50 % du montant, l'État prend l'autre moitié en charge directement. Contactez-nous pour recevoir votre lien d'inscription.`;
+  // Rappel de RDV + avance immédiate — même contenu que l'email, SANS lien
+  // (chaque client reçoit son lien personnel directement).
+  const ligneInscription =
+    `💡 Avance immédiate (−50 %) : pour ne régler que la moitié, pensez à finaliser votre inscription à l'aide du lien personnel qui vous a été transmis.`;
   const msgRappel =
     `Bonjour ${prenom || ""} 👋,\n\n` +
     `Votre rendez-vous KinouClean est bien programmé — petit rappel :\n\n` +

@@ -247,7 +247,7 @@ export const RAPPEL_RDV_OBJET = "⏰ Rappel — votre rendez-vous KinouClean app
 
 export function buildRappelRdvHtml(d: {
   prenom: string; typePresta: string; quantite: string;
-  adresse: string; date: string; heure: string; lienAvance?: string;
+  adresse: string; date: string; heure: string;
 }): string {
   const presta  = [d.typePresta, d.quantite && d.quantite !== "1" ? `(${d.quantite})` : ""].filter(Boolean).join(" ");
   const dateStr = [d.date, d.heure].filter(Boolean).join(" à ");
@@ -255,17 +255,12 @@ export function buildRappelRdvHtml(d: {
     <tr><td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:14px;color:#6B7280;">${label}</td>
         <td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:14px;color:#1F2937;font-weight:bold;">${valeur || "—"}</td></tr>`;
 
-  // Bloc avance immédiate : avec bouton d'inscription si le lien est configuré,
-  // sinon repli sur le bloc informatif (invite à nous contacter pour le lien).
-  const avanceBloc = d.lienAvance
-    ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#EFF6FF;border-radius:10px;padding:16px 18px;margin:0 0 10px;"><tr><td style="font-size:14px;color:#1E40AF;line-height:1.6;">
-        <strong>💡 Pensez à l'avance immédiate</strong><br/>
-        Vous ne réglez que <strong>50 %</strong> du montant : l'État prend l'autre moitié en charge <strong>immédiatement</strong>, sans avance de trésorerie. Il vous suffit de vous inscrire — c'est gratuit et cela prend 2 minutes :
-      </td></tr></table>
-      <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 18px;"><tr><td align="center">
-        <a href="${d.lienAvance}" style="display:inline-block;background:#2563EB;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;padding:13px 30px;border-radius:10px;">M'inscrire à l'avance immédiate</a>
-      </td></tr></table>`
-    : FISCAL_BLOC.avance;
+  // Bloc avance immédiate : SANS lien (chaque client reçoit son lien personnel
+  // directement) — on l'invite simplement à finaliser son inscription.
+  const avanceBloc = `<table width="100%" cellpadding="0" cellspacing="0" style="background:#EFF6FF;border-radius:10px;padding:16px 18px;margin:0 0 18px;"><tr><td style="font-size:14px;color:#1E40AF;line-height:1.6;">
+      <strong>💡 Avance immédiate (−50 %)</strong><br/>
+      Pour ne régler que <strong>la moitié</strong> du montant, pensez à finaliser votre inscription à l'avance immédiate à l'aide du <strong>lien personnel qui vous a été transmis</strong>. Une question ? Nous sommes là pour vous aider.
+    </td></tr></table>`;
 
   return shell(`
     <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour ${d.prenom || ""},</p>
@@ -287,7 +282,7 @@ export function buildRappelRdvHtml(d: {
 // Envoie l'email de rappel de RDV (+ avance immédiate) via Gmail. true si envoyé.
 export async function sendRappelEmail(to: string, d: {
   prenom: string; typePresta: string; quantite: string;
-  adresse: string; date: string; heure: string; lienAvance?: string;
+  adresse: string; date: string; heure: string;
 }): Promise<boolean> {
   const gmail = await getGmailTransporter();
   if (!gmail) return false;
