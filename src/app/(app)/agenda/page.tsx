@@ -176,6 +176,9 @@ function DayDetailModal({
                             <span className="font-bold shrink-0" style={{ color: color.bg }}>{ev.heure}</span>
                             <span className="font-semibold text-gray-800 truncate flex-1">{ev.prenom} {ev.nom}</span>
                             {ev.typePresta && <span className="text-gray-500 truncate hidden sm:block shrink-0">{ev.typePresta}</span>}
+                            {Array.isArray(ev.photos) && ev.photos.length > 0 && (
+                              <span className="shrink-0 text-[11px]" title={`${ev.photos.length} photo(s) d'intervention`}>📷 {ev.photos.length}</span>
+                            )}
                             {ev.modePaiement && PAYMENT_ICONS[ev.modePaiement] && (
                               <span className="shrink-0 text-xs font-semibold px-1.5 py-0.5 rounded-full"
                                 style={{ backgroundColor: color.bg + "20", color: color.bg }}>
@@ -857,6 +860,9 @@ export default function AgendaPage() {
                         <span className={`font-semibold text-sm truncate ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</span>
                         <span className="text-xs text-gray-500 truncate">{ev.typePresta}{ev.prestataire ? ` · ${ev.prestataire}` : ""}</span>
                         {ev.modePaiement && PAYMENT_ICONS[ev.modePaiement] && <span className="text-[11px] mt-0.5">{PAYMENT_ICONS[ev.modePaiement]} {PAYMENT_SHORT[ev.modePaiement] ?? ev.modePaiement}</span>}
+                        {Array.isArray(ev.photos) && ev.photos.length > 0 && (
+                          <span className="text-[11px] mt-0.5 text-gray-600" title={`${ev.photos.length} photo(s) d'intervention`}>📷 {ev.photos.length} photo{ev.photos.length > 1 ? "s" : ""}</span>
+                        )}
                       </div>
                     </button>
                   );
@@ -1036,6 +1042,9 @@ export default function AgendaPage() {
                                   {PAYMENT_ICONS[ev.modePaiement]}{h_ > 40 && ` ${PAYMENT_SHORT[ev.modePaiement] ?? ev.modePaiement}`}
                                 </span>
                               )}
+                              {h_ > 36 && Array.isArray(ev.photos) && ev.photos.length > 0 && (
+                                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold w-fit text-gray-600 leading-tight" title={`${ev.photos.length} photo(s) d'intervention`}>📷 {ev.photos.length}</span>
+                              )}
                               {isArchived && !ev.modePaiement && <span className="text-gray-400 text-[9px] leading-tight font-medium uppercase tracking-wide">Archivé</span>}
                             </div>
                           </button>
@@ -1113,6 +1122,9 @@ export default function AgendaPage() {
                                 {PAYMENT_ICONS[ev.modePaiement]}
                                 <span>{PAYMENT_SHORT[ev.modePaiement] ?? ev.modePaiement}</span>
                               </div>
+                            )}
+                            {Array.isArray(ev.photos) && ev.photos.length > 0 && (
+                              <div className="px-1.5 pb-0.5 text-[10px] font-semibold text-gray-500" title={`${ev.photos.length} photo(s) d'intervention`}>📷 {ev.photos.length}</div>
                             )}
                           </div>
                         );
