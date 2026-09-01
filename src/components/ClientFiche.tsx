@@ -14,6 +14,7 @@ import { ClientNote, STATUT_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
 import { Entite } from "@/lib/entite";
 import EntiteBadge from "@/components/EntiteBadge";
+import PhotoLightbox, { LightboxPhoto } from "@/components/PhotoLightbox";
 
 // Forme minimale d'une prestation affichée dans la fiche (compatible avec le type
 // Prestation complet ET avec les données renvoyées par /api/clients/[id]).
@@ -67,6 +68,7 @@ export default function ClientFiche({
   const [noteType,  setNoteType]  = useState(NOTE_TYPES[0].icon);
   const [fiscal, setFiscal] = useState<"" | "avance" | "credit">("");
   const [entiteOverrides, setEntiteOverrides] = useState<Record<string, Entite>>({});
+  const [lightbox, setLightbox] = useState<{ photos: LightboxPhoto[]; index: number } | null>(null);
 
   useEffect(() => { setNotes(client.notes ?? []); }, [client.clientId, client.notes]);
 
@@ -360,11 +362,11 @@ export default function ClientFiche({
                                 <span className="text-[10px] text-gray-500 w-16 shrink-0 pt-1 truncate">{art}</span>
                                 <div className="flex gap-1 flex-wrap">
                                   {(["avant", "apres"] as const).flatMap(phase => p.photos!.filter(x => x.article === art && x.phase === phase).map(x => (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <a key={x.path} href={x.url} target="_blank" rel="noopener noreferrer" title={phase === "avant" ? "Avant" : "Après"} className="relative">
+                                    <button type="button" key={x.path} onClick={() => setLightbox({ photos: p.photos!, index: p.photos!.findIndex(pp => pp.path === x.path) })} title={phase === "avant" ? "Avant" : "Après"} className="relative">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
                                       <img src={x.url} alt={art} className="w-11 h-11 rounded-lg object-cover border border-gray-200" />
                                       <span className={`absolute bottom-0 inset-x-0 text-[7px] text-center text-white rounded-b-lg ${phase === "avant" ? "bg-orange-500/80" : "bg-green-600/80"}`}>{phase === "avant" ? "AV" : "AP"}</span>
-                                    </a>
+                                    </button>
                                   )))}
                                 </div>
                               </div>
@@ -395,6 +397,9 @@ export default function ClientFiche({
           )}
         </div>
       </div>
+      {lightbox && (
+        <PhotoLightbox photos={lightbox.photos} startIndex={lightbox.index} onClose={() => setLightbox(null)} />
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { Prestation, Prestataire, StatutClient } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
 import { ClientFicheById } from "@/components/ClientFiche";
 import EmailActions from "@/components/EmailActions";
+import PhotoLightbox, { LightboxPhoto } from "@/components/PhotoLightbox";
 import NewClientModal from "@/components/NewClientModal";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 
@@ -331,6 +332,7 @@ export default function AgendaPage() {
   const [weekStart,    setWeekStart]    = useState<Date>(() => getMondayOfWeek(new Date()));
   const [monthDate,    setMonthDate]    = useState<Date>(() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; });
   const [viewMode,     setViewMode]     = useState<"day"|"week"|"month">("week");
+  const [lightbox,     setLightbox]     = useState<{ photos: LightboxPhoto[]; index: number } | null>(null);
   const [dayDate,      setDayDate]      = useState<Date>(() => { const d = new Date(); d.setHours(0,0,0,0); return d; });
   const [checked,      setChecked]      = useState<Record<string, boolean>>({});
   const [showSansPresta, setShowSansPresta] = useState(true);
@@ -1027,6 +1029,9 @@ export default function AgendaPage() {
                               zIndex: 10 + ei,
                             }}
                           >
+                            {Array.isArray(ev.photos) && ev.photos.length > 0 && (
+                              <span className="absolute top-0 right-0 z-20 inline-flex items-center rounded-bl-md bg-black/55 text-white text-[9px] font-bold px-1 py-0.5 leading-none" title={`${ev.photos.length} photo(s) d'intervention`}>📷{ev.photos.length}</span>
+                            )}
                             <div className="px-1.5 py-1 h-full flex flex-col overflow-hidden gap-px">
                               {ev.heure && (
                                 <span className="font-bold leading-tight truncate text-[11px]" style={{ color: isArchived ? "#9CA3AF" : color.bg }}>{ev.heure}</span>
@@ -1041,9 +1046,6 @@ export default function AgendaPage() {
                                   style={{ backgroundColor: isArchived ? "#E5E7EB" : color.bg + "22", color: isArchived ? "#9CA3AF" : color.bg }}>
                                   {PAYMENT_ICONS[ev.modePaiement]}{h_ > 40 && ` ${PAYMENT_SHORT[ev.modePaiement] ?? ev.modePaiement}`}
                                 </span>
-                              )}
-                              {h_ > 36 && Array.isArray(ev.photos) && ev.photos.length > 0 && (
-                                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold w-fit text-gray-600 leading-tight" title={`${ev.photos.length} photo(s) d'intervention`}>📷 {ev.photos.length}</span>
                               )}
                               {isArchived && !ev.modePaiement && <span className="text-gray-400 text-[9px] leading-tight font-medium uppercase tracking-wide">Archivé</span>}
                             </div>
@@ -1106,8 +1108,11 @@ export default function AgendaPage() {
                         const pid   = idByNom[ev.prestataire];
                         const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg:"#9CA3AF", light:"#F3F4F6", text:"#374151" };
                         return (
-                          <div key={ev.row} className={`w-full rounded overflow-hidden ${isArchived ? "opacity-55" : ""}`}
+                          <div key={ev.row} className={`relative w-full rounded overflow-hidden ${isArchived ? "opacity-55" : ""}`}
                             style={{ backgroundColor: isArchived ? "#F3F4F6" : color.light }}>
+                            {Array.isArray(ev.photos) && ev.photos.length > 0 && (
+                              <span className="absolute top-0 right-0 z-20 inline-flex items-center rounded-bl bg-black/55 text-white text-[9px] font-bold px-1 py-0.5 leading-none" title={`${ev.photos.length} photo(s) d'intervention`}>📷{ev.photos.length}</span>
+                            )}
                             <button
                               onClick={e => { e.stopPropagation(); setSelectedEvent(ev); }}
                               className="w-full text-left px-1.5 py-0.5 text-xs font-medium flex items-center gap-1"
@@ -1122,9 +1127,6 @@ export default function AgendaPage() {
                                 {PAYMENT_ICONS[ev.modePaiement]}
                                 <span>{PAYMENT_SHORT[ev.modePaiement] ?? ev.modePaiement}</span>
                               </div>
-                            )}
-                            {Array.isArray(ev.photos) && ev.photos.length > 0 && (
-                              <div className="px-1.5 pb-0.5 text-[10px] font-semibold text-gray-500" title={`${ev.photos.length} photo(s) d'intervention`}>📷 {ev.photos.length}</div>
                             )}
                           </div>
                         );
@@ -1436,8 +1438,10 @@ export default function AgendaPage() {
                                       <p className={`text-[10px] mb-0.5 ${phase === "avant" ? "text-orange-600" : "text-green-600"}`}>{phase === "avant" ? "Avant" : "Après"}</p>
                                       <div className="flex gap-1">
                                         {ph.length === 0 ? <span className="text-[10px] text-gray-300">—</span> : ph.map(p => (
-                                          // eslint-disable-next-line @next/next/no-img-element
-                                          <a key={p.path} href={p.url} target="_blank" rel="noopener noreferrer"><img src={p.url} alt={art} className="w-12 h-12 rounded-lg object-cover border border-gray-200" /></a>
+                                          <button type="button" key={p.path} onClick={() => setLightbox({ photos: ev.photos!, index: ev.photos!.findIndex(pp => pp.path === p.path) })}>
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img src={p.url} alt={art} className="w-12 h-12 rounded-lg object-cover border border-gray-200" />
+                                          </button>
                                         ))}
                                       </div>
                                     </div>
@@ -1857,6 +1861,9 @@ export default function AgendaPage() {
             </div>
           </div>
         </div>
+      )}
+      {lightbox && (
+        <PhotoLightbox photos={lightbox.photos} startIndex={lightbox.index} onClose={() => setLightbox(null)} />
       )}
     </div>
   );

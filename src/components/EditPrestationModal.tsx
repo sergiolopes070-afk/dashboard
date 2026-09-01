@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { X, Save, Loader2, MessageCircle, Archive, User, FileText, Download, Camera } from "lucide-react";
 import EmailActions from "@/components/EmailActions";
+import PhotoLightbox from "@/components/PhotoLightbox";
 import { Prestation, Prestataire, StatutClient, StatutPresta, MODES_PAIEMENT, MODE_PAIEMENT_ICONS } from "@/lib/constants";
 
 interface EditPrestationModalProps {
@@ -49,6 +50,7 @@ export default function EditPrestationModal({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<number | null>(null); // index photo ouverte
 
   // Auto-fill emailPresta when prestataire changes from dropdown
   useEffect(() => {
@@ -210,11 +212,11 @@ export default function EditPrestationModal({
                     <div className="flex gap-1.5 flex-wrap">
                       {(["avant", "apres"] as const).flatMap(phase =>
                         prestation.photos!.filter(x => x.article === art && x.phase === phase).map(x => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <a key={x.path} href={x.url} target="_blank" rel="noopener noreferrer" title={phase === "avant" ? "Avant" : "Après"} className="relative">
+                          <button type="button" key={x.path} onClick={() => setLightbox(prestation.photos!.findIndex(pp => pp.path === x.path))} title={phase === "avant" ? "Avant" : "Après"} className="relative">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={x.url} alt={art} className="w-14 h-14 rounded-lg object-cover border border-gray-200" />
                             <span className={`absolute bottom-0 inset-x-0 text-[8px] text-center text-white rounded-b-lg ${phase === "avant" ? "bg-orange-500/80" : "bg-green-600/80"}`}>{phase === "avant" ? "AVANT" : "APRÈS"}</span>
-                          </a>
+                          </button>
                         ))
                       )}
                     </div>
@@ -549,6 +551,9 @@ export default function EditPrestationModal({
           </div>
         </div>
       </div>
+      {lightbox !== null && prestation.photos && (
+        <PhotoLightbox photos={prestation.photos} startIndex={lightbox} onClose={() => setLightbox(null)} />
+      )}
     </div>
   );
 }
