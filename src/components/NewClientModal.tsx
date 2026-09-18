@@ -180,6 +180,7 @@ interface Props {
   onClose: () => void;
   onSaved: () => void;
   initialValues?: Partial<typeof EMPTY>;
+  initialArticles?: { typePresta: string; quantite: string; prix: string }[]; // pré-remplissage (conversion prospect)
 }
 
 const EMPTY = {
@@ -205,10 +206,10 @@ const EMPTY = {
   fiscal         : "" as "" | "avance" | "credit", // préférence fiscale du client
 };
 
-export default function NewClientModal({ prestataires, onClose, onSaved, initialValues }: Props) {
+export default function NewClientModal({ prestataires, onClose, onSaved, initialValues, initialArticles }: Props) {
   const [form, setForm]                   = useState({ ...EMPTY, ...initialValues });
   // Articles / prestations supplémentaires (canapé + matelas + tapis en une fois…)
-  const [articlesSupp, setArticlesSupp] = useState<{ typePresta: string; quantite: string; prix: string }[]>([]);
+  const [articlesSupp, setArticlesSupp] = useState<{ typePresta: string; quantite: string; prix: string }[]>(initialArticles ?? []);
   const addArticle    = () => setArticlesSupp(a => [...a, { typePresta: "", quantite: "1", prix: "" }]);
   const removeArticle = (i: number) => setArticlesSupp(a => a.filter((_, j) => j !== i));
   const updateArticle = (i: number, k: "typePresta" | "quantite" | "prix", v: string) =>

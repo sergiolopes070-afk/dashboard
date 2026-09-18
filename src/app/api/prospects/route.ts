@@ -47,6 +47,7 @@ function rowToProspect(r: Record<string, any>) {
     relanceSteps : r.relance_steps ? String(r.relance_steps).split(",").filter(Boolean) : [],
     notes        : r.notes        || "",
     commentaires : Array.isArray(r.commentaires) ? r.commentaires : [],
+    besoins      : Array.isArray(r.besoins) ? r.besoins : [],
   };
 }
 

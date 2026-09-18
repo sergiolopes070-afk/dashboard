@@ -71,8 +71,11 @@ export async function POST(req: Request) {
   const moment = momentRaw ? pretty(momentRaw, MOMENT_LABEL) : "";
   const delai  = delaiRaw ? pretty(delaiRaw, DELAI_LABEL) : "";
 
+  // Date ISO (2026-09-22) → JJ/MM/AAAA pour un affichage lisible dans la fiche.
+  const dateFr = /^\d{4}-\d{2}-\d{2}$/.test(dateSouhaitee) ? dateSouhaitee.split("-").reverse().join("/") : dateSouhaitee;
+
   // Résumé lisible du créneau souhaité, ajouté en tête des notes du prospect.
-  const creneau = [dateSouhaitee, heure, moment, delai].filter(Boolean).join(" · ");
+  const creneau = [dateFr, heure, moment, delai].filter(Boolean).join(" · ");
   const notes = [creneau ? `Créneau souhaité : ${creneau}` : "", message].filter(Boolean).join("\n") || null;
 
   // Anti-doublon : déjà présent (prospect ou client) → on confirme sans recréer.

@@ -51,6 +51,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (body.typePresta  !== undefined) patch.type_presta  = body.typePresta;
   if (body.adresse     !== undefined) patch.adresse      = body.adresse;
   if (body.budget      !== undefined) patch.budget       = body.budget;
+  if (body.besoins     !== undefined) patch.besoins      = body.besoins; // prestations souhaitées (JSONB)
   if (body.source        !== undefined) patch.source        = body.source;
   if (body.relanceSteps  !== undefined) patch.relance_steps = Array.isArray(body.relanceSteps) ? body.relanceSteps.join(",") : "";
   if (body.commentaires  !== undefined) patch.commentaires  = body.commentaires;

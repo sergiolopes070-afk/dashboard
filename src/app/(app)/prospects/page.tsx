@@ -11,6 +11,8 @@ import { SkeletonList } from "@/components/Skeleton";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import NewClientModal from "@/components/NewClientModal";
+import PrestationFields from "@/components/PrestationFields";
+import { getSchema } from "@/lib/prestationSchema";
 
 // Formatage FR compact pour le pense-bête d'import.
 function fmtImportDateTime(iso: string): string {
@@ -48,7 +50,11 @@ interface Prospect {
   relanceSteps: string[]; // étapes cochées : "j1", "j3", "j7"
   notes: string;
   commentaires: Commentaire[];
+  besoins?: Besoin[]; // prestations souhaitées (type + détails + prix), pré-remplit la conversion
 }
+
+// Une prestation souhaitée notée sur le prospect (même forme que les articles client).
+interface Besoin { typePresta: string; quantite: string; prix: string }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const STATUTS = ["NOUVEAU", "CONTACTÉ", "RELANCÉ", "CONVERTI", "PERDU"] as const;
@@ -259,6 +265,8 @@ function ProspectModal({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameForm, setNameForm] = useState({ prenom: prospect.prenom, nom: prospect.nom });
+  const [draft, setDraft] = useState<Besoin>({ typePresta: "", quantite: "1", prix: "" }); // saisie d'une prestation souhaitée
+  const toast = useToast();
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom of comments when added
@@ -267,14 +275,32 @@ function ProspectModal({
   async function patch(updates: Record<string, unknown>) {
     setSaving(true);
     try {
-      await fetch(`/api/prospects/${p.id}`, {
+      const res = await fetch(`/api/prospects/${p.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        const msg = String(d.error || "");
+        toast.error("besoins" in updates && /besoins/i.test(msg)
+          ? "Colonne « besoins » manquante — lance le SQL (une seule fois)."
+          : (d.error || "Échec de l'enregistrement"));
+        return;
+      }
       const next = { ...p, ...updates } as Prospect;
       setP(next);
       onUpdated({ id: p.id, ...updates } as Partial<Prospect> & { id: string });
     } finally { setSaving(false); }
+  }
+
+  // Prestations souhaitées (besoins) — mêmes champs que la fiche client.
+  function addBesoin() {
+    if (!draft.typePresta) return;
+    patch({ besoins: [...(p.besoins || []), { typePresta: draft.typePresta, quantite: draft.quantite || "1", prix: draft.prix || "" }] });
+    setDraft({ typePresta: "", quantite: "1", prix: "" });
+  }
+  function removeBesoin(i: number) {
+    patch({ besoins: (p.besoins || []).filter((_, j) => j !== i) });
   }
 
   async function addComment() {
@@ -453,34 +479,56 @@ function ProspectModal({
             )}
           </div>
 
-          {/* Besoins — mobilier / prestations souhaités (multi, comme un pré-devis avant conversion) */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-              <Star size={13} className="text-gray-400" /> Besoins (mobilier / prestations)
-            </p>
-            {(() => {
-              const sel = (p.typePresta || "").split(",").map(s => s.trim()).filter(Boolean);
-              return (
-                <div className="flex flex-wrap gap-1.5">
-                  {TYPES_PRESTA.filter(t => t !== "Autre").map(t => {
-                    const active = sel.includes(t);
-                    return (
-                      <button key={t} type="button" disabled={saving}
-                        onClick={() => {
-                          const next = active ? sel.filter(x => x !== t) : [...sel, t];
-                          patch({ typePresta: next.join(", ") });
-                        }}
-                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors disabled:opacity-50 ${active ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"}`}>
-                        {t}
-                      </button>
-                    );
-                  })}
+          {/* Prestations souhaitées — même formulaire que la fiche client (pré-remplit la conversion) */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3.5 space-y-3">
+            <div className="flex items-center gap-2 pb-1 border-b border-gray-100">
+              <Star size={14} className="text-blue-500" />
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Prestations souhaitées</span>
+            </div>
+
+            {/* Liste des prestations déjà notées */}
+            {(p.besoins && p.besoins.length > 0) ? (
+              <div className="space-y-1.5">
+                {p.besoins.map((b, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{b.typePresta || "—"}</p>
+                      {b.quantite && b.quantite !== "1" && <p className="text-xs text-gray-500 truncate">{b.quantite}</p>}
+                    </div>
+                    {b.prix && <span className="text-sm font-semibold text-green-700 shrink-0">{b.prix} €</span>}
+                    <button onClick={() => removeBesoin(i)} title="Retirer" className="text-gray-300 hover:text-red-600 shrink-0"><Trash2 size={14} /></button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">Aucune prestation notée. Ajoute ce que le prospect souhaite (canapé, matelas, chaises…), avec les détails et le prix.</p>
+            )}
+
+            {/* Ajout d'une prestation souhaitée */}
+            <div className="space-y-2 border-t border-gray-100 pt-2.5">
+              <select value={draft.typePresta}
+                onChange={e => setDraft({ typePresta: e.target.value, quantite: "1", prix: draft.prix })}
+                className="w-full bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+                <option value="">— Type de prestation —</option>
+                {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              {draft.typePresta && getSchema(draft.typePresta).length > 0 && (
+                <PrestationFields typePresta={draft.typePresta} onDetailChange={d => setDraft(x => ({ ...x, quantite: d }))} />
+              )}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input type="number" min={0} step="0.01" value={draft.prix} placeholder="Prix (optionnel)"
+                    onChange={e => setDraft(x => ({ ...x, prix: e.target.value }))}
+                    className="w-full bg-white border border-gray-200 rounded-lg pl-2 pr-5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">€</span>
                 </div>
-              );
-            })()}
-            <p className="text-[11px] text-gray-400 mt-1.5">
-              {(p.typePresta || "").trim() ? `Sélectionné : ${p.typePresta}` : "Coche les meubles/prestations que le prospect souhaite — même avant conversion."}
-            </p>
+                <button onClick={addBesoin} disabled={!draft.typePresta || saving}
+                  className="px-3.5 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors shrink-0">
+                  Ajouter
+                </button>
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400">💡 Tout ce que tu notes ici sera pré-rempli automatiquement à la conversion en client.</p>
           </div>
 
           {/* Étapes de relance cochables */}
@@ -755,9 +803,12 @@ function ProspectModal({
         <NewClientModal
           prestataires={[]}
           initialValues={{
-            prenom: p.prenom, nom: p.nom, tel: p.tel, email: p.email,
-            adresse: p.adresse, typePresta: p.typePresta,
+            prenom: p.prenom, nom: p.nom, tel: p.tel, email: p.email, adresse: p.adresse,
+            typePresta: p.besoins?.[0]?.typePresta || p.typePresta,
+            quantite  : p.besoins?.[0]?.quantite || "1",
+            prix      : p.besoins?.[0]?.prix || "",
           }}
+          initialArticles={(p.besoins || []).slice(1)}
           onClose={() => setShowConvert(false)}
           onSaved={handleConvertedSaved}
         />
