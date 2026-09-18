@@ -53,6 +53,7 @@ export async function POST(req: Request) {
   const budget     = clean(body.budget ?? body.prix);
   // Souhait de créneau (préférence, PAS une réservation) : rangé dans les notes.
   const dateSouhaitee = clean(body.date_souhaitee ?? body.date ?? body.date_rdv);
+  const heure         = clean(body.heure ?? body.time ?? body.heure_souhaitee);
   const moment        = clean(body.moment ?? body.moment_journee ?? body.creneau);
   const delai         = clean(body.delai ?? body.delay);
 
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
   }
 
   // Résumé lisible du créneau souhaité, ajouté en tête des notes du prospect.
-  const creneau = [dateSouhaitee, moment, delai].filter(Boolean).join(" · ");
+  const creneau = [dateSouhaitee, heure, moment, delai].filter(Boolean).join(" · ");
   const notes = [creneau ? `Créneau souhaité : ${creneau}` : "", message].filter(Boolean).join("\n") || null;
 
   // Anti-doublon : déjà présent (prospect ou client) → on confirme sans recréer.
