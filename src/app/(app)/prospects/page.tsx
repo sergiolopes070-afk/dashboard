@@ -12,6 +12,18 @@ import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import NewClientModal from "@/components/NewClientModal";
 
+// Formatage FR compact pour le pense-bête d'import.
+function fmtImportDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }) + " à " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+function fmtImportDate(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Commentaire {
   id: string;
@@ -734,6 +746,7 @@ export default function ProspectsPage() {
   const [showAdd, setShowAdd]     = useState(false);
   const [selected, setSelected]   = useState<Prospect | null>(null);
   const [importing, setImporting] = useState(false);
+  const [lastImport, setLastImport] = useState<{ at: string; created: number; skipped: number; lastLeadName?: string; lastLeadDate?: string } | null>(null);
   const toast = useToast();
 
   async function load() {
@@ -745,14 +758,23 @@ export default function ProspectsPage() {
   }
   useEffect(() => { load(); }, []);
 
-  // Relève manuelle des nouveaux leads reçus par email (formulaire du site) →
-  // crée les prospects manquants. L'import tourne aussi automatiquement chaque jour.
+  // Pense-bête : récupère le récap du dernier import (persisté dans settings).
+  useEffect(() => {
+    fetch("/api/settings")
+      .then(r => r.ok ? r.json() : null)
+      .then(s => { if (s?.inbox_last_import) { try { setLastImport(JSON.parse(s.inbox_last_import)); } catch { /* ignore */ } } })
+      .catch(() => {});
+  }, []);
+
+  // Relève MANUELLE des nouveaux leads reçus par email (formulaire du site) →
+  // crée les prospects manquants. Uniquement au clic : aucun import automatique.
   async function importerLeads() {
     setImporting(true);
     try {
-      const res = await fetch("/api/cron/inbox?days=14");
+      const res = await fetch("/api/cron/inbox?days=30");
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Import impossible");
+      if (d.lastImport) setLastImport(d.lastImport);
       const n = d.crees ?? 0;
       if (n > 0) { toast.success(`${n} nouveau${n > 1 ? "x" : ""} lead${n > 1 ? "s" : ""} importé${n > 1 ? "s" : ""} 🎉`); await load(); }
       else toast.success("Aucun nouveau lead — tout est déjà à jour ✅");
@@ -873,6 +895,26 @@ export default function ProspectsPage() {
       />
 
       <div className="flex-1 p-3 sm:p-6 space-y-4">
+
+        {/* Pense-bête du dernier import (formulaires du site → prospects) */}
+        <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-2.5 text-xs text-blue-800 flex items-start gap-2">
+          <span className="mt-0.5">🕘</span>
+          <div className="leading-relaxed">
+            {lastImport ? (
+              <>
+                <span className="font-semibold">Dernier import :</span>{" "}
+                {fmtImportDateTime(lastImport.at)} · <span className="font-semibold text-blue-900">{lastImport.created} nouveau{lastImport.created > 1 ? "x" : ""}</span>, {lastImport.skipped} déjà connu{lastImport.skipped > 1 ? "s" : ""}
+                {lastImport.lastLeadName && (
+                  <><br />📩 Dernier formulaire capté : <span className="font-semibold">{lastImport.lastLeadName}</span>{lastImport.lastLeadDate ? ` — reçu le ${fmtImportDate(lastImport.lastLeadDate)}` : ""}</>
+                )}
+              </>
+            ) : (
+              <>Aucun import effectué pour l&apos;instant. Clique sur <span className="font-semibold">« Importer les leads »</span> pour relever les formulaires reçus.</>
+            )}
+            <div className="text-blue-500/80 mt-0.5">Seuls les formulaires reçus à partir du 19/09 créent des prospects · zéro doublon garanti.</div>
+          </div>
+        </div>
+
 
         {/* ── Stat cards compactes ── */}
         <div className="grid grid-cols-4 gap-2">

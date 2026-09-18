@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { importInbox } from "@/lib/inbox";
 import { supabase } from "@/lib/supabase";
+import { setSettingRaw } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -89,11 +90,26 @@ export async function GET(req: Request) {
 
   const res = await importInbox({ dry: dry || debug, debug, baseline, days, since });
   if (debug) return NextResponse.json({ mode: "DEBUG", totalTrouves: res.totalTrouves, debugAll: res.debugAll, debugSample: res.debugSample, erreurs: res.errors.slice(0, 3) });
+
+  // Pense-bête : mémorise le récap du dernier import réel (affiché côté Prospects),
+  // pour savoir jusqu'où c'est traité et que rien ne sera recréé.
+  const lastImport = {
+    at: new Date().toISOString(),
+    created: res.imported.length,
+    skipped: res.skipped,
+    lastLeadName: res.lastLeadName || "",
+    lastLeadDate: res.lastLeadDate || "",
+  };
+  if (!dry && !baseline) {
+    try { await setSettingRaw("inbox_last_import", JSON.stringify(lastImport)); } catch { /* non bloquant */ }
+  }
+
   return NextResponse.json({
     mode: baseline ? "BASELINE (historique marqué traité, rien créé)" : dry ? "SIMULATION (aucune création)" : "IMPORT",
     crees: res.imported.length,
     ignores: res.skipped,
     erreurs: res.errors,
     details: res.imported,
+    lastImport,
   });
 }

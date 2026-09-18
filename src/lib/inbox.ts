@@ -21,6 +21,12 @@ const PROCESSED_KEY = "inbox_processed";
 const LOCK_KEY = "inbox_lock";          // verrou anti-exécutions simultanées (cron + bouton)
 const LOCK_TTL_MS = 120_000;            // 2 min : au-delà, un verrou est considéré périmé
 
+// Plancher de date : on ne crée des prospects QUE pour les formulaires reçus
+// À PARTIR de cette date (incluse). Tout formulaire ANTÉRIEUR (aujourd'hui et
+// avant) est marqué « traité » sans rien créer — demandé par l'utilisateur pour
+// démarrer proprement à partir de demain, sans réimporter l'historique.
+const IMPORT_MIN_DATE = "2026-09-19";
+
 // ─── Suivi des emails déjà importés (lecture fraîche via helper settings) ─────────
 async function lireTraites(): Promise<string[]> {
   return getSettingJSON<string[]>(PROCESSED_KEY, []);
@@ -144,6 +150,8 @@ export interface ImportResult {
   skipped: number;
   errors: string[];
   dry: boolean;
+  lastLeadName?: string;  // pense-bête : dernier formulaire réellement importé
+  lastLeadDate?: string;  // date (ISO) du formulaire le plus récent importé
   debugSample?: { from: string; subject: string; text: string; htmlStripped: string; parsed: DemandeParsee }[];
   debugAll?: { date: string; from: string; subject: string; messageId: string; traite: boolean }[];
   totalTrouves?: number;
@@ -184,6 +192,8 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
   const traites = new Set(await lireTraites());
   const nouveauxIds: string[] = [];
   const vusRun = new Set<string>(); // identités déjà créées DANS CETTE exécution
+  const minDate = new Date(IMPORT_MIN_DATE + "T00:00:00"); // plancher : ne rien créer avant
+  let lastLeadTs = 0;               // pense-bête : timestamp du dernier lead importé
 
   const client = new ImapFlow({ host: "imap.gmail.com", port: 993, secure: true, auth: { user, pass }, logger: false });
   try {
@@ -246,6 +256,14 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
         const forceReimport = !!(sinceValide && parsed.date && new Date(parsed.date) >= sinceValide);
         if (traites.has(messageId) && !forceReimport) { result.skipped++; continue; }
 
+        // Plancher de date : formulaire reçu AVANT IMPORT_MIN_DATE (aujourd'hui et
+        // avant) → jamais créé. On le marque « traité » pour ne plus jamais y revenir.
+        if (parsed.date && new Date(parsed.date) < minDate) {
+          if (!dry) nouveauxIds.push(messageId);
+          result.skipped++;
+          continue;
+        }
+
         const body = (parsed.text && parsed.text.trim()) ? parsed.text : stripHtml(parsed.html || "");
         const d = parseDemande(body, subject);
 
@@ -307,6 +325,13 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
         }
         if (identite) vusRun.add(identite);
         result.imported.push({ prenom: d.prenom, email: d.email, typePresta: d.typePresta, prix: d.prix });
+        // Pense-bête : retient le formulaire le plus récent réellement importé.
+        const ts = parsed.date ? new Date(parsed.date).getTime() : Date.now();
+        if (ts >= lastLeadTs) {
+          lastLeadTs = ts;
+          result.lastLeadName = `${d.prenom || ""} ${d.nom || ""}`.trim() || d.email || d.tel;
+          result.lastLeadDate = parsed.date ? new Date(parsed.date).toISOString() : new Date().toISOString();
+        }
       }
     } finally {
       lock.release();
