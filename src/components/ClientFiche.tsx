@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from "react";
 import {
-  X, Phone, Mail, MapPin, Send, Trash2, Calendar, Euro, MessageCircle, Star, Camera,
+  X, Phone, Mail, MapPin, Send, Trash2, Calendar, Euro, MessageCircle, Star, Camera, CheckCircle2,
 } from "lucide-react";
 import { ClientNote, STATUT_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
@@ -44,6 +44,8 @@ export interface ClientFicheData {
   creeLe     : string;
   tags       : string[];
   notes      : ClientNote[];
+  avanceInscrit?    : boolean;
+  avanceInscritDate?: string;
 }
 
 const NOTE_TYPES = [
@@ -181,6 +183,12 @@ export default function ClientFiche({
             <div className="flex flex-wrap items-center gap-1.5 mt-1">
               <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-lg">{client.totalCA.toFixed(0)} €</span>
               <span className="text-xs text-gray-400">{client.prestations.length} prestation{client.prestations.length > 1 ? "s" : ""}</span>
+              {client.avanceInscrit && (
+                <span title={client.avanceInscritDate ? `Inscrit le ${new Date(client.avanceInscritDate).toLocaleDateString("fr-FR")}` : "Inscrit à l'avance immédiate"}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                  <CheckCircle2 size={12} /> Inscrit avance immédiate ⚡
+                </span>
+              )}
             </div>
           </div>
           <button onClick={onClose} aria-label="Fermer la fiche" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors shrink-0">

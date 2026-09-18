@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { insertPrestationForClient } from "@/lib/sheets";
+import { getInscrits, estInscrit } from "@/lib/avanceInscrits";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const dates = prestations.map(p => p.date).filter(Boolean);
   const derniere = dates.sort((a, b) => (a < b ? 1 : -1))[0] || "";
 
+  // Inscription à l'Avance Immédiate (détectée via les emails d'AIS) → badge vert.
+  const insc = estInscrit(await getInscrits(), client.tel, client.email);
+
   return NextResponse.json({
     clientId   : client.id,
     nom        : client.nom    || "",
@@ -69,6 +73,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     creeLe     : client.created_at || "",
     tags       : Array.isArray(client.tags) ? client.tags : [],
     notes      : Array.isArray(client.notes) ? client.notes : [],
+    avanceInscrit    : !!insc,
+    avanceInscritDate: insc?.at || "",
   });
 }
 

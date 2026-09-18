@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { getSetting, getGmailTransporter, ACCROCHE, buildRelanceHtml } from "@/lib/mailer";
 import { getSettingJSON } from "@/lib/settings";
 import { importInbox } from "@/lib/inbox";
+import { scanAvanceInscrits } from "@/lib/avanceInscrits";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -178,6 +179,13 @@ export async function GET(req: Request) {
   if (IMPORT_INBOX_AUTO && mode !== "test" && mode !== "simulation") {
     try { const r = await importInbox({ days: 7 }); inboxImport = { crees: r.imported.length, ignores: r.skipped, erreurs: r.errors }; }
     catch (e) { inboxImport = { erreur: e instanceof Error ? e.message : "import inbox échoué" }; }
+  }
+
+  // Détection des inscriptions à l'Avance Immédiate (marque les clients concernés).
+  let avanceScan: unknown = "non exécuté (simulation)";
+  if (mode !== "simulation") {
+    try { const r = await scanAvanceInscrits({ days: 60 }); avanceScan = { trouves: r.trouves, ajoutes: r.ajoutes }; }
+    catch (e) { avanceScan = { erreur: e instanceof Error ? e.message : "scan avance échoué" }; }
   }
 
   const { data, error } = await supabase
@@ -395,6 +403,7 @@ export async function GET(req: Request) {
       Object.entries(etat).filter(([, e]) => e.relance).map(([k, e]) => [k, e.relance])
     ),
     inboxImport,
+    avanceScan,
   };
 
   console.log("[CRON emails]", mode, "|", report.resume);
