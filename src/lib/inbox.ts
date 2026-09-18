@@ -44,7 +44,7 @@ export const normTel   = (t: string) => (t || "").replace(/\D/g, "");
 // → doublon impossible même en cas de bug.) Email comparé en insensible à la
 // casse ; téléphone comparé sur les chiffres uniquement (les espaces/format ne
 // cassent plus la détection).
-async function leadExisteDeja(email: string, tel: string): Promise<string | null> {
+export async function leadExisteDeja(email: string, tel: string): Promise<string | null> {
   if (!supabase) return null;
   const e = normEmail(email);
   const t = normTel(tel);
