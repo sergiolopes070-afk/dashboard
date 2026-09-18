@@ -28,8 +28,11 @@ const TYPES_PRESTA = [
   "Après travaux",
   "Bureaux",
   "Lavage Canapé",
+  "Lavage fauteuil",
+  "Lavage chaises",
   "Lavage de matelas",
   "Lavage tapis",
+  "Sièges auto",
   "Lavage véhicule",
   "Autre",
 ];

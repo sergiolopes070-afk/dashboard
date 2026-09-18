@@ -102,7 +102,7 @@ const PAYMENT_SHORT: Record<string, string> = {
 // ─── Options prestation ───────────────────────────────────────────────────────
 const TYPES_PRESTA = [
   "Ménage", "Repassage", "Vitres", "Débarras",
-  "Après travaux", "Bureaux", "Lavage Canapé", "Lavage véhicule", "Lavage de matelas", "Autre",
+  "Après travaux", "Bureaux", "Lavage Canapé", "Lavage fauteuil", "Lavage chaises", "Lavage véhicule", "Lavage de matelas", "Sièges auto", "Autre",
 ];
 
 // ─── Composant DayDetailModal ─────────────────────────────────────────────────

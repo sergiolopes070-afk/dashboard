@@ -63,8 +63,9 @@ const STATUT_META: Record<string, { label: string; color: string; bg: string; ic
 
 const SOURCES = ["Google", "Réseaux sociaux", "Bouche à oreille", "Recommandation", "Formulaire web", "Autre"];
 const TYPES_PRESTA = [
-  "Ménage", "Repassage", "Vitres", "Débarras",
-  "Après travaux", "Bureaux", "Lavage Canapé", "Lavage véhicule", "Lavage de matelas", "Autre",
+  "Ménage", "Repassage", "Vitres", "Débarras", "Après travaux", "Bureaux",
+  "Lavage Canapé", "Lavage fauteuil", "Lavage chaises", "Lavage de matelas",
+  "Lavage tapis", "Sièges auto", "Lavage véhicule", "Autre",
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -427,7 +428,6 @@ function ProspectModal({
               { icon: Phone,    label: "Téléphone", val: p.tel,    href: p.tel ? `tel:${p.tel}` : undefined },
               { icon: Mail,     label: "Email",     val: p.email,  href: p.email ? `mailto:${p.email}` : undefined },
               { icon: MapPin,   label: "Adresse",   val: p.adresse },
-              { icon: Star,     label: "Prestation",val: p.typePresta },
             ].map(({ icon: Icon, label, val, href }) => val ? (
               <div key={label} className="flex items-start gap-2 text-sm">
                 <Icon size={14} className="text-gray-400 mt-0.5 shrink-0" />
@@ -451,6 +451,36 @@ function ProspectModal({
                 <div><p className="text-xs text-gray-400">Source</p><p className="text-gray-800 font-medium">{p.source}</p></div>
               </div>
             )}
+          </div>
+
+          {/* Besoins — mobilier / prestations souhaités (multi, comme un pré-devis avant conversion) */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <Star size={13} className="text-gray-400" /> Besoins (mobilier / prestations)
+            </p>
+            {(() => {
+              const sel = (p.typePresta || "").split(",").map(s => s.trim()).filter(Boolean);
+              return (
+                <div className="flex flex-wrap gap-1.5">
+                  {TYPES_PRESTA.filter(t => t !== "Autre").map(t => {
+                    const active = sel.includes(t);
+                    return (
+                      <button key={t} type="button" disabled={saving}
+                        onClick={() => {
+                          const next = active ? sel.filter(x => x !== t) : [...sel, t];
+                          patch({ typePresta: next.join(", ") });
+                        }}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors disabled:opacity-50 ${active ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"}`}>
+                        {t}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+            <p className="text-[11px] text-gray-400 mt-1.5">
+              {(p.typePresta || "").trim() ? `Sélectionné : ${p.typePresta}` : "Coche les meubles/prestations que le prospect souhaite — même avant conversion."}
+            </p>
           </div>
 
           {/* Étapes de relance cochables */}
