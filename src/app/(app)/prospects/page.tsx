@@ -531,6 +531,19 @@ function ProspectModal({
             <p className="text-[11px] text-gray-400">💡 Tout ce que tu notes ici sera pré-rempli automatiquement à la conversion en client.</p>
           </div>
 
+          {/* Note interne — juste sous les prestations souhaitées */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Note interne</p>
+            <textarea
+              rows={2}
+              value={p.notes}
+              onChange={e => setP(prev => ({ ...prev, notes: e.target.value }))}
+              onBlur={e => patch({ notes: e.target.value })}
+              placeholder="Tache de sang, accès, remarques… (infos clés du prospect)"
+              className={`${inputCls} resize-none`}
+            />
+          </div>
+
           {/* Étapes de relance cochables */}
           {(() => {
             const STEPS = [
@@ -630,19 +643,6 @@ function ProspectModal({
               value={p.dateRelance}
               onChange={e => patch({ dateRelance: e.target.value })}
               className="w-full border border-orange-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300 text-gray-600"
-            />
-          </div>
-
-          {/* Notes internes */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Notes internes</p>
-            <textarea
-              rows={2}
-              value={p.notes}
-              onChange={e => setP(prev => ({ ...prev, notes: e.target.value }))}
-              onBlur={e => patch({ notes: e.target.value })}
-              placeholder="Informations clés, points importants…"
-              className={`${inputCls} resize-none`}
             />
           </div>
 
