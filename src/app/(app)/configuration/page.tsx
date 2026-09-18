@@ -68,6 +68,39 @@ function TextField({ label, value, onChange, placeholder, type = "text" }: {
 }
 
 
+// Champ secret (masqué) avec bouton Enregistrer — pour la clé du webhook leads.
+function SecretField({ initial, onSave }: { initial: string; onSave: (v: string) => Promise<void> }) {
+  const [val, setVal]       = useState(initial);
+  const [show, setShow]     = useState(false);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setVal(initial); }, [initial]);
+  return (
+    <div className="flex flex-col sm:flex-row gap-2">
+      <div className="relative flex-1">
+        <input
+          type={show ? "text" : "password"}
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          placeholder="Colle ta clé secrète ici"
+          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 pr-10 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors"
+        />
+        <button type="button" onClick={() => setShow(s => !s)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+          {show ? <EyeOff size={14} /> : <Eye size={14} />}
+        </button>
+      </div>
+      <button
+        type="button"
+        disabled={saving || val.trim() === initial.trim()}
+        onClick={async () => { setSaving(true); try { await onSave(val.trim()); } finally { setSaving(false); } }}
+        className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap"
+      >
+        {saving ? <Loader2 size={14} className="animate-spin" /> : "Enregistrer"}
+      </button>
+    </div>
+  );
+}
+
 // ─── Modal Gmail ─────────────────────────────────────────────────────────────
 
 function GmailModal({ currentEmail, onClose, onSave }: {
@@ -556,6 +589,37 @@ export default function ConfigurationPage() {
                     </button>
                   );
                 })()}
+              </div>
+            </section>
+
+            {/* Connexion site → prospects (webhook) */}
+            <section>
+              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                Connexion site → prospects
+              </h2>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
+                <p className="text-sm font-semibold text-gray-800">Webhook du formulaire</p>
+                <p className="text-xs text-gray-500 -mt-1">
+                  Chaque formulaire du site crée un <strong>prospect</strong> automatiquement (anti-doublon inclus). Donne cette URL au site, et colle ci-dessous <strong>la même clé secrète</strong> que celle configurée côté site.
+                </p>
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                  <code className="text-xs text-gray-700 truncate flex-1">
+                    {(typeof window !== "undefined" ? window.location.origin : "")}/api/leads/incoming
+                  </code>
+                  <CopyBtn text={`${typeof window !== "undefined" ? window.location.origin : ""}/api/leads/incoming`} />
+                </div>
+                <SecretField
+                  initial={settings.leads_webhook_secret || ""}
+                  onSave={async (v) => {
+                    try { await save({ leads_webhook_secret: v }); }
+                    catch (e) { showToast(e instanceof Error ? e.message : "Erreur", "error"); }
+                  }}
+                />
+                <p className={`text-xs font-medium ${settings.leads_webhook_secret ? "text-emerald-600" : "text-amber-600"}`}>
+                  {settings.leads_webhook_secret
+                    ? "✅ Clé configurée — le webhook est actif."
+                    : "⚠️ Aucune clé — le webhook refuse les envois tant qu'elle n'est pas définie."}
+                </p>
               </div>
             </section>
 

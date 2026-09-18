@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { leadExisteDeja } from "@/lib/inbox";
+import { getSettingRaw } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -16,17 +17,21 @@ export const dynamic = "force-dynamic";
 // la fois par ce webhook ET par l'email du formulaire ne crée donc qu'un prospect.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function getSecret(): string | undefined {
-  return process.env.LEADS_WEBHOOK_SECRET || process.env.CRON_SECRET || undefined;
+// Clé attendue : d'abord la variable d'env dédiée, sinon la clé réglée dans
+// Configuration (settings/leads_webhook_secret) — pour la configurer sans Vercel.
+async function getSecret(): Promise<string | undefined> {
+  if (process.env.LEADS_WEBHOOK_SECRET) return process.env.LEADS_WEBHOOK_SECRET;
+  const s = await getSettingRaw("leads_webhook_secret");
+  return s || undefined;
 }
 
 // Test de vie : GET renvoie juste un statut (sans rien exposer).
 export async function GET() {
-  return NextResponse.json({ ok: true, endpoint: "leads/incoming", method: "POST", secured: !!getSecret() });
+  return NextResponse.json({ ok: true, endpoint: "leads/incoming", method: "POST", secured: !!(await getSecret()) });
 }
 
 export async function POST(req: Request) {
-  const secret = getSecret();
+  const secret = await getSecret();
   const key = req.headers.get("x-api-key") || new URL(req.url).searchParams.get("key") || "";
   if (!secret || key !== secret) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
