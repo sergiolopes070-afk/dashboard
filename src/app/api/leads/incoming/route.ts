@@ -52,14 +52,24 @@ export async function POST(req: Request) {
   const message    = clean(body.message);
   const budget     = clean(body.budget ?? body.prix);
   // Souhait de créneau (préférence, PAS une réservation) : rangé dans les notes.
-  const dateSouhaitee = clean(body.date_souhaitee ?? body.date ?? body.date_rdv);
-  const heure         = clean(body.heure ?? body.time ?? body.heure_souhaitee);
-  const moment        = clean(body.moment ?? body.moment_journee ?? body.creneau);
-  const delai         = clean(body.delai ?? body.delay);
+  // Accepte les champs À PLAT (date_souhaitee, heure…) OU un objet imbriqué `creneau`.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cr: any = (body.creneau && typeof body.creneau === "object") ? body.creneau : {};
+  const dateSouhaitee = clean(body.date_souhaitee ?? body.date ?? body.date_rdv ?? cr.date_souhaitee ?? cr.date);
+  const heure         = clean(body.heure ?? body.time ?? body.heure_souhaitee ?? cr.heure_souhaitee ?? cr.heure ?? cr.time);
+  const momentRaw     = clean(body.moment ?? body.moment_journee ?? cr.moment ?? cr.moment_journee);
+  const delaiRaw      = clean(body.delai ?? body.delay ?? cr.delai ?? cr.delay);
 
   if (!email && !tel) {
     return NextResponse.json({ error: "email ou téléphone requis" }, { status: 400 });
   }
+
+  // Rend lisibles les valeurs « machine » éventuelles (apres_midi → Après-midi…).
+  const MOMENT_LABEL: Record<string, string> = { matin: "Matin", apres_midi: "Après-midi", "apres-midi": "Après-midi", apresmidi: "Après-midi", peu_importe: "Peu importe", peuimporte: "Peu importe" };
+  const DELAI_LABEL: Record<string, string>  = { des_que_possible: "Dès que possible", cette_semaine: "Cette semaine", semaine_prochaine: "La semaine prochaine", la_semaine_prochaine: "La semaine prochaine", pas_presse: "Pas pressé" };
+  const pretty = (v: string, map: Record<string, string>) => map[v.toLowerCase().replace(/\s+/g, "_")] || v;
+  const moment = momentRaw ? pretty(momentRaw, MOMENT_LABEL) : "";
+  const delai  = delaiRaw ? pretty(delaiRaw, DELAI_LABEL) : "";
 
   // Résumé lisible du créneau souhaité, ajouté en tête des notes du prospect.
   const creneau = [dateSouhaitee, heure, moment, delai].filter(Boolean).join(" · ");
