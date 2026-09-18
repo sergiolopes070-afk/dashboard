@@ -11,6 +11,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/avis") ||
     pathname.startsWith("/api/cron") ||        // cron : protégé par CRON_SECRET, pas par la session
+    pathname.startsWith("/api/leads") ||       // webhook leads du site : protégé par x-api-key (serveur-à-serveur)
     pathname === "/api/stripe/webhook" ||      // Stripe : appel serveur-à-serveur, vérifié par signature
     pathname.startsWith("/avis") ||
     pathname.startsWith("/_next") ||
