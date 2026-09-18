@@ -857,6 +857,19 @@ export default function ProspectsPage() {
   function handleDeleted(id: string) {
     setProspects(prev => prev.filter(p => p.id !== id));
   }
+  // Suppression rapide depuis la liste (bouton corbeille), avec confirmation.
+  async function deleteProspect(p: Prospect, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!confirm(`Supprimer définitivement le prospect « ${p.prenom} ${p.nom} » ?`)) return;
+    try {
+      const res = await fetch(`/api/prospects/${p.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      handleDeleted(p.id);
+      toast.success("Prospect supprimé");
+    } catch {
+      toast.error("Suppression impossible");
+    }
+  }
   function handleConverted(id: string) {
     setProspects(prev => prev.map(p => p.id === id ? { ...p, statut: "CONVERTI" } : p));
   }
@@ -1063,6 +1076,16 @@ export default function ProspectsPage() {
                       </span>
                     )}
                   </div>
+
+                  {/* Corbeille : suppression rapide (prospect créé par erreur) */}
+                  <button
+                    onClick={e => deleteProspect(p, e)}
+                    title="Supprimer ce prospect"
+                    aria-label="Supprimer ce prospect"
+                    className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg text-gray-300 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors"
+                  >
+                    <Trash2 size={15} />
+                  </button>
 
                   <ChevronRight size={16} className="text-gray-300 shrink-0" />
                 </div>
