@@ -51,10 +51,18 @@ export async function POST(req: Request) {
   const adresse    = clean(body.adresse ?? body.address);
   const message    = clean(body.message);
   const budget     = clean(body.budget ?? body.prix);
+  // Souhait de créneau (préférence, PAS une réservation) : rangé dans les notes.
+  const dateSouhaitee = clean(body.date_souhaitee ?? body.date ?? body.date_rdv);
+  const moment        = clean(body.moment ?? body.moment_journee ?? body.creneau);
+  const delai         = clean(body.delai ?? body.delay);
 
   if (!email && !tel) {
     return NextResponse.json({ error: "email ou téléphone requis" }, { status: 400 });
   }
+
+  // Résumé lisible du créneau souhaité, ajouté en tête des notes du prospect.
+  const creneau = [dateSouhaitee, moment, delai].filter(Boolean).join(" · ");
+  const notes = [creneau ? `Créneau souhaité : ${creneau}` : "", message].filter(Boolean).join("\n") || null;
 
   // Anti-doublon : déjà présent (prospect ou client) → on confirme sans recréer.
   const dejaLa = await leadExisteDeja(email, tel);
@@ -71,7 +79,7 @@ export async function POST(req: Request) {
     type_presta: prestation,
     adresse    : adresse || null,
     budget     : budget || null,      // estimation éventuelle
-    notes      : message || null,
+    notes      : notes,               // message + souhait de créneau (date/moment/délai)
     statut     : "NOUVEAU",
     date_relance: today,              // à rappeler dès aujourd'hui → visible d'emblée
     commentaires: [],
