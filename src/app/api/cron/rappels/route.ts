@@ -64,7 +64,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabase
     .from("prestations")
-    .select("id, type_prestation, heure_intervention, adresse, date_intervention, client_id, clients(prenom, nom, tel)")
+    .select("id, type_prestation, heure_intervention, adresse, date_intervention, client_id, prestataire_id, clients(prenom, nom, tel), prestataires(nom, email)")
     .eq("archive", false)
     .not("date_intervention", "is", null);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -98,6 +98,31 @@ export async function GET(req: Request) {
     };
   }).sort((a, b) => (a.heure || "").localeCompare(b.heure || ""));
 
+  // ── Rappel de la veille pour chaque PRESTATAIRE (ses missions de demain) ──
+  // Regroupe les RDV de demain par prestataire ayant un email. SANS prix.
+  type Mission = { heure: string; presta: string; adresse: string; client: string; tel: string };
+  type PrestaGrp = { nom: string; email: string; missions: Mission[] };
+  const prestaGrp = new Map<string, PrestaGrp>();
+  for (const p of rows) {
+    const pr = Array.isArray(p.prestataires) ? (p.prestataires[0] || {}) : (p.prestataires || {});
+    const email = (pr?.email || "").trim();
+    if (!email) continue; // pas d'email prestataire → pas de rappel
+    const key = (p.prestataire_id || email) as string;
+    const g: PrestaGrp = prestaGrp.get(key) || { nom: pr?.nom || "", email, missions: [] };
+    const c = Array.isArray(p.clients) ? (p.clients[0] || {}) : (p.clients || {});
+    g.missions.push({
+      heure  : p.heure_intervention ? String(p.heure_intervention).slice(0, 5) : "",
+      presta : p.type_prestation || "",
+      adresse: p.adresse || "",
+      client : (c.prenom || "").trim(),
+      tel    : c.tel || "",
+    });
+    prestaGrp.set(key, g);
+  }
+  const prestaRappels = Array.from(prestaGrp.values()).map(g => ({
+    ...g, missions: g.missions.sort((a, b) => (a.heure || "").localeCompare(b.heure || "")),
+  }));
+
   if (test) {
     return NextResponse.json({
       mode: "TEST (aucun email envoyé)",
@@ -105,6 +130,8 @@ export async function GET(req: Request) {
       // Bearer sur ses crons → les relances clients (cron emails) fonctionneront.
       cronSecretNomExact: !!process.env.CRON_SECRET,
       demain: demainISO, nbRappels: rappels.length, rappels,
+      nbPrestataires: prestaRappels.length,
+      prestataires: prestaRappels.map(g => ({ nom: g.nom, email: g.email, nbMissions: g.missions.length })),
     });
   }
 
@@ -162,6 +189,7 @@ export async function GET(req: Request) {
   </td></tr></table>
 </body></html>`;
 
+  let ownerOk = false;
   try {
     await gmail.transporter.sendMail({
       from: `"KinouClean" <${gmail.user}>`, to: dest,
@@ -169,8 +197,43 @@ export async function GET(req: Request) {
       text: texte,
       html,
     });
-    return NextResponse.json({ demain: demainISO, nbRappels: rappels.length, envoyeA: dest });
-  } catch (e: unknown) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur d'envoi" }, { status: 500 });
+    ownerOk = true;
+  } catch { /* on continue quand même vers les prestataires */ }
+
+  // ── Email à CHAQUE prestataire : ses missions de demain (SANS prix) ──
+  let prestaEnvoyes = 0;
+  for (const g of prestaRappels) {
+    const lignesP = g.missions.map(m => `
+      <tr><td style="padding:12px 16px;border-bottom:1px solid #eef0f4;">
+        <div style="font-size:15px;font-weight:bold;color:#1C3557;">${m.heure ? m.heure + " · " : ""}${m.presta || "Prestation"}</div>
+        <div style="font-size:13px;color:#6B7280;margin-top:2px;">${m.adresse ? "📍 " + m.adresse : ""}${m.client ? ` · 👤 ${m.client}` : ""}${m.tel ? ` · 📞 ${m.tel}` : ""}</div>
+      </td></tr>`).join("");
+    const texteP = `Tes missions de demain (${frDate(demainISO)}) :\n\n` +
+      g.missions.map(m => `${m.heure ? m.heure + " · " : ""}${m.presta}${m.adresse ? " — " + m.adresse : ""}${m.client ? " — " + m.client : ""}${m.tel ? " — " + m.tel : ""}`).join("\n");
+    const htmlP = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#f4f4f7;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:28px 16px;"><tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+      <tr><td style="background:#1C3557;padding:24px 28px;">
+        <div style="color:#fff;font-size:18px;font-weight:bold;">📅 ${g.nom ? g.nom + ", tes" : "Tes"} missions de demain</div>
+        <div style="color:rgba(255,255,255,0.65);font-size:13px;margin-top:4px;">${frDate(demainISO)} · ${g.missions.length} mission(s)</div>
+      </td></tr>
+      <tr><td style="padding:6px 12px;"><table width="100%" cellpadding="0" cellspacing="0">${lignesP}</table></td></tr>
+      <tr><td style="background:#1C3557;padding:14px 28px;text-align:center;">
+        <div style="color:rgba(255,255,255,0.6);font-size:11px;">KinouClean · rappel automatique</div>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+    try {
+      await gmail.transporter.sendMail({
+        from: `"KinouClean" <${gmail.user}>`, to: g.email,
+        subject: `📅 Tes missions de demain — ${frDate(demainISO)} (${g.missions.length})`,
+        text: texteP, html: htmlP,
+      });
+      prestaEnvoyes++;
+    } catch { /* on continue avec les autres prestataires */ }
   }
+
+  return NextResponse.json({ demain: demainISO, nbRappels: rappels.length, ownerEnvoyeA: ownerOk ? dest : null, prestaEnvoyes });
 }
