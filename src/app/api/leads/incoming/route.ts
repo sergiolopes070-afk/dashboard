@@ -65,7 +65,7 @@ export async function POST(req: Request) {
   }
 
   // Rend lisibles les valeurs « machine » éventuelles (apres_midi → Après-midi…).
-  const MOMENT_LABEL: Record<string, string> = { matin: "Matin", apres_midi: "Après-midi", "apres-midi": "Après-midi", apresmidi: "Après-midi", peu_importe: "Peu importe", peuimporte: "Peu importe" };
+  const MOMENT_LABEL: Record<string, string> = { matin: "Matin", apres_midi: "Après-midi", "apres-midi": "Après-midi", apresmidi: "Après-midi", soiree: "Soirée", soir: "Soirée", week_end: "Week-end", "week-end": "Week-end", weekend: "Week-end", peu_importe: "Peu importe", peuimporte: "Peu importe" };
   const DELAI_LABEL: Record<string, string>  = { des_que_possible: "Dès que possible", cette_semaine: "Cette semaine", semaine_prochaine: "La semaine prochaine", la_semaine_prochaine: "La semaine prochaine", pas_presse: "Pas pressé" };
   const pretty = (v: string, map: Record<string, string>) => map[v.toLowerCase().replace(/\s+/g, "_")] || v;
   const moment = momentRaw ? pretty(momentRaw, MOMENT_LABEL) : "";
