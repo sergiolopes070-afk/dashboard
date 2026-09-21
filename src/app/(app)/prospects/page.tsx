@@ -13,6 +13,7 @@ import AddressAutocomplete from "@/components/AddressAutocomplete";
 import NewClientModal from "@/components/NewClientModal";
 import PrestationFields from "@/components/PrestationFields";
 import { getSchema } from "@/lib/prestationSchema";
+import { Prestataire } from "@/lib/constants";
 
 // Formatage FR compact pour le pense-bête d'import.
 function fmtImportDateTime(iso: string): string {
@@ -249,9 +250,10 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
 // ─── Composant : Modal détail / édition ───────────────────────────────────────
 function ProspectModal({
-  prospect, onClose, onUpdated, onDeleted, onConverted,
+  prospect, prestataires, onClose, onUpdated, onDeleted, onConverted,
 }: {
   prospect: Prospect;
+  prestataires: Prestataire[];
   onClose: () => void;
   onUpdated: (p: Partial<Prospect> & { id: string }) => void;
   onDeleted: (id: string) => void;
@@ -801,7 +803,7 @@ function ProspectModal({
       {/* Conversion : même formulaire intelligent que « Nouveau client », prérempli */}
       {showConvert && (
         <NewClientModal
-          prestataires={[]}
+          prestataires={prestataires}
           initialValues={{
             prenom: p.prenom, nom: p.nom, tel: p.tel, email: p.email, adresse: p.adresse,
             typePresta: p.besoins?.[0]?.typePresta || p.typePresta,
@@ -828,6 +830,7 @@ export default function ProspectsPage() {
   const [selected, setSelected]   = useState<Prospect | null>(null);
   const [importing, setImporting] = useState(false);
   const [lastImport, setLastImport] = useState<{ at: string; created: number; skipped: number; lastLeadName?: string; lastLeadDate?: string } | null>(null);
+  const [prestataires, setPrestataires] = useState<Prestataire[]>(() => cacheGet<Prestataire[]>(CACHE_KEYS.prestataires) ?? []);
   const toast = useToast();
 
   async function load() {
@@ -838,6 +841,14 @@ export default function ProspectsPage() {
     } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, []);
+
+  // Liste des prestataires (pour pouvoir en affecter un lors de la conversion en client).
+  useEffect(() => {
+    fetch("/api/prestataires")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (Array.isArray(d)) { setPrestataires(d); cacheSet(CACHE_KEYS.prestataires, d); } })
+      .catch(() => {});
+  }, []);
 
   // Pense-bête : récupère le récap du dernier import (persisté dans settings).
   useEffect(() => {
@@ -1190,6 +1201,7 @@ export default function ProspectsPage() {
       {selected && (
         <ProspectModal
           prospect={selected}
+          prestataires={prestataires}
           onClose={() => setSelected(null)}
           onUpdated={handleUpdated}
           onDeleted={handleDeleted}
