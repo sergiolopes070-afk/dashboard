@@ -180,7 +180,8 @@ interface Props {
   onClose: () => void;
   onSaved: () => void;
   initialValues?: Partial<typeof EMPTY>;
-  initialArticles?: { typePresta: string; quantite: string; prix: string }[]; // pré-remplissage (conversion prospect)
+  initialDetails?: Record<string, string>; // champs intelligents de la 1re prestation (conversion prospect)
+  initialArticles?: { typePresta: string; quantite: string; prix: string; details?: Record<string, string> }[]; // pré-remplissage (conversion prospect)
 }
 
 const EMPTY = {
@@ -206,10 +207,11 @@ const EMPTY = {
   fiscal         : "" as "" | "avance" | "credit", // préférence fiscale du client
 };
 
-export default function NewClientModal({ prestataires, onClose, onSaved, initialValues, initialArticles }: Props) {
+export default function NewClientModal({ prestataires, onClose, onSaved, initialValues, initialDetails, initialArticles }: Props) {
   const [form, setForm]                   = useState({ ...EMPTY, ...initialValues });
   // Articles / prestations supplémentaires (canapé + matelas + tapis en une fois…)
-  const [articlesSupp, setArticlesSupp] = useState<{ typePresta: string; quantite: string; prix: string }[]>(initialArticles ?? []);
+  type Article = { typePresta: string; quantite: string; prix: string; details?: Record<string, string> };
+  const [articlesSupp, setArticlesSupp] = useState<Article[]>(initialArticles ?? []);
   const addArticle    = () => setArticlesSupp(a => [...a, { typePresta: "", quantite: "1", prix: "" }]);
   const removeArticle = (i: number) => setArticlesSupp(a => a.filter((_, j) => j !== i));
   const updateArticle = (i: number, k: "typePresta" | "quantite" | "prix", v: string) =>
@@ -606,7 +608,7 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
 
             {/* Champs intelligents pilotés par le schéma du type de prestation */}
             {hasSchema && (
-              <PrestationFields typePresta={form.typePresta} onDetailChange={(d) => set("quantite", d)} />
+              <PrestationFields typePresta={form.typePresta} initialValues={initialDetails} onDetailChange={(d) => set("quantite", d)} />
             )}
             {/* Autres articles / prestations — juste après le type (fluide sur mobile) */}
             <div className="pt-1">
@@ -642,7 +644,7 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
                         </div>
                         {/* Champs intelligents de l'article (adaptés à son type) */}
                         {artSchema ? (
-                          <PrestationFields typePresta={art.typePresta} onDetailChange={d => updateArticle(i, "quantite", d)} />
+                          <PrestationFields typePresta={art.typePresta} initialValues={art.details} onDetailChange={d => updateArticle(i, "quantite", d)} />
                         ) : (
                           <input type="text" value={art.quantite} onChange={e => updateArticle(i, "quantite", e.target.value)}
                             placeholder="Quantité / durée (optionnel)"

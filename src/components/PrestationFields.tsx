@@ -11,21 +11,28 @@ const inputCls =
 export default function PrestationFields({
   typePresta,
   onDetailChange,
+  initialValues,
 }: {
   typePresta: string;
-  onDetailChange: (detail: string) => void;
+  onDetailChange: (detail: string, values: Record<string, string>) => void;
+  initialValues?: Record<string, string>;
 }) {
   const fields = getSchema(typePresta);
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<Record<string, string>>(initialValues ?? {});
   const onChangeRef = useRef(onDetailChange);
   onChangeRef.current = onDetailChange;
+  const firstRun = useRef(true);
 
-  // Réinitialise les valeurs quand le type change
-  useEffect(() => { setValues({}); }, [typePresta]);
+  // Réinitialise les valeurs quand le type change — mais PAS au tout premier
+  // rendu, pour préserver un éventuel pré-remplissage (conversion d'un prospect).
+  useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    setValues({});
+  }, [typePresta]);
 
   // Remonte le résumé au parent à chaque changement
   useEffect(() => {
-    onChangeRef.current(buildDetail(fields, values));
+    onChangeRef.current(buildDetail(fields, values), values);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [values, typePresta]);
 

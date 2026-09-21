@@ -55,7 +55,9 @@ interface Prospect {
 }
 
 // Une prestation souhaitée notée sur le prospect (même forme que les articles client).
-interface Besoin { typePresta: string; quantite: string; prix: string }
+// `details` = valeurs structurées des champs intelligents (tissu, places…), pour
+// les reporter tels quels à la conversion en client.
+interface Besoin { typePresta: string; quantite: string; prix: string; details?: Record<string, string> }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const STATUTS = ["NOUVEAU", "CONTACTÉ", "RELANCÉ", "CONVERTI", "PERDU"] as const;
@@ -298,7 +300,7 @@ function ProspectModal({
   // Prestations souhaitées (besoins) — mêmes champs que la fiche client.
   function addBesoin() {
     if (!draft.typePresta) return;
-    patch({ besoins: [...(p.besoins || []), { typePresta: draft.typePresta, quantite: draft.quantite || "1", prix: draft.prix || "" }] });
+    patch({ besoins: [...(p.besoins || []), { typePresta: draft.typePresta, quantite: draft.quantite || "1", prix: draft.prix || "", details: draft.details }] });
     setDraft({ typePresta: "", quantite: "1", prix: "" });
   }
   function removeBesoin(i: number) {
@@ -515,7 +517,7 @@ function ProspectModal({
                 {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
               {draft.typePresta && getSchema(draft.typePresta).length > 0 && (
-                <PrestationFields typePresta={draft.typePresta} onDetailChange={d => setDraft(x => ({ ...x, quantite: d }))} />
+                <PrestationFields typePresta={draft.typePresta} initialValues={draft.details} onDetailChange={(d, v) => setDraft(x => ({ ...x, quantite: d, details: v }))} />
               )}
               <div className="flex gap-2">
                 <div className="relative flex-1">
@@ -810,6 +812,7 @@ function ProspectModal({
             quantite  : p.besoins?.[0]?.quantite || "1",
             prix      : p.besoins?.[0]?.prix || "",
           }}
+          initialDetails={p.besoins?.[0]?.details}
           initialArticles={(p.besoins || []).slice(1)}
           onClose={() => setShowConvert(false)}
           onSaved={handleConvertedSaved}
