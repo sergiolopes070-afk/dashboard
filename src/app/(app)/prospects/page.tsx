@@ -270,6 +270,7 @@ function ProspectModal({
   const [editingName, setEditingName] = useState(false);
   const [nameForm, setNameForm] = useState({ prenom: prospect.prenom, nom: prospect.nom });
   const [draft, setDraft] = useState<Besoin>({ typePresta: "", quantite: "1", prix: "" }); // saisie d'une prestation souhaitée
+  const [draftStatut, setDraftStatut] = useState<string>(prospect.statut); // statut choisi, en attente de validation
   const toast = useToast();
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
@@ -436,20 +437,28 @@ function ProspectModal({
             ))}
           </div>
 
-          {/* Statut + relance */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex flex-wrap gap-1.5">
-              {STATUTS.map(s => (
-                <button key={s} onClick={() => patch({ statut: s })}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-                    p.statut === s
-                      ? `${STATUT_META[s].bg} ${STATUT_META[s].color} border-transparent`
-                      : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
-                  }`}>
-                  {STATUT_META[s].icon} {STATUT_META[s].label}
-                </button>
-              ))}
+          {/* Statut — on choisit (le bouton se met en avant), puis on valide en bas */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Statut</p>
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              {STATUTS.map(s => {
+                const sel = draftStatut === s;
+                return (
+                  <button key={s} type="button" onClick={() => setDraftStatut(s)}
+                    className={`flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${
+                      sel
+                        ? `${STATUT_META[s].bg} ${STATUT_META[s].color} border-current shadow-sm scale-[1.03]`
+                        : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+                    }`}>
+                    <span className="text-lg leading-none">{STATUT_META[s].icon}</span>
+                    <span>{STATUT_META[s].label}</span>
+                  </button>
+                );
+              })}
             </div>
+            {draftStatut !== p.statut && (
+              <p className="text-[11px] text-amber-600 mt-1.5">Statut modifié — clique sur <strong>Valider</strong> en bas pour enregistrer.</p>
+            )}
           </div>
 
           {/* Infos contact */}
@@ -519,18 +528,19 @@ function ProspectModal({
               {draft.typePresta && getSchema(draft.typePresta).length > 0 && (
                 <PrestationFields typePresta={draft.typePresta} initialValues={draft.details} onDetailChange={(d, v) => setDraft(x => ({ ...x, quantite: d, details: v }))} />
               )}
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <input type="number" min={0} step="0.01" value={draft.prix} placeholder="Prix (optionnel)"
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Prix (optionnel)</label>
+                <div className="relative">
+                  <input type="number" inputMode="decimal" min={0} step="0.01" value={draft.prix} placeholder="ex. 210"
                     onChange={e => setDraft(x => ({ ...x, prix: e.target.value }))}
-                    className="w-full bg-white border border-gray-200 rounded-lg pl-2 pr-5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300" />
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">€</span>
+                    className="w-full bg-white border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">€</span>
                 </div>
-                <button onClick={addBesoin} disabled={!draft.typePresta || saving}
-                  className="px-3.5 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors shrink-0">
-                  Ajouter
-                </button>
               </div>
+              <button onClick={addBesoin} disabled={!draft.typePresta || saving}
+                className="w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                + Ajouter la prestation
+              </button>
             </div>
             <p className="text-[11px] text-gray-400">💡 Tout ce que tu notes ici sera pré-rempli automatiquement à la conversion en client.</p>
           </div>
@@ -795,10 +805,20 @@ function ProspectModal({
               <button onClick={() => setConfirmDelete(false)} className="text-xs text-gray-500 hover:text-gray-700">Annuler</button>
             </div>
           )}
-          <button onClick={onClose}
-            className="px-4 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
-            Fermer
-          </button>
+          <div className="flex items-center gap-2">
+            {draftStatut !== p.statut && (
+              <button
+                onClick={async () => { await patch({ statut: draftStatut }); toast.success(`Statut : ${STATUT_META[draftStatut]?.label ?? draftStatut}`); }}
+                disabled={saving}
+                className="px-4 py-1.5 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+                <CheckCircle2 size={15} /> Valider
+              </button>
+            )}
+            <button onClick={onClose}
+              className="px-4 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+              Fermer
+            </button>
+          </div>
         </div>
       </div>
 
