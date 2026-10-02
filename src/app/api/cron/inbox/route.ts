@@ -54,6 +54,16 @@ export async function GET(req: Request) {
     return NextResponse.json({ revived: data?.length ?? 0, details: data || [], error: error?.message });
   }
 
+  // Diagnostic : total prospects + clients (comptage global).
+  if (url.searchParams.get("countAll") === "1" && supabase) {
+    const [pros, cli] = await Promise.all([
+      supabase.from("prospects").select("id", { count: "exact", head: true }),
+      supabase.from("clients").select("id", { count: "exact", head: true }),
+    ]);
+    const p = pros.count ?? 0, c = cli.count ?? 0;
+    return NextResponse.json({ prospects: p, clients: c, total: p + c });
+  }
+
   // Diagnostic : liste des prospects (origine + date) pour comprendre les leads « revenus ».
   if (url.searchParams.get("listProspects") === "1" && supabase) {
     const { data } = await supabase
