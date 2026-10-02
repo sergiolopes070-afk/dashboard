@@ -29,6 +29,7 @@ export interface FichePrestation {
   statut     : string;
   archived?  : boolean;
   photos?    : { url: string; path: string; article: string; phase: string }[];
+  satisfaction?: number; // avis client (1-5 étoiles), saisi manuellement
 }
 
 export interface ClientFicheData {
@@ -57,6 +58,26 @@ const NOTE_TYPES = [
   { icon: "📌", label: "Note" },
 ];
 
+// Étoiles d'avis (cliquables) — même logique que la page Archive, réutilisable
+// pour marquer manuellement l'avis d'un client, y compris sur une presta archivée.
+function StarRating({ value, onChange, size = 16 }: { value?: number; onChange?: (v: number) => void; size?: number }) {
+  const [hovered, setHovered] = useState(0);
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map(i => (
+        <button key={i} type="button"
+          onClick={() => onChange?.(i)}
+          onMouseEnter={() => onChange && setHovered(i)}
+          onMouseLeave={() => onChange && setHovered(0)}
+          className={onChange ? "transition-transform hover:scale-110" : "cursor-default"}
+          disabled={!onChange}>
+          <Star size={size} className={(hovered || value || 0) >= i ? "fill-amber-400 text-amber-400" : "text-gray-300"} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ClientFiche({
   client, onClose, onChanged,
 }: {
@@ -71,6 +92,19 @@ export default function ClientFiche({
   const [fiscal, setFiscal] = useState<"" | "avance" | "credit">("");
   const [entiteOverrides, setEntiteOverrides] = useState<Record<string, Entite>>({});
   const [lightbox, setLightbox] = useState<{ photos: LightboxPhoto[]; index: number } | null>(null);
+  const [satOverrides, setSatOverrides] = useState<Record<string, number>>({}); // avis modifiés localement
+
+  // Enregistre l'avis (étoiles) d'une prestation — marche aussi si elle est archivée.
+  async function saveSatisfaction(row: string, v: number) {
+    setSatOverrides(prev => ({ ...prev, [row]: v }));
+    try {
+      await fetch("/api/prestations", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ row, updates: { satisfaction: String(v) } }),
+      });
+      toast.success(`Avis enregistré : ${v}/5 ⭐`);
+    } catch { toast.error("Enregistrement de l'avis impossible"); }
+  }
 
   useEffect(() => { setNotes(client.notes ?? []); }, [client.clientId, client.notes]);
 
@@ -358,6 +392,17 @@ export default function ClientFiche({
                         {p.modePaiement && <span className="flex items-center gap-1"><Euro size={11} />{p.modePaiement}</span>}
                         {p.statut && <span className={`px-1.5 py-0.5 rounded-full font-medium ${cls}`}>{p.statut}</span>}
                         {p.archived && <span className="px-1.5 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">📦 Archivé</span>}
+                      </div>
+
+                      {/* Avis client (étoiles) — saisie manuelle, pour les primes, même si archivé */}
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-[11px] text-gray-400 shrink-0">Avis client :</span>
+                        <StarRating value={satOverrides[p.row] ?? p.satisfaction} onChange={v => saveSatisfaction(p.row, v)} size={16} />
+                        {(satOverrides[p.row] ?? p.satisfaction) ? (
+                          <span className="text-[11px] text-amber-600 font-medium">{satOverrides[p.row] ?? p.satisfaction}/5</span>
+                        ) : (
+                          <span className="text-[11px] text-gray-300">non noté</span>
+                        )}
                       </div>
 
                       {/* Photos d'intervention (prises par le prestataire), par article */}

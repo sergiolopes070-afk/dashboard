@@ -31,7 +31,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   const { data: prestas } = await supabase
     .from("prestations")
-    .select("id, type_prestation, date_intervention, heure_intervention, prix, mode_paiement, statut, archive, archive_reason, photos, prestataires(nom)")
+    .select("id, type_prestation, date_intervention, heure_intervention, prix, mode_paiement, statut, archive, archive_reason, photos, satisfaction, prestataires(nom)")
     .eq("client_id", params.id)
     .order("date_intervention", { ascending: false });
 
@@ -48,6 +48,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     statut      : p.statut || "",
     archived    : !!p.archive,
     photos      : Array.isArray(p.photos) ? p.photos : [],
+    satisfaction: p.satisfaction != null ? Number(p.satisfaction) : undefined,
   }));
 
   const totalCA = rows
