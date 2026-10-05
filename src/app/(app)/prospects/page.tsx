@@ -56,7 +56,7 @@ interface Prospect {
 }
 
 // Suivi commercial d'un prospect (stocké dans settings/prospects_suivi).
-interface Suivi { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string }
+interface Suivi { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string; avanceImmediate?: boolean }
 
 // Une prestation souhaitée notée sur le prospect (même forme que les articles client).
 // `details` = valeurs structurées des champs intelligents (tissu, places…), pour
@@ -314,7 +314,7 @@ function ProspectModal({
   const [coordForm, setCoordForm] = useState({ tel: prospect.tel, email: prospect.email, adresse: prospect.adresse, budget: prospect.budget });
   const [draft, setDraft] = useState<Besoin>({ typePresta: "", quantite: "1", prix: "" }); // saisie d'une prestation souhaitée
   const [draftStatut, setDraftStatut] = useState<string>(prospect.statut); // statut choisi, en attente de validation
-  const [actionBusy, setActionBusy] = useState<"" | "devis" | "relance">("");
+  const [actionBusy, setActionBusy] = useState<"" | "devis" | "relance" | "avance">("");
   const toast = useToast();
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
@@ -357,8 +357,29 @@ function ProspectModal({
     patch({ besoins: (p.besoins || []).filter((_, j) => j !== i) });
   }
 
-  // ── Suivi commercial : devis envoyé + relances (mails manuels) ──
-  async function toggleDevisEnvoye() {
+  // ── Suivi commercial : envoi du devis + relances (mails manuels) ──
+  // Avance immédiate activée par défaut (suivi.avanceImmediate !== false).
+  const avanceActive = p.suivi?.avanceImmediate !== false;
+
+  async function setAvance(value: boolean) {
+    setActionBusy("avance");
+    try {
+      const res = await fetch(`/api/prospects/${p.id}/relance`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_avance", value }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur");
+      setP(prev => ({ ...prev, suivi: d.suivi }));
+      onUpdated({ id: p.id, suivi: d.suivi });
+      toast.success(value ? "Avance immédiate activée" : "Avance immédiate retirée");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
+    finally { setActionBusy(""); }
+  }
+
+  async function envoyerDevis() {
+    const dest = p.email || "(aucun email)";
+    if (!confirm(`Envoyer le DEVIS par email à ${p.prenom} ${p.nom} (${dest}) ?\n\nLe devis sera joint au message${avanceActive ? ", avec l'explication de l'avance immédiate (−50 %)" : ""}.`)) return;
     setActionBusy("devis");
     try {
       const res = await fetch(`/api/prospects/${p.id}/relance`, {
@@ -367,11 +388,27 @@ function ProspectModal({
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Erreur");
-      const statut = d.suivi?.devisEnvoye && p.statut === "NOUVEAU" ? "CONTACTÉ" : p.statut;
+      const statut = p.statut === "NOUVEAU" ? "CONTACTÉ" : p.statut;
       setP(prev => ({ ...prev, suivi: d.suivi, statut }));
       setDraftStatut(statut);
       onUpdated({ id: p.id, suivi: d.suivi, statut });
-      toast.success(d.suivi?.devisEnvoye ? "Devis marqué comme envoyé ✅" : "Marque « devis envoyé » retirée");
+      toast.success("Devis envoyé par email 📧");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
+    finally { setActionBusy(""); }
+  }
+
+  async function retirerDevis() {
+    setActionBusy("devis");
+    try {
+      const res = await fetch(`/api/prospects/${p.id}/relance`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "devis_envoye", unmark: true }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur");
+      setP(prev => ({ ...prev, suivi: d.suivi }));
+      onUpdated({ id: p.id, suivi: d.suivi });
+      toast.success("Marque « devis envoyé » retirée");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
     finally { setActionBusy(""); }
   }
@@ -708,26 +745,59 @@ function ProspectModal({
               <Bell size={12} className="text-blue-500" /> Suivi commercial
             </p>
 
-            {/* Devis envoyé */}
-            <button type="button" onClick={toggleDevisEnvoye} disabled={actionBusy !== ""}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all disabled:opacity-60 ${
-                p.suivi?.devisEnvoye ? "bg-green-50 border-green-300 text-green-700" : "bg-gray-50 border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50"
+            {/* Avance immédiate (−50 %) — activée par défaut, décocher si le client n'en veut pas */}
+            <button type="button" onClick={() => setAvance(!avanceActive)} disabled={actionBusy !== ""}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-sm transition-all disabled:opacity-60 ${
+                avanceActive ? "bg-emerald-50 border-emerald-300" : "bg-gray-50 border-gray-200"
               }`}>
-              <span className="text-lg leading-none">{p.suivi?.devisEnvoye ? "✅" : "📄"}</span>
-              <span className="flex-1 text-left">
-                {p.suivi?.devisEnvoye ? `Devis envoyé${p.suivi?.devisDate ? ` le ${p.suivi.devisDate}` : ""}` : "Marquer « Devis envoyé »"}
+              <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${avanceActive ? "bg-emerald-500" : "bg-gray-300"}`}>
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${avanceActive ? "translate-x-4" : "translate-x-0.5"}`} />
               </span>
-              {actionBusy === "devis" && <Loader2 size={14} className="animate-spin" />}
+              <span className="flex-1 text-left">
+                <span className={`font-semibold ${avanceActive ? "text-emerald-800" : "text-gray-600"}`}>Avance immédiate (−50 %)</span>
+                <span className="block text-[11px] text-gray-500 mt-0.5">
+                  {avanceActive ? "Le client ne paie que la moitié — mis en avant dans le devis + le mail." : "Devis au tarif plein (crédit d'impôt classique)."}
+                </span>
+              </span>
+              {actionBusy === "avance" && <Loader2 size={14} className="animate-spin text-emerald-600" />}
             </button>
 
-            {/* Générer le devis premium (PDF) à partir des prestations souhaitées */}
-            <button type="button"
-              onClick={() => window.open(`/api/prospects/${p.id}/devis`, "_blank")}
-              disabled={!(p.besoins && p.besoins.some(b => parseFloat(String(b.prix || "").replace(",", ".")) > 0))}
-              title={p.besoins && p.besoins.some(b => b.prix) ? "Ouvre le devis prêt à imprimer en PDF" : "Ajoute d'abord une prestation souhaitée avec son prix"}
-              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-sm font-medium hover:bg-amber-100 disabled:opacity-50 transition-colors">
-              <FileText size={15} /> Générer le devis (PDF)
-            </button>
+            {(() => {
+              const hasPrice = !!(p.besoins && p.besoins.some(b => parseFloat(String(b.prix || "").replace(",", ".")) > 0)) || parseFloat(String(p.budget || "").replace(",", ".")) > 0;
+              const canSend = hasPrice && !!p.email;
+              const title = !hasPrice ? "Ajoute une prestation souhaitée AVEC son prix" : !p.email ? "Ce prospect n'a pas d'email — ajoute-le dans Coordonnées" : "Envoie le devis en pièce jointe par email";
+              return (
+                <>
+                  {/* Envoi du devis par email (devis joint) */}
+                  <button type="button" onClick={envoyerDevis} disabled={actionBusy !== "" || !canSend} title={title}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-blue-300 bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:bg-gray-300 disabled:border-gray-200 transition-colors">
+                    {actionBusy === "devis" ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
+                    <span className="flex-1 text-left">{p.suivi?.devisEnvoye ? "Renvoyer le devis par email" : "Envoyer le devis par email"}</span>
+                  </button>
+                  {!canSend && (
+                    <p className="text-[11px] text-amber-600 -mt-1">{!hasPrice ? "⚠️ Ajoute une prestation avec un prix." : "⚠️ Ajoute une adresse email au prospect (bloc Coordonnées)."}</p>
+                  )}
+
+                  {/* État « devis envoyé » + retrait manuel */}
+                  {p.suivi?.devisEnvoye && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm">
+                      <CheckCircle2 size={15} className="shrink-0" />
+                      <span className="flex-1">Devis envoyé{p.suivi?.devisDate ? ` le ${p.suivi.devisDate}` : ""}</span>
+                      <button onClick={retirerDevis} disabled={actionBusy !== ""} className="text-[11px] text-gray-400 hover:text-gray-600 underline">retirer</button>
+                    </div>
+                  )}
+
+                  {/* Aperçu / impression du devis */}
+                  <button type="button"
+                    onClick={() => window.open(`/api/prospects/${p.id}/devis`, "_blank")}
+                    disabled={!hasPrice}
+                    title={hasPrice ? "Aperçu du devis, prêt à imprimer en PDF" : "Ajoute d'abord une prestation souhaitée avec son prix"}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-sm font-medium hover:bg-amber-100 disabled:opacity-50 transition-colors">
+                    <FileText size={15} /> Aperçu du devis (PDF)
+                  </button>
+                </>
+              );
+            })()}
 
             {/* Relances — visibles une fois le devis envoyé */}
             {p.suivi?.devisEnvoye && (() => {

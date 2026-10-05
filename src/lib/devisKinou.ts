@@ -41,6 +41,10 @@ export function cassepropre(s: string): string {
 
 const DESC_STD = "Nettoyage en profondeur à domicile : aspiration, injection-extraction à l'eau chaude (HWE) avec extraction de l'humidité et détachage ciblé. Le textile reste légèrement humide et sèche à l'air libre en quelques heures.";
 
+// Montant en euros français SANS symbole : 90 → "90,00" (pour composer un texte).
+export const eurNombre = (n: number) =>
+  new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+
 // Catalogue : libellé + chip + description selon le type + détail saisi.
 function mapLigne(typePresta: string, detail: string): { libelle: string; chip: string; description: string } {
   const t = (typePresta || "").toLowerCase();
@@ -76,6 +80,13 @@ function mapLigne(typePresta: string, detail: string): { libelle: string; chip: 
   }
   // Par défaut : on garde le type tel quel.
   return { libelle: typePresta || "Prestation", chip: soin, description: DESC_STD };
+}
+
+// Phrase courte de la prestation pour un email : « canapé d'angle », « matelas — 140×190 ».
+// Dérivée du libellé catalogue, sans le préfixe « Nettoyage ».
+export function prestationPhrase(typePresta: string, detail = ""): string {
+  const { libelle } = mapLigne(typePresta, detail);
+  return libelle.replace(/^Nettoyage\s+(de\s+|d')?/i, "").trim().toLowerCase() || "prestation";
 }
 
 export function buildDevisHtml(data: DevisData): string {

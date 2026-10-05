@@ -2,16 +2,19 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { getSettingJSON, setSettingRaw } from "@/lib/settings";
-import { sendProspectRelanceEmail } from "@/lib/mailer";
+import { sendProspectRelanceEmail, sendDevisEmail } from "@/lib/mailer";
+import { buildProspectDevis } from "@/lib/prospectDevis";
 
 export const dynamic = "force-dynamic";
 
 // Suivi commercial d'un prospect (devis envoyé + relances manuelles), stocké dans
 // settings/prospects_suivi (aucune colonne DB à créer).
-//   POST { action: "devis_envoye" }  → bascule « devis envoyé » + date, statut → CONTACTÉ.
-//   POST { action: "relance" }       → envoie la relance suivante (1→2→3), statut → RELANCÉ.
+//   POST { action: "devis_envoye" }       → ENVOIE le devis par email (devis joint), marque envoyé + date, statut → CONTACTÉ.
+//   POST { action: "set_avance", value }   → active/désactive l'avance immédiate (défaut : activée).
+//   POST { action: "relance" }             → envoie la relance suivante (1→2→3), statut → RELANCÉ.
 const SUIVI_KEY = "prospects_suivi";
-type Suivi = { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Suivi = { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string; devisNum?: string; avanceImmediate?: boolean } & Record<string, any>;
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const unauth = await requireAuth();
@@ -19,20 +22,52 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
 
   const { id } = params;
-  const { action } = await req.json() as { action?: string };
+  const body = await req.json() as { action?: string; value?: boolean; unmark?: boolean };
+  const { action } = body;
 
   const all = await getSettingJSON<Record<string, Suivi>>(SUIVI_KEY, {});
   const cur: Suivi = all[id] || {};
   const todayFr = new Date().toLocaleDateString("fr-FR");
 
-  if (action === "devis_envoye") {
-    const nowOn = !cur.devisEnvoye;
-    all[id] = { ...cur, devisEnvoye: nowOn, devisDate: nowOn ? todayFr : cur.devisDate };
+  // Active / désactive l'avance immédiate pour ce prospect (impacte le devis + le mail).
+  if (action === "set_avance") {
+    all[id] = { ...cur, avanceImmediate: !!body.value };
     const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(all));
     if (errSet) return NextResponse.json({ error: errSet }, { status: 500 });
-    // Un prospect avec un devis envoyé n'est plus « Nouveau ».
-    if (nowOn) await supabase.from("prospects").update({ statut: "CONTACTÉ", updated_at: new Date().toISOString() }).eq("id", id).eq("statut", "NOUVEAU");
     return NextResponse.json({ suivi: all[id] });
+  }
+
+  // Envoie le devis par email (document joint), puis marque « devis envoyé ».
+  if (action === "devis_envoye") {
+    // Déjà marqué envoyé → simple retrait de la coche (correction manuelle, sans renvoi).
+    if (cur.devisEnvoye && body.unmark) {
+      all[id] = { ...cur, devisEnvoye: false };
+      const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(all));
+      if (errSet) return NextResponse.json({ error: errSet }, { status: 500 });
+      return NextResponse.json({ suivi: all[id] });
+    }
+
+    const built = await buildProspectDevis(id);
+    if (!built.ok) return NextResponse.json({ error: built.error }, { status: built.status });
+    const dv = built.devis;
+    if (!dv.prospect.email) return NextResponse.json({ error: "Ce prospect n'a pas d'adresse email — ajoute-la avant d'envoyer le devis." }, { status: 400 });
+
+    const ok = await sendDevisEmail(dv.prospect.email, {
+      prenom: dv.prospect.prenom, nom: dv.prospect.nom, genre: dv.prospect.genre,
+      prestation: dv.prestation, prestationVous: dv.prestationVous,
+      totalTTC: dv.totalTTC, rac: dv.rac, avance: dv.avance,
+      devisHtml: dv.html, num: dv.num,
+    });
+    if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
+
+    // buildProspectDevis a pu écrire le numéro dans le suivi → on relit pour ne rien écraser.
+    const fresh = await getSettingJSON<Record<string, Suivi>>(SUIVI_KEY, {});
+    const freshCur: Suivi = fresh[id] || {};
+    fresh[id] = { ...freshCur, devisEnvoye: true, devisDate: todayFr };
+    const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(fresh));
+    if (errSet) return NextResponse.json({ error: `Devis envoyé mais suivi non enregistré : ${errSet}` }, { status: 500 });
+    await supabase.from("prospects").update({ statut: "CONTACTÉ", updated_at: new Date().toISOString() }).eq("id", id).eq("statut", "NOUVEAU");
+    return NextResponse.json({ suivi: fresh[id], sent: true });
   }
 
   if (action === "relance") {

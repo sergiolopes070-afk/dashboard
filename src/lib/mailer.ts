@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import nodemailer from "nodemailer";
 import { getSettingRaw } from "./settings";
+import { eurNombre, cassepropre } from "./devisKinou";
 
 // Lit un réglage (settings) avec repli sur une variable d'environnement.
 // Lecture FRAÎCHE en tableau (voir src/lib/settings.ts pour le pourquoi).
@@ -367,6 +368,76 @@ export async function sendProspectRelanceEmail(to: string, niveau: number, d: { 
     from: `"KinouClean" <${gmail.user}>`, to,
     subject: PROSPECT_RELANCE_OBJET[niveau] ?? PROSPECT_RELANCE_OBJET[1],
     html: buildProspectRelanceHtml(niveau, d),
+  });
+  return true;
+}
+
+// ─── Envoi du DEVIS par email (devis joint) — déclenché MANUELLEMENT ────────────
+// Mail commercial : rassure, explique l'Avance Immédiate simplement (reste à
+// charge = 50 % mis en avant AVANT le total), et demande adresse + créneau.
+// Règles de style (cahier des charges) : aucun emoji, ton chaleureux et simple,
+// « le paiement se fait à la fin de l'intervention, jamais en avance »,
+// fin par « Cordialement, » (pas de bloc signature).
+function civiliteDeGenre(genre?: string): string {
+  const g = (genre || "").trim().toLowerCase();
+  if (!g) return "";
+  if (/^(mme|madame|f|femme|mlle|mademoiselle)/.test(g)) return "Madame";
+  if (/^(m\.?|mr|monsieur|h|homme)/.test(g)) return "Monsieur";
+  return "";
+}
+
+export function buildDevisEmail(d: {
+  prenom: string; nom: string; genre?: string; prestation: string; prestationVous: boolean;
+  totalTTC: number; rac: number; avance: boolean;
+}): { objet: string; html: string } {
+  const de = d.prestationVous ? d.prestation : `votre ${d.prestation}`;
+  const objet = `Votre devis KinouClean pour le nettoyage de ${de}`;
+  const civ = civiliteDeGenre(d.genre);
+  const salut = civ && d.nom ? `${civ} ${cassepropre(d.nom)}` : (cassepropre(d.prenom) || "Madame, Monsieur");
+  const ttc = eurNombre(d.totalTTC);
+  const rac = eurNombre(d.rac);
+  const P = (txt: string) => `<p style="font-size:15px;color:#374151;line-height:1.75;margin:0 0 16px;">${txt}</p>`;
+
+  const corpsAvance = `
+    ${P(`Merci pour votre demande. Vous trouverez ci-joint votre devis pour le nettoyage en profondeur de ${de}.`)}
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;margin:0 0 18px;"><tr><td style="padding:16px 18px;text-align:center;">
+      <div style="font-size:13px;color:#059669;letter-spacing:.5px;text-transform:uppercase;">Votre reste à charge</div>
+      <div style="font-size:26px;color:#047857;font-weight:bold;margin-top:4px;">${rac} €</div>
+    </td></tr></table>
+    ${P(`Le montant total est de <strong>${ttc} € TTC</strong>, mais grâce à l'Avance Immédiate de l'URSSAF, vous n'en payez que la moitié, soit <strong>${rac} €</strong>. L'idée est simple : ce type de service vous donne droit à un crédit d'impôt de 50 %. Au lieu d'attendre un an pour le récupérer sur votre déclaration, l'État verse cette moitié tout de suite, directement à KinouClean. Vous ne déboursez donc que <strong>${rac} €</strong>, sans rien avancer et sans aucun remboursement à attendre.`)}
+    ${P("En pratique, c'est rapide :")}
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;"><tr><td style="font-size:15px;color:#374151;line-height:1.75;padding-left:4px;">
+      • Nous vous transmettons un lien d'inscription à l'Avance Immédiate à compléter avec vos informations ; elles ne servent qu'à l'URSSAF, nous n'y avons pas accès. La démarche prend moins de 5 minutes.<br/><br/>
+      • Le paiement se fait à la fin de l'intervention, jamais en avance.
+    </td></tr></table>
+    ${P("Indiquez-moi votre adresse et le créneau qui vous conviendrait le mieux, et je vous réserve le rendez-vous.")}`;
+
+  const corpsSansAvance = `
+    ${P(`Merci pour votre demande. Vous trouverez ci-joint votre devis pour le nettoyage en profondeur de ${de}.`)}
+    ${P(`Le montant total de la prestation est de <strong>${ttc} € TTC</strong>. Le paiement se fait à la fin de l'intervention, jamais en avance.`)}
+    ${P("Indiquez-moi votre adresse et le créneau qui vous conviendrait le mieux, et je vous réserve le rendez-vous.")}`;
+
+  const html = shell(`
+    <p style="font-size:16px;color:#1F2937;margin:0 0 16px;">Bonjour ${salut},</p>
+    ${d.avance ? corpsAvance : corpsSansAvance}
+    <p style="font-size:15px;color:#374151;line-height:1.75;margin:20px 0 0;">Cordialement,</p>`);
+
+  return { objet, html };
+}
+
+// Envoie le devis par email avec le document en pièce jointe (HTML imprimable).
+export async function sendDevisEmail(to: string, d: {
+  prenom: string; nom: string; genre?: string; prestation: string; prestationVous: boolean;
+  totalTTC: number; rac: number; avance: boolean; devisHtml: string; num: string;
+}): Promise<boolean> {
+  const gmail = await getGmailTransporter();
+  if (!gmail) return false;
+  const { objet, html } = buildDevisEmail(d);
+  await gmail.transporter.sendMail({
+    from: `"KinouClean" <${gmail.user}>`, to,
+    subject: objet,
+    html,
+    attachments: [{ filename: `Devis-KinouClean-${d.num}.html`, content: d.devisHtml, contentType: "text/html; charset=utf-8" }],
   });
   return true;
 }
