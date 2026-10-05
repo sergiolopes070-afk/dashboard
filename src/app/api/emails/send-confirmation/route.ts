@@ -28,7 +28,7 @@ export async function POST(req: Request) {
 
   const { data: p, error } = await supabase
     .from("prestations")
-    .select("id, type_prestation, quantite, adresse, date_intervention, heure_intervention, prix, mode_paiement, clients(prenom, email, tel)")
+    .select("id, type_prestation, quantite, adresse, date_intervention, heure_intervention, prix, mode_paiement, client_id, clients(prenom, email, tel)")
     .eq("id", prestationId)
     .single();
   if (error || !p) return NextResponse.json({ error: "Prestation introuvable" }, { status: 404 });
@@ -38,8 +38,12 @@ export async function POST(req: Request) {
   const email = client.email as string | undefined;
   if (!email) return NextResponse.json({ error: "Ce client n'a pas d'adresse email." }, { status: 400 });
 
-  // Le client est-il inscrit à l'avance immédiate (détecté via les emails AIS) ?
-  const avanceInscrit = !!estInscrit(await getInscrits(), client.tel as string | undefined, email);
+  // Avance immédiate reconnue si : inscription détectée OU préférence fiscale « avance »
+  // du client (choisie à la création / dans la fiche). Couvre le cas mode_paiement non saisi.
+  const inscrit = !!estInscrit(await getInscrits(), client.tel as string | undefined, email);
+  const fiscalMap = await getSettingJSON<Record<string, string>>("fiscal_clients", {});
+  const fiscalAvance = fiscalMap[p.client_id as string] === "avance";
+  const avanceInscrit = inscrit || fiscalAvance;
 
   try {
     const ok = await sendConfirmationEmail(email, {

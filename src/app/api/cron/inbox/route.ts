@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { importInbox } from "@/lib/inbox";
 import { supabase } from "@/lib/supabase";
-import { setSettingRaw } from "@/lib/settings";
+import { setSettingRaw, getSettingJSON } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -54,12 +54,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ revived: data?.length ?? 0, details: data || [], error: error?.message });
   }
 
-  // Diagnostic : prestations d'un client (par nom) avec prix + mode de paiement.
+  // Diagnostic : prestations d'un client (par nom) avec prix + mode de paiement + fiscal.
   if (url.searchParams.get("checkPresta") && supabase) {
     const term = (url.searchParams.get("checkPresta") || "").toLowerCase();
+    const fiscalMap = await getSettingJSON<Record<string, string>>("fiscal_clients", {});
     const { data } = await supabase
       .from("prestations")
-      .select("id, prix, mode_paiement, date_intervention, created_at, clients(prenom, nom, email)")
+      .select("id, prix, mode_paiement, date_intervention, created_at, client_id, clients(prenom, nom, email)")
       .order("created_at", { ascending: false }).limit(300);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = (data || []).filter((r: any) => {
@@ -69,7 +70,7 @@ export async function GET(req: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return NextResponse.json({ count: rows.length, prestations: rows.map((r: any) => {
       const c = Array.isArray(r.clients) ? r.clients[0] : r.clients;
-      return { client: `${c?.prenom || ""} ${c?.nom || ""}`.trim(), prix: r.prix, mode_paiement: r.mode_paiement, date: r.date_intervention };
+      return { client: `${c?.prenom || ""} ${c?.nom || ""}`.trim(), prix: r.prix, mode_paiement: r.mode_paiement, fiscal: fiscalMap[r.client_id] || null, date: r.date_intervention };
     }) });
   }
 
