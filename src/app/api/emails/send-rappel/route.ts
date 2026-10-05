@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { sendRappelEmail } from "@/lib/mailer";
 import { getSettingJSON, setSettingRaw } from "@/lib/settings";
+import { getInscrits, estInscrit } from "@/lib/avanceInscrits";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
 
   const { data: p, error } = await supabase
     .from("prestations")
-    .select("id, type_prestation, quantite, adresse, date_intervention, heure_intervention, clients(prenom, email)")
+    .select("id, type_prestation, quantite, adresse, date_intervention, heure_intervention, prix, mode_paiement, client_id, clients(prenom, email, tel)")
     .eq("id", prestationId)
     .single();
   if (error || !p) return NextResponse.json({ error: "Prestation introuvable" }, { status: 404 });
@@ -37,6 +38,11 @@ export async function POST(req: Request) {
   const email = client.email as string | undefined;
   if (!email) return NextResponse.json({ error: "Ce client n'a pas d'adresse email." }, { status: 400 });
 
+  // Avance immédiate reconnue : mode de paiement OU préférence fiscale « avance » OU inscription détectée.
+  const inscrit = !!estInscrit(await getInscrits(), client.tel as string | undefined, email);
+  const fiscalMap = await getSettingJSON<Record<string, string>>("fiscal_clients", {});
+  const avanceInscrit = inscrit || fiscalMap[p.client_id as string] === "avance";
+
   try {
     const ok = await sendRappelEmail(email, {
       prenom     : client.prenom || "",
@@ -45,6 +51,9 @@ export async function POST(req: Request) {
       adresse    : p.adresse || "",
       date       : isoToFr(p.date_intervention as string | null),
       heure      : ((p.heure_intervention as string) || "").substring(0, 5),
+      prix       : p.prix != null ? String(p.prix) : "",
+      modePaiement: (p.mode_paiement as string) || "",
+      avanceInscrit,
     });
     if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
     // Mémorise l'envoi (pour afficher le bouton en vert, comme la confirmation).

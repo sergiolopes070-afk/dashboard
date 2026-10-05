@@ -258,7 +258,7 @@ export const RAPPEL_RDV_OBJET = "⏰ Rappel — votre rendez-vous KinouClean app
 
 export function buildRappelRdvHtml(d: {
   prenom: string; typePresta: string; quantite: string;
-  adresse: string; date: string; heure: string;
+  adresse: string; date: string; heure: string; prix?: string; modePaiement?: string; avanceInscrit?: boolean;
 }): string {
   const presta  = [d.typePresta, d.quantite && d.quantite !== "1" ? `(${d.quantite})` : ""].filter(Boolean).join(" ");
   const dateStr = [d.date, d.heure].filter(Boolean).join(" à ");
@@ -266,12 +266,19 @@ export function buildRappelRdvHtml(d: {
     <tr><td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:14px;color:#6B7280;">${label}</td>
         <td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:14px;color:#1F2937;font-weight:bold;">${valeur || "—"}</td></tr>`;
 
-  // Bloc avance immédiate : SANS lien (chaque client reçoit son lien personnel
-  // directement) — on l'invite simplement à finaliser son inscription.
-  const avanceBloc = `<table width="100%" cellpadding="0" cellspacing="0" style="background:#EFF6FF;border-radius:10px;padding:16px 18px;margin:0 0 18px;"><tr><td style="font-size:14px;color:#1E40AF;line-height:1.6;">
-      <strong>💡 Avance immédiate (−50 %)</strong><br/>
-      Pour ne régler que <strong>la moitié</strong> du montant, pensez à finaliser votre inscription à l'avance immédiate à l'aide du <strong>lien personnel qui vous a été transmis</strong>. Une question ? Nous sommes là pour vous aider.
-    </td></tr></table>`;
+  // Même logique que la confirmation : si avance immédiate (mode OU fiscal OU
+  // inscrit détecté), on affiche Montant + Reste à charge (−50 %).
+  const prixNum = parseFloat((d.prix || "").replace(",", "."));
+  const avance = (d.modePaiement || "").toLowerCase().includes("avance imm") || !!d.avanceInscrit;
+  const reste = avance && !isNaN(prixNum) && prixNum > 0 ? prixNum / 2 : null;
+  const fmtEur = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+
+  const avanceBloc = reste != null
+    ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;margin:0 0 18px;"><tr><td style="padding:14px 18px;font-size:14px;color:#065F46;line-height:1.6;">
+        <strong>💳 Avance immédiate (−50 %)</strong><br/>
+        Vous ne réglez que <strong style="font-size:16px;">${fmtEur(reste)} €</strong>${d.prix ? ` (au lieu de ${d.prix} €)` : ""} : les 50 % restants sont pris en charge <strong>directement par l'État</strong>. Pensez à finaliser votre inscription via votre lien personnel si ce n'est pas déjà fait.
+      </td></tr></table>`
+    : "";
 
   return shell(`
     <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour ${d.prenom || ""},</p>
@@ -282,6 +289,8 @@ export function buildRappelRdvHtml(d: {
       ${ligne("Prestation", presta)}
       ${ligne("Rendez-vous", dateStr)}
       ${ligne("Adresse", d.adresse)}
+      ${d.prix ? ligne("Montant", `${d.prix} €`) : ""}
+      ${reste != null ? `<tr><td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:14px;color:#047857;font-weight:bold;">Reste à charge</td><td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:16px;color:#047857;font-weight:bold;">${fmtEur(reste)} €</td></tr>` : ""}
     </table>
     ${avanceBloc}
     <p style="font-size:14px;color:#6B7280;line-height:1.7;margin:0 0 18px;text-align:center;">
@@ -293,7 +302,7 @@ export function buildRappelRdvHtml(d: {
 // Envoie l'email de rappel de RDV (+ avance immédiate) via Gmail. true si envoyé.
 export async function sendRappelEmail(to: string, d: {
   prenom: string; typePresta: string; quantite: string;
-  adresse: string; date: string; heure: string;
+  adresse: string; date: string; heure: string; prix?: string; modePaiement?: string; avanceInscrit?: boolean;
 }): Promise<boolean> {
   const gmail = await getGmailTransporter();
   if (!gmail) return false;
