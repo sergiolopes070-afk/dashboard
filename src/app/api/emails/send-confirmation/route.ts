@@ -27,7 +27,7 @@ export async function POST(req: Request) {
 
   const { data: p, error } = await supabase
     .from("prestations")
-    .select("id, type_prestation, quantite, adresse, date_intervention, heure_intervention, prix, clients(prenom, email)")
+    .select("id, type_prestation, quantite, adresse, date_intervention, heure_intervention, prix, mode_paiement, clients(prenom, email)")
     .eq("id", prestationId)
     .single();
   if (error || !p) return NextResponse.json({ error: "Prestation introuvable" }, { status: 404 });
@@ -46,6 +46,7 @@ export async function POST(req: Request) {
       date       : isoToFr(p.date_intervention as string | null),
       heure      : ((p.heure_intervention as string) || "").substring(0, 5),
       prix       : p.prix != null ? String(p.prix) : "",
+      modePaiement: (p.mode_paiement as string) || "",
     });
     if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
     // Mémorise que la confirmation a été envoyée (pour afficher le bouton en vert).

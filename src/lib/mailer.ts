@@ -194,10 +194,15 @@ export const CONFIRMATION_OBJET = confirmationObjet(false);
 
 export function buildConfirmationHtml(d: {
   prenom: string; typePresta: string; quantite: string;
-  adresse: string; date: string; heure: string; prix: string;
+  adresse: string; date: string; heure: string; prix: string; modePaiement?: string;
 }): string {
   const presta = [d.typePresta, d.quantite && d.quantite !== "1" ? `(${d.quantite})` : ""].filter(Boolean).join(" ");
   const dateStr = [d.date, d.heure].filter(Boolean).join(" à ");
+  // Avance immédiate : l'État prend 50% en charge → on affiche le reste à charge (montant / 2).
+  const prixNum = parseFloat((d.prix || "").replace(",", "."));
+  const avance = (d.modePaiement || "").toLowerCase().includes("avance imm");
+  const reste = avance && !isNaN(prixNum) && prixNum > 0 ? prixNum / 2 : null;
+  const fmtEur = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
   const rdvFixe = !!d.date; // un rendez-vous est calé → tout est confirmé
   const ligne = (label: string, valeur: string) => `
     <tr><td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:14px;color:#6B7280;">${label}</td>
@@ -219,6 +224,7 @@ export function buildConfirmationHtml(d: {
       ${ligne(rdvFixe ? "Rendez-vous" : "Date souhaitée", dateStr)}
       ${ligne("Adresse", d.adresse)}
       ${ligne("Montant", d.prix ? `${d.prix} €` : "—")}
+      ${reste != null ? `<tr><td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:14px;color:#047857;">Reste à charge <span style="font-size:11px;color:#9CA3AF;">· avance immédiate −50%</span></td><td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:15px;color:#047857;font-weight:bold;">${fmtEur(reste)} €</td></tr>` : ""}
     </table>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 4px;">${cloture}</p>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:16px 0 0;">Bien cordialement,<br/><strong>L'équipe KinouClean</strong></p>`);
@@ -227,7 +233,7 @@ export function buildConfirmationHtml(d: {
 // Envoie l'email de confirmation via Gmail. Renvoie true si envoyé.
 export async function sendConfirmationEmail(to: string, d: {
   prenom: string; typePresta: string; quantite: string;
-  adresse: string; date: string; heure: string; prix: string;
+  adresse: string; date: string; heure: string; prix: string; modePaiement?: string;
 }): Promise<boolean> {
   const gmail = await getGmailTransporter();
   if (!gmail) return false;
