@@ -79,6 +79,40 @@ export async function GET(req: Request) {
     }) });
   }
 
+  // Diagnostic : le mail de confirmation contient-il bien le reste à charge ?
+  if (url.searchParams.get("confirmHtml") && supabase) {
+    const term = (url.searchParams.get("confirmHtml") || "").toLowerCase();
+    const fiscalMap = await getSettingJSON<Record<string, string>>("fiscal_clients", {});
+    const inscritsList = await getInscrits();
+    const { data } = await supabase
+      .from("prestations")
+      .select("id, type_prestation, quantite, adresse, date_intervention, heure_intervention, prix, mode_paiement, client_id, clients(prenom, nom, email, tel)")
+      .order("created_at", { ascending: false }).limit(300);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r: any = (data || []).find((x: any) => {
+      const c = Array.isArray(x.clients) ? x.clients[0] : x.clients;
+      return `${c?.prenom || ""} ${c?.nom || ""}`.toLowerCase().includes(term);
+    });
+    if (!r) return NextResponse.json({ error: "aucun client trouvé" });
+    const c = Array.isArray(r.clients) ? r.clients[0] : r.clients;
+    const mode = ((r.mode_paiement as string) || "").toLowerCase().includes("avance imm");
+    const fiscal = fiscalMap[r.client_id] === "avance";
+    const inscrit = !!estInscrit(inscritsList, c?.tel, c?.email);
+    const avanceInscrit = mode || fiscal || inscrit;
+    const { buildConfirmationHtml } = await import("@/lib/mailer");
+    const html = buildConfirmationHtml({
+      prenom: c?.prenom || "", typePresta: r.type_prestation || "", quantite: String(r.quantite ?? ""),
+      adresse: r.adresse || "", date: r.date_intervention ? String(r.date_intervention).split("-").reverse().join("/") : "",
+      heure: ((r.heure_intervention as string) || "").substring(0, 5), prix: r.prix != null ? String(r.prix) : "",
+      modePaiement: (r.mode_paiement as string) || "", avanceInscrit,
+    });
+    return NextResponse.json({
+      client: `${c?.prenom || ""} ${c?.nom || ""}`.trim(), prix: r.prix, avanceInscrit,
+      resteAChargePresent: html.includes("Reste à charge"),
+      blocAvancePresent: html.includes("Avance immédiate (−50"),
+    });
+  }
+
   // Diagnostic : total prospects + clients (comptage global).
   if (url.searchParams.get("countAll") === "1" && supabase) {
     const [pros, cli] = await Promise.all([
