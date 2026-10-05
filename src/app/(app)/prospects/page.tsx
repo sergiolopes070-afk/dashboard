@@ -122,6 +122,11 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     genre: "", prenom: "", nom: "", tel: "", email: "",
     source: "Réseaux sociaux", typePresta: "", adresse: "", budget: "", notes: "",
   });
+  // Prestation souhaitée détaillée (comme à la création d'un client) : détails
+  // structurés (tissu, places…) + montant, mémorisés dans besoins[0] à la création.
+  const [prestaDetails, setPrestaDetails] = useState<Record<string, string>>({});
+  const [prestaResume,  setPrestaResume]  = useState(""); // résumé lisible des détails (= quantite)
+  const [montant,       setMontant]       = useState("");
   const [saving,    setSaving]    = useState(false);
   const [extracted, setExtracted] = useState(false);
   const [error,     setError]     = useState("");
@@ -172,9 +177,14 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     if (!form.prenom) { setError("Le prénom est requis."); return; }
     setSaving(true); setError("");
     try {
+      // Si une prestation est renseignée, on la mémorise comme 1er besoin
+      // (type + détails + montant) afin de pouvoir générer un devis sans ressaisir.
+      const besoins = form.typePresta
+        ? [{ typePresta: form.typePresta, quantite: prestaResume || "1", prix: montant || "", details: prestaDetails }]
+        : [];
       const res = await fetch("/api/prospects", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, budget: montant || form.budget, besoins }),
       });
       if (!res.ok) throw new Error((await res.json()).error || "Erreur");
       onSaved(await res.json());
@@ -228,18 +238,45 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
               <input value={form.tel} onChange={e => set("tel", e.target.value)} className={inputCls} placeholder="06 00 00 00 00" />
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">Prestation</label>
-              <select value={form.typePresta} onChange={e => set("typePresta", e.target.value)} className={inputCls}>
-                <option value="">— Type —</option>
-                {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+              <label className="text-xs text-gray-500 mb-1 block">Email</label>
+              <input type="email" value={form.email} onChange={e => set("email", e.target.value)} className={inputCls} placeholder="email@exemple.fr" />
             </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Adresse</label>
+            <AddressAutocomplete value={form.adresse} onChange={v => set("adresse", v)} onSelect={a => set("adresse", a)} className={inputCls} placeholder="Adresse (optionnel)" />
+          </div>
+
+          {/* Prestation souhaitée — comme à la création d'un client */}
+          <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3 space-y-3">
+            <p className="text-xs font-semibold text-gray-600">Prestation souhaitée</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Type</label>
+                <select value={form.typePresta} onChange={e => { set("typePresta", e.target.value); setPrestaDetails({}); setPrestaResume(""); }} className={inputCls}>
+                  <option value="">— Type —</option>
+                  {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Montant (€)</label>
+                <input type="number" inputMode="decimal" value={montant} onChange={e => setMontant(e.target.value)} className={inputCls} placeholder="ex : 190" />
+              </div>
+            </div>
+            {form.typePresta && getSchema(form.typePresta).length > 0 && (
+              <PrestationFields
+                typePresta={form.typePresta}
+                initialValues={prestaDetails}
+                onDetailChange={(resume, values) => { setPrestaResume(resume); setPrestaDetails(values); }}
+              />
+            )}
           </div>
 
           <div>
             <label className="text-xs text-gray-500 mb-1 block">Notes</label>
             <textarea rows={2} value={form.notes} onChange={e => set("notes", e.target.value)}
-              className={`${inputCls} resize-none`} placeholder="Demande, budget, disponibilités…" />
+              className={`${inputCls} resize-none`} placeholder="Demande, disponibilités…" />
           </div>
 
           {/* Bouton */}

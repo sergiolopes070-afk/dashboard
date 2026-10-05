@@ -71,14 +71,14 @@ export async function POST(req: Request) {
   if (unauth) return unauth;
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 500 });
   const body = await req.json();
-  const { genre, prenom, nom, tel, email, source, typePresta, adresse, budget, notes } = body;
-  if (!prenom || !nom) return NextResponse.json({ error: "Prénom et nom requis" }, { status: 400 });
+  const { genre, prenom, nom, tel, email, source, typePresta, adresse, budget, notes, besoins } = body;
+  if (!prenom) return NextResponse.json({ error: "Le prénom est requis" }, { status: 400 });
 
   const { data, error } = await supabase
     .from("prospects")
     .insert({
       genre      : genre      || null,
-      prenom, nom,
+      prenom, nom : nom || "",
       tel        : tel        || null,
       email      : email      || null,
       source     : source     || null,
@@ -86,6 +86,7 @@ export async function POST(req: Request) {
       adresse    : adresse    || null,
       budget     : budget     || null,
       notes      : notes      || null,
+      besoins    : Array.isArray(besoins) ? besoins : [],
       statut     : "NOUVEAU",
       commentaires: [],
     })
