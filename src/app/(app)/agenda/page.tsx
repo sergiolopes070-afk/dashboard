@@ -333,6 +333,8 @@ export default function AgendaPage() {
   const [monthDate,    setMonthDate]    = useState<Date>(() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; });
   const [viewMode,     setViewMode]     = useState<"day"|"week"|"month">("week");
   const [lightbox,     setLightbox]     = useState<{ photos: LightboxPhoto[]; index: number } | null>(null);
+  const [avanceTels,   setAvanceTels]   = useState<Set<string>>(new Set()); // tél. des clients inscrits avance immédiate
+  const [avanceEmails, setAvanceEmails] = useState<Set<string>>(new Set()); // emails des clients inscrits avance immédiate
   const [dayDate,      setDayDate]      = useState<Date>(() => { const d = new Date(); d.setHours(0,0,0,0); return d; });
   const [checked,      setChecked]      = useState<Record<string, boolean>>({});
   const [showSansPresta, setShowSansPresta] = useState(true);
@@ -454,6 +456,20 @@ export default function AgendaPage() {
     }).catch(() => setLoading(false));
   };
   useEffect(() => { loadData(); }, []);
+
+  // Clients inscrits à l'avance immédiate (pour afficher le statut dans le RDV).
+  useEffect(() => {
+    fetch("/api/avance/inscrits")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) { setAvanceTels(new Set(d.tels || [])); setAvanceEmails(new Set(d.emails || [])); } })
+      .catch(() => {});
+  }, []);
+  // Vrai si le client de ce RDV s'est inscrit à l'avance immédiate (match tél OU email).
+  const estInscritAvance = (tel?: string, email?: string) => {
+    const t = (tel || "").replace(/\D/g, "");
+    const e = (email || "").trim().toLowerCase();
+    return (!!t && avanceTels.has(t)) || (!!e && avanceEmails.has(e));
+  };
 
   // Auto-scroll vers 08h00
   useEffect(() => {
@@ -1337,6 +1353,11 @@ export default function AgendaPage() {
                         <h3 className={`font-bold text-base mb-1 ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</h3>
                       )}
                       <p className="text-sm text-gray-500 mb-3">{ev.typePresta}</p>
+                      {estInscritAvance(ev.tel, ev.email) && (
+                        <div className="mb-3 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                          <CheckCircle2 size={13} /> Inscrit à l&apos;avance immédiate ⚡
+                        </div>
+                      )}
                       <div className="space-y-1.5 text-sm text-gray-700">
                         {([
                           ["Date",     `${ev.date}${ev.heure ? ` à ${ev.heure}` : ""}`],
