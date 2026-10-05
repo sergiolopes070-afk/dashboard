@@ -402,11 +402,8 @@ export function buildDevisEmail(d: {
 
   const corpsAvance = `
     ${P(`Merci pour votre demande. Vous trouverez ci-joint votre devis pour le nettoyage en profondeur de ${de}.`)}
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;margin:0 0 18px;"><tr><td style="padding:16px 18px;text-align:center;">
-      <div style="font-size:13px;color:#059669;letter-spacing:.5px;text-transform:uppercase;">Votre reste à charge</div>
-      <div style="font-size:26px;color:#047857;font-weight:bold;margin-top:4px;">${rac} €</div>
-    </td></tr></table>
-    ${P(`Le montant total est de <strong>${ttc} € TTC</strong>, mais grâce à l'Avance Immédiate de l'URSSAF, vous n'en payez que la moitié, soit <strong>${rac} €</strong>. L'idée est simple : ce type de service vous donne droit à un crédit d'impôt de 50 %. Au lieu d'attendre un an pour le récupérer sur votre déclaration, l'État verse cette moitié tout de suite, directement à KinouClean. Vous ne déboursez donc que <strong>${rac} €</strong>, sans rien avancer et sans aucun remboursement à attendre.`)}
+    ${P(`Votre reste à charge est de <strong>${rac} €</strong>.`)}
+    ${P(`Le montant total est de ${ttc} € TTC, mais grâce à l'Avance Immédiate de l'URSSAF, vous n'en payez que la moitié, soit ${rac} €. L'idée est simple : ce type de service vous donne droit à un crédit d'impôt de 50 %. Au lieu d'attendre un an pour le récupérer sur votre déclaration, l'État verse cette moitié tout de suite, directement à KinouClean. Vous ne déboursez donc que ${rac} €, sans rien avancer et sans aucun remboursement à attendre.`)}
     ${P("En pratique, c'est rapide :")}
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;"><tr><td style="font-size:15px;color:#374151;line-height:1.75;padding-left:4px;">
       • Nous vous transmettons un lien d'inscription à l'Avance Immédiate à compléter avec vos informations ; elles ne servent qu'à l'URSSAF, nous n'y avons pas accès. La démarche prend moins de 5 minutes.<br/><br/>
