@@ -17,76 +17,76 @@ const INK = "#46536b";
 const MUTE = "#8b95a6";
 
 const s = StyleSheet.create({
-  page: { fontFamily: "Helvetica", fontSize: 10, color: NAVY, lineHeight: 1.5, paddingBottom: 24 },
+  page: { fontFamily: "Helvetica", fontSize: 9, color: NAVY, lineHeight: 1.4, paddingBottom: 0 },
 
   // Bandeau d'en-tête
-  band: { backgroundColor: NAVY, color: "#fff", paddingHorizontal: 32, paddingTop: 24, paddingBottom: 20, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  band: { backgroundColor: NAVY, color: "#fff", paddingHorizontal: 30, paddingTop: 16, paddingBottom: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   brand: { flexDirection: "row", alignItems: "flex-start" },
-  badge: { width: 40, height: 40, borderRadius: 20, borderWidth: 1.2, borderColor: GOLD, color: GOLD, alignItems: "center", justifyContent: "center", marginRight: 12, fontFamily: "Times-Roman", fontSize: 16 },
-  brandName: { fontFamily: "Times-Roman", fontSize: 24, color: "#fff" },
-  brandTag: { color: GOLD_SOFT, letterSpacing: 2, fontSize: 7, marginTop: 4, textTransform: "uppercase" },
+  badge: { width: 34, height: 34, borderRadius: 17, borderWidth: 1.2, borderColor: GOLD, color: GOLD, alignItems: "center", justifyContent: "center", marginRight: 10, fontFamily: "Times-Roman", fontSize: 14 },
+  brandName: { fontFamily: "Times-Roman", fontSize: 21, color: "#fff" },
+  brandTag: { color: GOLD_SOFT, letterSpacing: 2, fontSize: 6.5, marginTop: 3, textTransform: "uppercase" },
   docmeta: { alignItems: "flex-end" },
-  kick: { color: GOLD_SOFT, letterSpacing: 2, fontSize: 7, textTransform: "uppercase" },
-  docLabel: { fontFamily: "Times-Bold", fontSize: 30, color: GOLD, marginTop: 2 },
-  docNum: { fontSize: 9.5, color: "#d7deea", marginTop: 6 },
-  docDate: { fontSize: 8.5, color: "#aab4c6", marginTop: 1 },
+  kick: { color: GOLD_SOFT, letterSpacing: 2, fontSize: 6.5, textTransform: "uppercase" },
+  docLabel: { fontFamily: "Times-Bold", fontSize: 26, color: GOLD, marginTop: 1 },
+  docNum: { fontSize: 9, color: "#d7deea", marginTop: 5 },
+  docDate: { fontSize: 8, color: "#aab4c6", marginTop: 1 },
 
   // Barre d'arguments
-  tagbar: { backgroundColor: NAVY2, flexDirection: "row", paddingHorizontal: 32, paddingVertical: 7, gap: 20 },
-  tagItem: { color: "#9fb0c9", fontSize: 7, letterSpacing: 0.5, textTransform: "uppercase" },
+  tagbar: { backgroundColor: NAVY2, flexDirection: "row", paddingHorizontal: 30, paddingVertical: 6, gap: 20 },
+  tagItem: { color: "#9fb0c9", fontSize: 6.5, letterSpacing: 0.5, textTransform: "uppercase" },
 
-  content: { paddingHorizontal: 32, paddingTop: 22 },
+  content: { paddingHorizontal: 30, paddingTop: 14 },
 
-  cardsRow: { flexDirection: "row", gap: 24, marginBottom: 20 },
+  cardsRow: { flexDirection: "row", gap: 24, marginBottom: 14 },
   card: { flex: 1 },
-  cardH: { fontSize: 8, letterSpacing: 1.5, color: GOLD, textTransform: "uppercase", borderBottomWidth: 1, borderBottomColor: "#e7d9c5", paddingBottom: 4, marginBottom: 6 },
-  cardName: { fontFamily: "Times-Bold", fontSize: 14, marginBottom: 4 },
-  cardP: { fontSize: 9.5, color: INK, lineHeight: 1.6 },
+  cardH: { fontSize: 7.5, letterSpacing: 1.5, color: GOLD, textTransform: "uppercase", borderBottomWidth: 1, borderBottomColor: "#e7d9c5", paddingBottom: 3, marginBottom: 5 },
+  cardName: { fontFamily: "Times-Bold", fontSize: 13, marginBottom: 3 },
+  cardP: { fontSize: 9, color: INK, lineHeight: 1.5 },
   muted: { color: MUTE },
 
   // Table
   thead: { flexDirection: "row", backgroundColor: NAVY, color: "#fff" },
-  th: { paddingVertical: 8, paddingHorizontal: 10, fontSize: 8, letterSpacing: 0.5, textTransform: "uppercase" },
+  th: { paddingVertical: 7, paddingHorizontal: 10, fontSize: 7.5, letterSpacing: 0.5, textTransform: "uppercase" },
   trow: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#eef1f5" },
-  td: { paddingVertical: 9, paddingHorizontal: 10, fontSize: 10, color: NAVY },
+  td: { paddingVertical: 7, paddingHorizontal: 10, fontSize: 9.5, color: NAVY },
   colDesc: { flex: 1 },
   colQte: { width: 44, textAlign: "right" },
   colPu: { width: 80, textAlign: "right" },
   colHt: { width: 80, textAlign: "right" },
-  pname: { fontFamily: "Helvetica-Bold", fontSize: 10 },
-  chip: { color: GOLD, fontSize: 7.5, textTransform: "uppercase", marginTop: 2 },
-  desc: { color: MUTE, fontSize: 8.5, marginTop: 3, lineHeight: 1.45 },
+  pname: { fontFamily: "Helvetica-Bold", fontSize: 9.5 },
+  chip: { color: GOLD, fontSize: 7, textTransform: "uppercase", marginTop: 2 },
+  desc: { color: MUTE, fontSize: 8, marginTop: 2, lineHeight: 1.3 },
 
   // Totaux
-  totalsWrap: { flexDirection: "row", justifyContent: "flex-end", marginTop: 14 },
-  totals: { width: "58%" },
-  totRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 5, paddingHorizontal: 10, fontSize: 10 },
+  totalsWrap: { flexDirection: "row", justifyContent: "flex-end", marginTop: 10 },
+  totals: { width: "56%" },
+  totRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4, paddingHorizontal: 10, fontSize: 9.5 },
   totSub: { borderTopWidth: 1, borderTopColor: "#eef1f5" },
-  totTtc: { backgroundColor: NAVY, borderRadius: 5, marginTop: 4, paddingVertical: 8 },
-  totTtcTxt: { color: "#fff", fontFamily: "Times-Bold", fontSize: 13 },
+  totTtc: { backgroundColor: NAVY, borderRadius: 5, marginTop: 4, paddingVertical: 7 },
+  totTtcTxt: { color: "#fff", fontFamily: "Times-Bold", fontSize: 12 },
 
   // Dispositif (avance / crédit)
-  aici: { marginHorizontal: 32, marginTop: 18, backgroundColor: "#eef3fb", borderWidth: 1, borderColor: "#c5d5ee", borderRadius: 7, paddingHorizontal: 16, paddingVertical: 13 },
-  aiciH: { fontSize: 8, letterSpacing: 1.5, color: "#2f6bbf", textTransform: "uppercase", marginBottom: 8 },
-  aiciRac: { fontFamily: "Times-Bold", fontSize: 18, color: NAVY },
-  aiciRacSmall: { fontFamily: "Helvetica", fontSize: 10, color: "#5a6373" },
-  aiciP: { fontSize: 9, color: INK, marginTop: 7, lineHeight: 1.6 },
+  aici: { marginHorizontal: 30, marginTop: 12, backgroundColor: "#eef3fb", borderWidth: 1, borderColor: "#c5d5ee", borderRadius: 7, paddingHorizontal: 14, paddingVertical: 10 },
+  aiciH: { fontSize: 7.5, letterSpacing: 1.5, color: "#2f6bbf", textTransform: "uppercase", marginBottom: 6 },
+  aiciRac: { fontFamily: "Times-Bold", fontSize: 16, color: NAVY },
+  aiciRacSmall: { fontFamily: "Helvetica", fontSize: 9, color: "#5a6373" },
+  aiciP: { fontSize: 8.5, color: INK, marginTop: 5, lineHeight: 1.4 },
 
   // Mentions légales
-  legal: { marginHorizontal: 32, marginTop: 16, backgroundColor: "#f7f8fa", borderRadius: 7, paddingHorizontal: 16, paddingVertical: 12 },
-  legalH: { fontSize: 8, letterSpacing: 1.2, color: NAVY, textTransform: "uppercase", marginBottom: 8 },
+  legal: { marginHorizontal: 30, marginTop: 10, backgroundColor: "#f7f8fa", borderRadius: 7, paddingHorizontal: 14, paddingVertical: 9 },
+  legalH: { fontSize: 7.5, letterSpacing: 1.2, color: NAVY, textTransform: "uppercase", marginBottom: 6 },
   legalList: { flexDirection: "row", flexWrap: "wrap" },
-  legalLi: { width: "50%", fontSize: 8.4, color: "#5a6373", paddingVertical: 2, paddingRight: 10, flexDirection: "row" },
+  legalLi: { width: "50%", fontSize: 8, color: "#5a6373", paddingVertical: 1.5, paddingRight: 10, flexDirection: "row" },
   legalDot: { color: GOLD, marginRight: 5 },
 
   // Signatures
-  signRow: { flexDirection: "row", gap: 24, marginHorizontal: 32, marginTop: 16 },
-  signBox: { flex: 1, borderWidth: 1, borderColor: "#c7cdd8", borderStyle: "dashed", borderRadius: 7, paddingHorizontal: 14, paddingVertical: 11, minHeight: 64 },
-  signT: { fontSize: 8, letterSpacing: 0.5, color: MUTE, textTransform: "uppercase" },
-  signGood: { fontSize: 9, color: MUTE, marginTop: 4 },
+  signRow: { flexDirection: "row", gap: 24, marginHorizontal: 30, marginTop: 10 },
+  signBox: { flex: 1, borderWidth: 1, borderColor: "#c7cdd8", borderStyle: "dashed", borderRadius: 7, paddingHorizontal: 14, paddingVertical: 9, minHeight: 46 },
+  signT: { fontSize: 7.5, letterSpacing: 0.5, color: MUTE, textTransform: "uppercase" },
+  signGood: { fontSize: 8.5, color: MUTE, marginTop: 4 },
 
   // Pied
-  foot: { marginTop: 18, borderTopWidth: 2, borderTopColor: GOLD, backgroundColor: NAVY, color: "#aab4c6", fontSize: 8, textAlign: "center", paddingHorizontal: 32, paddingVertical: 12, lineHeight: 1.6 },
+  foot: { marginTop: 12, borderTopWidth: 2, borderTopColor: GOLD, backgroundColor: NAVY, color: "#aab4c6", fontSize: 7.5, textAlign: "center", paddingHorizontal: 30, paddingVertical: 10, lineHeight: 1.5 },
   footStrong: { color: "#fff", fontFamily: "Helvetica-Bold" },
 });
 
