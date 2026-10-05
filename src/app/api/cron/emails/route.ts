@@ -188,6 +188,29 @@ export async function GET(req: Request) {
     catch (e) { avanceScan = { erreur: e instanceof Error ? e.message : "scan avance échoué" }; }
   }
 
+  // Clôture auto des prospects relancés sans réponse : 3 jours après la DERNIÈRE
+  // relance → statut PERDU (archivé, récupérable). Jamais les convertis/déjà perdus.
+  let prospectsClotures: unknown = "non exécuté (simulation)";
+  if (mode !== "simulation") {
+    try {
+      const suivi = await getSettingJSON<Record<string, { relanceDate?: string }>>("prospects_suivi", {});
+      const limite = Date.now() - 3 * 24 * 3600 * 1000;
+      const aClore = Object.entries(suivi)
+        .filter(([, s]) => s?.relanceDate && new Date(s.relanceDate).getTime() < limite)
+        .map(([id]) => id);
+      let clotures = 0;
+      if (aClore.length) {
+        const { data: rows } = await supabase.from("prospects").select("id, statut").in("id", aClore);
+        const ids = (rows || []).filter(r => !["CONVERTI", "PERDU"].includes(r.statut as string)).map(r => r.id as string);
+        if (ids.length) {
+          const { data } = await supabase.from("prospects").update({ statut: "PERDU", updated_at: new Date().toISOString() }).in("id", ids).select("id");
+          clotures = data?.length ?? 0;
+        }
+      }
+      prospectsClotures = { candidats: aClore.length, clotures };
+    } catch (e) { prospectsClotures = { erreur: e instanceof Error ? e.message : "clôture prospects échouée" }; }
+  }
+
   const { data, error } = await supabase
     .from("prestations")
     .select("id, prix, statut, created_at, date_intervention, type_prestation, client_id, clients(id, prenom, nom, email)")
@@ -404,6 +427,7 @@ export async function GET(req: Request) {
     ),
     inboxImport,
     avanceScan,
+    prospectsClotures,
   };
 
   console.log("[CRON emails]", mode, "|", report.resume);

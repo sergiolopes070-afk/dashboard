@@ -52,7 +52,11 @@ interface Prospect {
   notes: string;
   commentaires: Commentaire[];
   besoins?: Besoin[]; // prestations souhaitées (type + détails + prix), pré-remplit la conversion
+  suivi?: Suivi;      // suivi commercial : devis envoyé + relances
 }
+
+// Suivi commercial d'un prospect (stocké dans settings/prospects_suivi).
+interface Suivi { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string }
 
 // Une prestation souhaitée notée sur le prospect (même forme que les articles client).
 // `details` = valeurs structurées des champs intelligents (tissu, places…), pour
@@ -271,6 +275,7 @@ function ProspectModal({
   const [nameForm, setNameForm] = useState({ prenom: prospect.prenom, nom: prospect.nom });
   const [draft, setDraft] = useState<Besoin>({ typePresta: "", quantite: "1", prix: "" }); // saisie d'une prestation souhaitée
   const [draftStatut, setDraftStatut] = useState<string>(prospect.statut); // statut choisi, en attente de validation
+  const [actionBusy, setActionBusy] = useState<"" | "devis" | "relance">("");
   const toast = useToast();
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
@@ -301,11 +306,53 @@ function ProspectModal({
   // Prestations souhaitées (besoins) — mêmes champs que la fiche client.
   function addBesoin() {
     if (!draft.typePresta) return;
-    patch({ besoins: [...(p.besoins || []), { typePresta: draft.typePresta, quantite: draft.quantite || "1", prix: draft.prix || "", details: draft.details }] });
+    const updates: Record<string, unknown> = {
+      besoins: [...(p.besoins || []), { typePresta: draft.typePresta, quantite: draft.quantite || "1", prix: draft.prix || "", details: draft.details }],
+    };
+    // Dès qu'on note un besoin, le prospect n'est plus « Nouveau ».
+    if (p.statut === "NOUVEAU") { updates.statut = "CONTACTÉ"; setDraftStatut("CONTACTÉ"); }
+    patch(updates);
     setDraft({ typePresta: "", quantite: "1", prix: "" });
   }
   function removeBesoin(i: number) {
     patch({ besoins: (p.besoins || []).filter((_, j) => j !== i) });
+  }
+
+  // ── Suivi commercial : devis envoyé + relances (mails manuels) ──
+  async function toggleDevisEnvoye() {
+    setActionBusy("devis");
+    try {
+      const res = await fetch(`/api/prospects/${p.id}/relance`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "devis_envoye" }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur");
+      const statut = d.suivi?.devisEnvoye && p.statut === "NOUVEAU" ? "CONTACTÉ" : p.statut;
+      setP(prev => ({ ...prev, suivi: d.suivi, statut }));
+      setDraftStatut(statut);
+      onUpdated({ id: p.id, suivi: d.suivi, statut });
+      toast.success(d.suivi?.devisEnvoye ? "Devis marqué comme envoyé ✅" : "Marque « devis envoyé » retirée");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
+    finally { setActionBusy(""); }
+  }
+  async function envoyerRelance() {
+    const niveau = Math.min((p.suivi?.relanceNiveau || 0) + 1, 3);
+    if (!confirm(`Envoyer la RELANCE ${niveau} par email à ${p.prenom} ${p.nom} ?\n\n(À ne faire que si le prospect n'a pas répondu.)`)) return;
+    setActionBusy("relance");
+    try {
+      const res = await fetch(`/api/prospects/${p.id}/relance`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "relance" }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur");
+      setP(prev => ({ ...prev, suivi: d.suivi, statut: "RELANCÉ" }));
+      setDraftStatut("RELANCÉ");
+      onUpdated({ id: p.id, suivi: d.suivi, statut: "RELANCÉ" });
+      toast.success(`Relance ${d.niveau} envoyée par email 📧`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
+    finally { setActionBusy(""); }
   }
 
   async function addComment() {
@@ -363,7 +410,6 @@ function ProspectModal({
 
   const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
   const isActive = p.statut !== "CONVERTI" && p.statut !== "PERDU";
-  const relance  = relanceLabel(p.dateRelance);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4"
@@ -558,106 +604,55 @@ function ProspectModal({
             />
           </div>
 
-          {/* Étapes de relance cochables */}
-          {(() => {
-            const STEPS = [
-              { key: "j1", label: "J+1 — Demain",      days: 1 },
-              { key: "j3", label: "J+3 — 3 jours",     days: 3 },
-              { key: "j7", label: "J+7 — 1 semaine",   days: 7 },
-            ];
-            const steps = p.relanceSteps || [];
+          {/* Suivi commercial : devis envoyé + relances email (100% manuel) */}
+          <div className="bg-white border border-gray-200 rounded-xl p-3.5 space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+              <Bell size={12} className="text-blue-500" /> Suivi commercial
+            </p>
 
-            function toggleStep(key: string) {
-              const next = steps.includes(key) ? steps.filter(s => s !== key) : [...steps, key];
-              // Auto-avance la relance à la prochaine étape non cochée
-              const nextStep = STEPS.find(s => !next.includes(s.key));
-              const updates: Record<string, unknown> = { relanceSteps: next };
-              if (nextStep && !steps.includes(key)) {
-                const d = new Date(); d.setDate(d.getDate() + nextStep.days);
-                updates.dateRelance = d.toISOString().split("T")[0];
-              }
-              patch(updates as Parameters<typeof patch>[0]);
-            }
+            {/* Devis envoyé */}
+            <button type="button" onClick={toggleDevisEnvoye} disabled={actionBusy !== ""}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-sm font-medium transition-all disabled:opacity-60 ${
+                p.suivi?.devisEnvoye ? "bg-green-50 border-green-300 text-green-700" : "bg-gray-50 border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50"
+              }`}>
+              <span className="text-lg leading-none">{p.suivi?.devisEnvoye ? "✅" : "📄"}</span>
+              <span className="flex-1 text-left">
+                {p.suivi?.devisEnvoye ? `Devis envoyé${p.suivi?.devisDate ? ` le ${p.suivi.devisDate}` : ""}` : "Marquer « Devis envoyé »"}
+              </span>
+              {actionBusy === "devis" && <Loader2 size={14} className="animate-spin" />}
+            </button>
 
-            return (
-              <div className="bg-white border border-gray-100 rounded-xl p-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
-                  <Bell size={12} className="text-orange-400" /> Suivi des contacts
-                </p>
-                <div className="space-y-2">
-                  {STEPS.map(({ key, label }) => {
-                    const done = steps.includes(key);
+            {/* Relances — visibles une fois le devis envoyé */}
+            {p.suivi?.devisEnvoye && (() => {
+              const niv = p.suivi?.relanceNiveau || 0;
+              const labels: Record<number, string> = { 1: "Relance 1 · rappel", 2: "Relance 2 · relance", 3: "Relance 3 · offre −10 %" };
+              return (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-gray-400">Sans réponse ? Relance par email (à faire à la main) :</p>
+                  {[1, 2, 3].map(n => {
+                    const done = niv >= n;
+                    const isNext = niv + 1 === n;
                     return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => toggleStep(key)}
-                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border text-sm transition-all ${
-                          done
-                            ? "bg-green-50 border-green-200 text-green-700"
-                            : "bg-gray-50 border-gray-200 text-gray-500 hover:border-orange-300 hover:bg-orange-50"
-                        }`}
-                      >
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                          done ? "bg-green-500 border-green-500" : "border-gray-300"
-                        }`}>
-                          {done && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                        </div>
-                        <span className={`font-medium ${done ? "line-through opacity-60" : ""}`}>{label}</span>
-                        {done && <span className="ml-auto text-xs text-green-600 font-medium">Contacté ✓</span>}
-                      </button>
+                      <div key={n} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
+                        done ? "bg-green-50 border-green-200 text-green-700"
+                        : isNext ? "bg-white border-blue-200 text-gray-700"
+                        : "bg-gray-50 border-gray-100 text-gray-400"
+                      }`}>
+                        <span className="flex-1">{labels[n]}</span>
+                        {done ? <span className="text-xs font-medium">Envoyée ✓</span>
+                          : isNext ? (
+                            <button onClick={envoyerRelance} disabled={actionBusy !== ""}
+                              className="px-3 py-1 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50">
+                              {actionBusy === "relance" ? "Envoi…" : "Envoyer"}
+                            </button>
+                          ) : <span className="text-[11px]">en attente</span>}
+                      </div>
                     );
                   })}
+                  {niv >= 3 && <p className="text-[11px] text-gray-400">Les 3 relances ont été envoyées.</p>}
                 </div>
-              </div>
-            );
-          })()}
-
-          {/* Date de relance */}
-          <div className="bg-orange-50 border border-orange-100 rounded-xl p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <Bell size={14} className="text-orange-500" />
-              <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide">Relance</p>
-              {relance && <span className={`text-xs ml-auto ${relance.cls}`}>{relance.text}</span>}
-              {p.dateRelance && (
-                <button onClick={() => patch({ dateRelance: "" })} className="text-gray-300 hover:text-red-400 ml-1" title="Supprimer la relance">
-                  <X size={13} />
-                </button>
-              )}
-            </div>
-            {/* Chips rapides */}
-            <div className="flex gap-1.5 flex-wrap mb-2">
-              {[
-                { label: "Demain",    days: 1 },
-                { label: "+3 jours",  days: 3 },
-                { label: "+1 semaine",days: 7 },
-              ].map(({ label, days }) => {
-                const d = new Date(); d.setDate(d.getDate() + days);
-                const iso = d.toISOString().split("T")[0];
-                const active = p.dateRelance === iso;
-                return (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => patch({ dateRelance: active ? "" : iso })}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-colors ${
-                      active
-                        ? "bg-orange-500 text-white border-orange-500"
-                        : "bg-white text-orange-600 border-orange-200 hover:border-orange-400"
-                    }`}
-                  >
-                    {active ? "✓ " : ""}{label}
-                  </button>
-                );
-              })}
-            </div>
-            {/* Date personnalisée */}
-            <input
-              type="date"
-              value={p.dateRelance}
-              onChange={e => patch({ dateRelance: e.target.value })}
-              className="w-full border border-orange-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300 text-gray-600"
-            />
+              );
+            })()}
           </div>
 
           {/* Journal des échanges */}
@@ -805,20 +800,12 @@ function ProspectModal({
               <button onClick={() => setConfirmDelete(false)} className="text-xs text-gray-500 hover:text-gray-700">Annuler</button>
             </div>
           )}
-          <div className="flex items-center gap-2">
-            {draftStatut !== p.statut && (
-              <button
-                onClick={async () => { await patch({ statut: draftStatut }); toast.success(`Statut : ${STATUT_META[draftStatut]?.label ?? draftStatut}`); }}
-                disabled={saving}
-                className="px-4 py-1.5 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center gap-1.5">
-                <CheckCircle2 size={15} /> Valider
-              </button>
-            )}
-            <button onClick={onClose}
-              className="px-4 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
-              Fermer
-            </button>
-          </div>
+          <button
+            onClick={async () => { if (draftStatut !== p.statut) await patch({ statut: draftStatut }); onClose(); }}
+            disabled={saving}
+            className="px-5 py-1.5 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+            <CheckCircle2 size={15} /> Valider
+          </button>
         </div>
       </div>
 

@@ -299,3 +299,56 @@ export async function sendRappelEmail(to: string, d: {
   });
   return true;
 }
+
+// ─── Relances PROSPECT (devis envoyé, sans réponse) — déclenchées MANUELLEMENT ──
+// 3 niveaux : rappel doux → relance → offre -10%. Le prospect a un devis envoyé.
+export const PROSPECT_RELANCE_OBJET: Record<number, string> = {
+  1: "Votre devis KinouClean est prêt",
+  2: "Votre devis KinouClean — nous restons à votre disposition",
+  3: "Votre devis KinouClean — une offre pour vous décider 🎁",
+};
+
+export function buildProspectRelanceHtml(niveau: number, d: { prenom: string; prestation: string; devisDate?: string; prix?: string }): string {
+  const presta = d.prestation ? ` pour votre projet de <strong>${d.prestation.toLowerCase()}</strong>` : "";
+  const prixNum = parseFloat((d.prix || "").replace(",", "."));
+  const remise = !isNaN(prixNum) && prixNum > 0 ? prixNum * 0.9 : null;
+  const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+
+  let intro = "";
+  let bloc = "";
+  if (niveau <= 1) {
+    intro = `Votre devis${presta} est prêt et reste à votre disposition. Souhaitez-vous que nous réservions votre créneau d'intervention ?`;
+  } else if (niveau === 2) {
+    intro = `Nous revenons vers vous concernant le devis${presta}${d.devisDate ? ` que nous vous avons transmis le <strong>${d.devisDate}</strong>` : ""}. Il arrive qu'un message passe inaperçu — n'hésitez pas à nous recontacter, nous serions ravis de vous accompagner.`;
+  } else {
+    intro = `Nous revenons une dernière fois vers vous concernant votre devis${presta}. Pour vous aider à vous décider, nous avons le plaisir de vous proposer une offre :`;
+    bloc = `<table width="100%" cellpadding="0" cellspacing="0" style="background:#ECFDF5;border-radius:10px;padding:16px 18px;margin:0 0 18px;"><tr><td style="font-size:15px;color:#047857;line-height:1.6;text-align:center;">
+      🎁 <strong>Offre spéciale : −10 %</strong>${remise != null ? `<br/>Votre prestation à <strong>${fmt(remise)} €</strong> au lieu de ${fmt(prixNum)} €.` : ""}<br/>
+      <span style="font-size:12px;color:#059669;">Offre valable quelques jours — il vous suffit de nous recontacter pour en profiter.</span>
+    </td></tr></table>`;
+  }
+
+  return shell(`
+    <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour ${d.prenom || ""},</p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 18px;">${intro}</p>
+    ${bloc}
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;"><tr><td align="center">
+      <a href="${TEL_LINK}" style="display:inline-block;background:#1C3557;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;padding:13px 30px;border-radius:10px;">Réserver mon créneau</a>
+    </td></tr></table>
+    <p style="font-size:14px;color:#6B7280;line-height:1.6;margin:0 0 18px;text-align:center;">
+      ou répondez simplement à cet email — nous fixerons une date qui vous convient.<br/>
+      <span style="color:#4B5563;">Une question ? Appelez-nous au <strong>${TEL}</strong>.</span>
+    </p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0;">Bien cordialement,<br/><strong>L'équipe KinouClean</strong></p>`);
+}
+
+export async function sendProspectRelanceEmail(to: string, niveau: number, d: { prenom: string; prestation: string; devisDate?: string; prix?: string }): Promise<boolean> {
+  const gmail = await getGmailTransporter();
+  if (!gmail) return false;
+  await gmail.transporter.sendMail({
+    from: `"KinouClean" <${gmail.user}>`, to,
+    subject: PROSPECT_RELANCE_OBJET[niveau] ?? PROSPECT_RELANCE_OBJET[1],
+    html: buildProspectRelanceHtml(niveau, d),
+  });
+  return true;
+}

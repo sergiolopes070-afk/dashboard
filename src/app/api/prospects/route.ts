@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
+import { getSettingJSON } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,9 @@ export async function GET() {
     .select("*")
     .order("created_at", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json((data || []).map(rowToProspect));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const suivi = await getSettingJSON<Record<string, any>>("prospects_suivi", {});
+  return NextResponse.json((data || []).map(r => ({ ...rowToProspect(r), suivi: suivi[r.id as string] || {} })));
 }
 
 export async function POST(req: Request) {
