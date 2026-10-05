@@ -194,13 +194,14 @@ export const CONFIRMATION_OBJET = confirmationObjet(false);
 
 export function buildConfirmationHtml(d: {
   prenom: string; typePresta: string; quantite: string;
-  adresse: string; date: string; heure: string; prix: string; modePaiement?: string;
+  adresse: string; date: string; heure: string; prix: string; modePaiement?: string; avanceInscrit?: boolean;
 }): string {
   const presta = [d.typePresta, d.quantite && d.quantite !== "1" ? `(${d.quantite})` : ""].filter(Boolean).join(" ");
   const dateStr = [d.date, d.heure].filter(Boolean).join(" à ");
   // Avance immédiate : l'État prend 50% en charge → on affiche le reste à charge (montant / 2).
+  // Déclencheur : mode de paiement « Avance immédiate » OU client déjà inscrit (détecté).
   const prixNum = parseFloat((d.prix || "").replace(",", "."));
-  const avance = (d.modePaiement || "").toLowerCase().includes("avance imm");
+  const avance = (d.modePaiement || "").toLowerCase().includes("avance imm") || !!d.avanceInscrit;
   const reste = avance && !isNaN(prixNum) && prixNum > 0 ? prixNum / 2 : null;
   const fmtEur = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
   const rdvFixe = !!d.date; // un rendez-vous est calé → tout est confirmé
@@ -237,7 +238,7 @@ export function buildConfirmationHtml(d: {
 // Envoie l'email de confirmation via Gmail. Renvoie true si envoyé.
 export async function sendConfirmationEmail(to: string, d: {
   prenom: string; typePresta: string; quantite: string;
-  adresse: string; date: string; heure: string; prix: string; modePaiement?: string;
+  adresse: string; date: string; heure: string; prix: string; modePaiement?: string; avanceInscrit?: boolean;
 }): Promise<boolean> {
   const gmail = await getGmailTransporter();
   if (!gmail) return false;

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { sendConfirmationEmail } from "@/lib/mailer";
+import { getInscrits, estInscrit } from "@/lib/avanceInscrits";
 import { getSettingJSON, setSettingRaw } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
 
   const { data: p, error } = await supabase
     .from("prestations")
-    .select("id, type_prestation, quantite, adresse, date_intervention, heure_intervention, prix, mode_paiement, clients(prenom, email)")
+    .select("id, type_prestation, quantite, adresse, date_intervention, heure_intervention, prix, mode_paiement, clients(prenom, email, tel)")
     .eq("id", prestationId)
     .single();
   if (error || !p) return NextResponse.json({ error: "Prestation introuvable" }, { status: 404 });
@@ -36,6 +37,9 @@ export async function POST(req: Request) {
   const client: any = Array.isArray(p.clients) ? (p.clients[0] || {}) : (p.clients || {});
   const email = client.email as string | undefined;
   if (!email) return NextResponse.json({ error: "Ce client n'a pas d'adresse email." }, { status: 400 });
+
+  // Le client est-il inscrit à l'avance immédiate (détecté via les emails AIS) ?
+  const avanceInscrit = !!estInscrit(await getInscrits(), client.tel as string | undefined, email);
 
   try {
     const ok = await sendConfirmationEmail(email, {
@@ -47,6 +51,7 @@ export async function POST(req: Request) {
       heure      : ((p.heure_intervention as string) || "").substring(0, 5),
       prix       : p.prix != null ? String(p.prix) : "",
       modePaiement: (p.mode_paiement as string) || "",
+      avanceInscrit,
     });
     if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
     // Mémorise que la confirmation a été envoyée (pour afficher le bouton en vert).
