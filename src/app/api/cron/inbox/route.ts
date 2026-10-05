@@ -54,6 +54,25 @@ export async function GET(req: Request) {
     return NextResponse.json({ revived: data?.length ?? 0, details: data || [], error: error?.message });
   }
 
+  // Diagnostic : prestations d'un client (par nom) avec prix + mode de paiement.
+  if (url.searchParams.get("checkPresta") && supabase) {
+    const term = (url.searchParams.get("checkPresta") || "").toLowerCase();
+    const { data } = await supabase
+      .from("prestations")
+      .select("id, prix, mode_paiement, date_intervention, created_at, clients(prenom, nom, email)")
+      .order("created_at", { ascending: false }).limit(300);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (data || []).filter((r: any) => {
+      const c = Array.isArray(r.clients) ? r.clients[0] : r.clients;
+      return `${c?.prenom || ""} ${c?.nom || ""}`.toLowerCase().includes(term);
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return NextResponse.json({ count: rows.length, prestations: rows.map((r: any) => {
+      const c = Array.isArray(r.clients) ? r.clients[0] : r.clients;
+      return { client: `${c?.prenom || ""} ${c?.nom || ""}`.trim(), prix: r.prix, mode_paiement: r.mode_paiement, date: r.date_intervention };
+    }) });
+  }
+
   // Diagnostic : total prospects + clients (comptage global).
   if (url.searchParams.get("countAll") === "1" && supabase) {
     const [pros, cli] = await Promise.all([
