@@ -310,6 +310,8 @@ function ProspectModal({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameForm, setNameForm] = useState({ prenom: prospect.prenom, nom: prospect.nom });
+  const [editingCoord, setEditingCoord] = useState(false);
+  const [coordForm, setCoordForm] = useState({ tel: prospect.tel, email: prospect.email, adresse: prospect.adresse, budget: prospect.budget });
   const [draft, setDraft] = useState<Besoin>({ typePresta: "", quantite: "1", prix: "" }); // saisie d'une prestation souhaitée
   const [draftStatut, setDraftStatut] = useState<string>(prospect.statut); // statut choisi, en attente de validation
   const [actionBusy, setActionBusy] = useState<"" | "devis" | "relance">("");
@@ -434,6 +436,14 @@ function ProspectModal({
     setEditingName(false);
   }
 
+  async function saveCoord() {
+    await patch({
+      tel: coordForm.tel.trim(), email: coordForm.email.trim(),
+      adresse: coordForm.adresse.trim(), budget: coordForm.budget.trim(),
+    });
+    setEditingCoord(false);
+  }
+
   async function deleteComment(commentId: string) {
     const updated = p.commentaires.filter(c => c.id !== commentId);
     await fetch(`/api/prospects/${p.id}`, {
@@ -545,26 +555,77 @@ function ProspectModal({
           </div>
 
           {/* Infos contact */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {[
-              { icon: Phone,    label: "Téléphone", val: p.tel,    href: p.tel ? `tel:${p.tel}` : undefined },
-              { icon: Mail,     label: "Email",     val: p.email,  href: p.email ? `mailto:${p.email}` : undefined },
-              { icon: MapPin,   label: "Adresse",   val: p.adresse },
-            ].map(({ icon: Icon, label, val, href }) => val ? (
-              <div key={label} className="flex items-start gap-2 text-sm">
-                <Icon size={14} className="text-gray-400 mt-0.5 shrink-0" />
+          <div className="relative rounded-xl border border-gray-100 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500">Coordonnées</p>
+              {!editingCoord ? (
+                <button
+                  onClick={() => { setCoordForm({ tel: p.tel, email: p.email, adresse: p.adresse, budget: p.budget }); setEditingCoord(true); }}
+                  className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium">
+                  <Pencil size={12} /> Modifier
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setEditingCoord(false)} className="text-xs text-gray-400 hover:text-gray-600">Annuler</button>
+                  <button onClick={saveCoord} disabled={saving}
+                    className="text-xs text-white bg-blue-600 hover:bg-blue-700 rounded-lg px-2.5 py-1 flex items-center gap-1 disabled:opacity-50 font-medium">
+                    {saving ? <Loader2 size={11} className="animate-spin" /> : <Check size={12} />} Enregistrer
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {editingCoord ? (
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Téléphone</label>
+                    <input value={coordForm.tel} onChange={e => setCoordForm(f => ({ ...f, tel: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="06 00 00 00 00" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Email</label>
+                    <input type="email" value={coordForm.email} onChange={e => setCoordForm(f => ({ ...f, email: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="email@exemple.fr" />
+                  </div>
+                </div>
                 <div>
-                  <p className="text-xs text-gray-400">{label}</p>
-                  {href
-                    ? <a href={href} className="text-blue-600 hover:underline font-medium">{val}</a>
-                    : <p className="text-gray-800 font-medium">{val}</p>}
+                  <label className="text-xs text-gray-400 mb-1 block">Adresse</label>
+                  <AddressAutocomplete value={coordForm.adresse} onChange={v => setCoordForm(f => ({ ...f, adresse: v }))} onSelect={a => setCoordForm(f => ({ ...f, adresse: a }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Adresse" />
+                </div>
+                <div className="w-1/2">
+                  <label className="text-xs text-gray-400 mb-1 block">Budget estimé (€)</label>
+                  <input type="number" inputMode="decimal" value={coordForm.budget} onChange={e => setCoordForm(f => ({ ...f, budget: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="ex : 190" />
                 </div>
               </div>
-            ) : null)}
-            {p.budget && (
-              <div className="flex items-start gap-2 text-sm">
-                <TrendingUp size={14} className="text-gray-400 mt-0.5 shrink-0" />
-                <div><p className="text-xs text-gray-400">Budget estimé</p><p className="text-gray-800 font-medium">{p.budget} €</p></div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  { icon: Phone,    label: "Téléphone", val: p.tel,    href: p.tel ? `tel:${p.tel}` : undefined },
+                  { icon: Mail,     label: "Email",     val: p.email,  href: p.email ? `mailto:${p.email}` : undefined },
+                  { icon: MapPin,   label: "Adresse",   val: p.adresse },
+                ].map(({ icon: Icon, label, val, href }) => val ? (
+                  <div key={label} className="flex items-start gap-2 text-sm">
+                    <Icon size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs text-gray-400">{label}</p>
+                      {href
+                        ? <a href={href} className="text-blue-600 hover:underline font-medium">{val}</a>
+                        : <p className="text-gray-800 font-medium">{val}</p>}
+                    </div>
+                  </div>
+                ) : null)}
+                {p.budget && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <TrendingUp size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                    <div><p className="text-xs text-gray-400">Budget estimé</p><p className="text-gray-800 font-medium">{p.budget} €</p></div>
+                  </div>
+                )}
+                {!p.tel && !p.email && !p.adresse && !p.budget && (
+                  <p className="text-xs text-gray-400 italic">Aucune coordonnée — clique sur <strong>Modifier</strong> pour en ajouter.</p>
+                )}
               </div>
             )}
             {p.source && (
