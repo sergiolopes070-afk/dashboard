@@ -44,14 +44,23 @@ export default function EmailActions({
   const [relanceNiveau, setNiveau] = useState<number | null>(null);
   const [confirmSent, setConfirmSent] = useState(false); // confirmation déjà envoyée ?
   const [rappelSent, setRappelSent]   = useState(false); // rappel de RDV déjà envoyé ?
+  const [avance, setAvance]           = useState(false); // avance immédiate (mode/fiscal/inscrit) ?
   const [feedback, setFeedback]    = useState("");
 
   useEffect(() => {
     fetch(`/api/emails/action?prestationId=${prestationId}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) { setNiveau(d.relance ?? 0); setConfirmSent(!!d.confirmEnvoye); setRappelSent(!!d.rappelEnvoye); } })
+      .then(d => { if (d) { setNiveau(d.relance ?? 0); setConfirmSent(!!d.confirmEnvoye); setRappelSent(!!d.rappelEnvoye); setAvance(!!d.avance); } })
       .catch(() => {});
   }, [prestationId]);
+
+  // Reste à charge (−50%) pour les messages WhatsApp si avance immédiate.
+  const prixNumWA = parseFloat((prix || "").replace(",", "."));
+  const resteWA = avance && !isNaN(prixNumWA) && prixNumWA > 0 ? prixNumWA / 2 : null;
+  const fmtWA = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+  const ligneResteWA = resteWA != null
+    ? `\n💳 Avance immédiate : vous ne réglez que ${fmtWA(resteWA)} € (reste à charge, −50 %) — les 50 % restants sont pris en charge par l'État.`
+    : "";
 
   async function sendEmail(type: "relance" | "besoin_infos") {
     setBusy(type); setFeedback("");
@@ -137,24 +146,22 @@ export default function EmailActions({
     `🧹 Prestation : ${prestaWA}\n` +
     `📍 Adresse : ${adresse || "—"}\n` +
     `${rdvFixe ? "📅 Rendez-vous" : "📅 Date souhaitée"} : ${date || "—"}${heure ? ` à ${heure}` : ""}\n` +
-    `💶 Montant : ${prix ? `${prix} €` : "—"}\n\n` +
+    `💶 Montant : ${prix ? `${prix} €` : "—"}${ligneResteWA}\n\n` +
     (rdvFixe
       ? `Pour toute modification ou question, répondez simplement à ce message ou appelez-nous au 06 20 79 97 47. À très bientôt !`
       : `Nous revenons vers vous très rapidement pour confirmer les détails. Pour toute question, appelez-nous au 06 20 79 97 47.`) +
     `\n\nL'équipe KinouClean`;
 
-  // Rappel de RDV + avance immédiate — même contenu que l'email, SANS lien
-  // (chaque client reçoit son lien personnel directement).
-  const ligneInscription =
-    `💡 Avance immédiate (−50 %) : pour ne régler que la moitié, pensez à finaliser votre inscription à l'aide du lien personnel qui vous a été transmis.`;
+  // Rappel de RDV — avec reste à charge si avance immédiate (même logique que l'email).
   const msgRappel =
     `Bonjour ${prenom || ""} 👋,\n\n` +
     `Votre rendez-vous KinouClean est bien programmé — petit rappel :\n\n` +
     `🧹 ${prestaWA}\n` +
     `📅 ${date || "—"}${heure ? ` à ${heure}` : ""}\n` +
     (adresse ? `📍 ${adresse}\n` : "") +
-    `\n${ligneInscription}\n\n` +
-    `En cas d'empêchement, prévenez-nous au plus tôt au 06 20 79 97 47. À très bientôt !\n\nL'équipe KinouClean`;
+    (prix ? `💶 Montant : ${prix} €\n` : "") +
+    (resteWA != null ? `${ligneResteWA}\n` : "") +
+    `\nEn cas d'empêchement, prévenez-nous au plus tôt au 06 20 79 97 47. À très bientôt !\n\nL'équipe KinouClean`;
 
   const hasEmail = !!clientEmail;
   const hasTel   = !!clientTel;

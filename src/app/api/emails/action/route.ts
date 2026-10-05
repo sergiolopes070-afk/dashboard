@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { getSettingJSON, setSettingRaw } from "@/lib/settings";
+import { getInscrits, estInscrit } from "@/lib/avanceInscrits";
 import {
   getGmailTransporter, buildRelanceHtml, ACCROCHE,
   buildBesoinInfosHtml, BESOIN_INFOS_OBJET,
@@ -58,7 +59,22 @@ export async function GET(req: Request) {
     return NextResponse.json({ niveaux });
   }
   const e = etat[id] || {};
-  return NextResponse.json({ relance: e.relance ?? 0, relanceStart: e.relanceStart ?? null, confirmEnvoye: !!e.confirmEnvoye, rappelEnvoye: !!e.rappelEnvoye });
+  // Avance immédiate ? (mode de paiement OU préférence fiscale OU inscription détectée)
+  // — pour que les messages WhatsApp (rappel/confirmation) affichent le reste à charge.
+  let avance = false;
+  if (supabase) {
+    const { data: p } = await supabase.from("prestations").select("mode_paiement, client_id, clients(email, tel)").eq("id", id).single();
+    if (p) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const c: any = Array.isArray(p.clients) ? p.clients[0] : p.clients;
+      const mode = ((p.mode_paiement as string) || "").toLowerCase().includes("avance imm");
+      const fiscalMap = await getSettingJSON<Record<string, string>>("fiscal_clients", {});
+      const fiscal = fiscalMap[p.client_id as string] === "avance";
+      const inscrit = !!estInscrit(await getInscrits(), c?.tel, c?.email);
+      avance = mode || fiscal || inscrit;
+    }
+  }
+  return NextResponse.json({ relance: e.relance ?? 0, relanceStart: e.relanceStart ?? null, confirmEnvoye: !!e.confirmEnvoye, rappelEnvoye: !!e.rappelEnvoye, avance });
 }
 
 // POST { prestationId, type }
