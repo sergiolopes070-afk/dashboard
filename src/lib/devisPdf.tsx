@@ -21,14 +21,15 @@ const s = StyleSheet.create({
 
   // Bandeau d'en-tête
   band: { backgroundColor: NAVY, color: "#fff", paddingHorizontal: 30, paddingTop: 16, paddingBottom: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  brand: { flexDirection: "row", alignItems: "flex-start" },
-  badge: { width: 34, height: 34, borderRadius: 17, borderWidth: 1.2, borderColor: GOLD, color: GOLD, alignItems: "center", justifyContent: "center", marginRight: 10, fontFamily: "Times-Roman", fontSize: 14 },
-  brandName: { fontFamily: "Times-Roman", fontSize: 21, color: "#fff" },
-  brandTag: { color: GOLD_SOFT, letterSpacing: 2, fontSize: 6.5, marginTop: 3, textTransform: "uppercase" },
+  brand: { flexDirection: "row", alignItems: "center" },
+  badge: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.2, borderColor: GOLD, alignItems: "center", justifyContent: "center", marginRight: 11 },
+  badgeTxt: { color: GOLD, fontFamily: "Times-Roman", fontSize: 14, lineHeight: 1, textAlign: "center" },
+  brandName: { fontFamily: "Times-Roman", fontSize: 21, color: "#fff", lineHeight: 1 },
+  brandTag: { color: GOLD_SOFT, letterSpacing: 2, fontSize: 6.5, marginTop: 4, textTransform: "uppercase" },
   docmeta: { alignItems: "flex-end" },
   kick: { color: GOLD_SOFT, letterSpacing: 2, fontSize: 6.5, textTransform: "uppercase" },
-  docLabel: { fontFamily: "Times-Bold", fontSize: 26, color: GOLD, marginTop: 1 },
-  docNum: { fontSize: 9, color: "#d7deea", marginTop: 5 },
+  docLabel: { fontFamily: "Times-Bold", fontSize: 26, color: GOLD, lineHeight: 1, marginTop: 3, marginBottom: 4 },
+  docNum: { fontSize: 9, color: "#d7deea", marginTop: 2 },
   docDate: { fontSize: 8, color: "#aab4c6", marginTop: 1 },
 
   // Barre d'arguments
@@ -126,7 +127,7 @@ function DevisDoc({ data }: { data: DevisData }) {
         {/* En-tête */}
         <View style={s.band}>
           <View style={s.brand}>
-            <Text style={s.badge}>KC</Text>
+            <View style={s.badge}><Text style={s.badgeTxt}>KC</Text></View>
             <View>
               <Text style={s.brandName}>KinouClean</Text>
               <Text style={s.brandTag}>Nettoyage professionnel à domicile</Text>
