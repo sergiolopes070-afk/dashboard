@@ -224,8 +224,12 @@ export function buildConfirmationHtml(d: {
       ${ligne(rdvFixe ? "Rendez-vous" : "Date souhaitée", dateStr)}
       ${ligne("Adresse", d.adresse)}
       ${ligne("Montant", d.prix ? `${d.prix} €` : "—")}
-      ${reste != null ? `<tr><td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:14px;color:#047857;">Reste à charge <span style="font-size:11px;color:#9CA3AF;">· avance immédiate −50%</span></td><td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:15px;color:#047857;font-weight:bold;">${fmtEur(reste)} €</td></tr>` : ""}
+      ${reste != null ? `<tr><td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:14px;color:#047857;font-weight:bold;">Reste à charge</td><td style="padding:10px 14px;border-bottom:1px solid #eef0f4;font-size:16px;color:#047857;font-weight:bold;">${fmtEur(reste)} €</td></tr>` : ""}
     </table>
+    ${reste != null ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;margin:0 0 20px;"><tr><td style="padding:14px 18px;font-size:14px;color:#065F46;line-height:1.6;">
+      <strong>💳 Avance immédiate (−50 %)</strong><br/>
+      Grâce à l'<strong>avance immédiate URSSAF</strong>, vous ne réglez que <strong style="font-size:16px;">${fmtEur(reste)} €</strong>${d.prix ? ` (au lieu de ${d.prix} €)` : ""}. Les 50 % restants sont pris en charge <strong>directement par l'État</strong> : vous n'avancez rien et n'attendez aucun remboursement.
+    </td></tr></table>` : ""}
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 4px;">${cloture}</p>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:16px 0 0;">Bien cordialement,<br/><strong>L'équipe KinouClean</strong></p>`);
 }
