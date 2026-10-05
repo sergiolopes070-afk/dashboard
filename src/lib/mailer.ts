@@ -171,14 +171,18 @@ export function buildAvisHtml(d: { prenom: string; typePresta: string; lienBase:
 
 // Message de rappel WhatsApp (RDV du lendemain), avec plusieurs prestations
 // listées si le client en a plusieurs le même jour.
-export function buildRappelMessage(d: { prenom: string; prestations: string[]; date: string; heure?: string; adresse?: string }): string {
+export function buildRappelMessage(d: { prenom: string; prestations: string[]; date: string; heure?: string; adresse?: string; montant?: number; avance?: boolean }): string {
   const liste = d.prestations.filter(Boolean).join(" + ") || "Prestation KinouClean";
+  const reste = d.avance && d.montant && d.montant > 0 ? d.montant / 2 : null;
+  const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
   return (
     `Bonjour ${d.prenom || ""} 👋,\n\n` +
     `Petit rappel de votre rendez-vous KinouClean prévu demain :\n\n` +
     `🧹 ${liste}\n` +
     `📅 ${d.date || "demain"}${d.heure ? ` à ${d.heure}` : ""}\n` +
     (d.adresse ? `📍 ${d.adresse}\n` : "") +
+    (d.montant && d.montant > 0 ? `💶 Montant : ${fmt(d.montant)} €\n` : "") +
+    (reste != null ? `💳 Avance immédiate : reste à charge ${fmt(reste)} € (−50 %, l'État prend l'autre moitié).\n` : "") +
     `\nEn cas d'empêchement, merci de nous prévenir au plus tôt. À demain !`
   );
 }

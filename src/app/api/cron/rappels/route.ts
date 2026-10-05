@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getGmailTransporter, buildRappelMessage } from "@/lib/mailer";
+import { getSettingJSON } from "@/lib/settings";
+import { getInscrits, estInscrit } from "@/lib/avanceInscrits";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +66,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabase
     .from("prestations")
-    .select("id, type_prestation, heure_intervention, adresse, date_intervention, client_id, prestataire_id, clients(prenom, nom, tel), prestataires(nom, email)")
+    .select("id, type_prestation, heure_intervention, adresse, date_intervention, prix, mode_paiement, client_id, prestataire_id, clients(prenom, nom, tel, email), prestataires(nom, email)")
     .eq("archive", false)
     .not("date_intervention", "is", null);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -72,22 +74,29 @@ export async function GET(req: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows: any[] = (data || []).filter(p => String(p.date_intervention).slice(0, 10) === demainISO);
 
+  // Avance immédiate : préférences fiscales + inscrits détectés (pour le reste à charge).
+  const fiscalMap = await getSettingJSON<Record<string, string>>("fiscal_clients", {});
+  const inscritsList = await getInscrits();
+
   // Regroupement par client (téléphone en priorité, sinon client_id).
-  type Grp = { prenom: string; nom: string; tel: string; prestations: string[]; heures: string[]; adresse: string };
+  type Grp = { prenom: string; nom: string; tel: string; email: string; clientId: string; prestations: string[]; heures: string[]; adresse: string; montant: number; avanceMode: boolean };
   const groupes = new Map<string, Grp>();
   for (const p of rows) {
     const c = Array.isArray(p.clients) ? (p.clients[0] || {}) : (p.clients || {});
     const cle = (c.tel || p.client_id || p.id) as string;
-    const g: Grp = groupes.get(cle) || { prenom: c.prenom || "", nom: c.nom || "", tel: c.tel || "", prestations: [], heures: [], adresse: p.adresse || "" };
+    const g: Grp = groupes.get(cle) || { prenom: c.prenom || "", nom: c.nom || "", tel: c.tel || "", email: c.email || "", clientId: (p.client_id as string) || "", prestations: [], heures: [], adresse: p.adresse || "", montant: 0, avanceMode: false };
     if (p.type_prestation) g.prestations.push(p.type_prestation);
     if (p.heure_intervention) g.heures.push(String(p.heure_intervention).slice(0, 5));
     if (!g.adresse && p.adresse) g.adresse = p.adresse;
+    g.montant += parseFloat(String(p.prix ?? "").replace(",", ".")) || 0;
+    if (((p.mode_paiement as string) || "").toLowerCase().includes("avance imm")) g.avanceMode = true;
     groupes.set(cle, g);
   }
 
   const rappels = Array.from(groupes.values()).map(g => {
     const heure = g.heures.sort()[0] || "";
-    const message = buildRappelMessage({ prenom: g.prenom, prestations: g.prestations, date: frDate(demainISO), heure, adresse: g.adresse });
+    const avance = g.avanceMode || fiscalMap[g.clientId] === "avance" || !!estInscrit(inscritsList, g.tel, g.email);
+    const message = buildRappelMessage({ prenom: g.prenom, prestations: g.prestations, date: frDate(demainISO), heure, adresse: g.adresse, montant: g.montant, avance });
     const waLink = g.tel ? `https://wa.me/${waTel(g.tel)}?text=${encodeURIComponent(message)}` : null;
     return {
       client: `${g.prenom} ${g.nom}`.trim(),
