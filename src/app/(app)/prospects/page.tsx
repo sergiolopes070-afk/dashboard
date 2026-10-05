@@ -3,7 +3,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import {
   Plus, X, Search, Phone, Mail, MapPin, Calendar, MessageSquare,
   ChevronRight, UserCheck, Loader2, Trash2, Star, ArrowRight, Bell,
-  Users, TrendingUp, Clock, CheckCircle2, Pencil, Check,
+  Users, TrendingUp, Clock, CheckCircle2, Pencil, Check, FileText,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { useToast } from "@/components/Toast";
@@ -620,6 +620,15 @@ function ProspectModal({
                 {p.suivi?.devisEnvoye ? `Devis envoyé${p.suivi?.devisDate ? ` le ${p.suivi.devisDate}` : ""}` : "Marquer « Devis envoyé »"}
               </span>
               {actionBusy === "devis" && <Loader2 size={14} className="animate-spin" />}
+            </button>
+
+            {/* Générer le devis premium (PDF) à partir des prestations souhaitées */}
+            <button type="button"
+              onClick={() => window.open(`/api/prospects/${p.id}/devis`, "_blank")}
+              disabled={!(p.besoins && p.besoins.some(b => parseFloat(String(b.prix || "").replace(",", ".")) > 0))}
+              title={p.besoins && p.besoins.some(b => b.prix) ? "Ouvre le devis prêt à imprimer en PDF" : "Ajoute d'abord une prestation souhaitée avec son prix"}
+              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-sm font-medium hover:bg-amber-100 disabled:opacity-50 transition-colors">
+              <FileText size={15} /> Générer le devis (PDF)
             </button>
 
             {/* Relances — visibles une fois le devis envoyé */}
