@@ -282,7 +282,7 @@ export function buildDevisHtml(data: DevisData): string {
     </div>
     <div class="box">
       <div class="t">Pour KinouClean SAS</div>
-      <div class="good">Sergio — Président</div>
+      <div class="good">L'équipe KinouClean</div>
     </div>
   </div>
 

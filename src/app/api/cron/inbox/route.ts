@@ -113,6 +113,18 @@ export async function GET(req: Request) {
     });
   }
 
+  // Diagnostic : génération PDF (Chromium) — renvoie l'entête du fichier (%PDF-)
+  // ou l'erreur exacte. Accessible par clé (?key=...), sans login.
+  if (url.searchParams.get("pdfTest") === "1") {
+    try {
+      const { htmlToPdf } = await import("@/lib/htmlToPdf");
+      const buf = await htmlToPdf("<!doctype html><html><body><h1>Test KinouClean</h1><p>PDF OK</p></body></html>");
+      return NextResponse.json({ ok: true, bytes: buf.length, entete: buf.subarray(0, 5).toString("latin1"), estPdf: buf.subarray(0, 4).toString("latin1") === "%PDF" });
+    } catch (e) {
+      return NextResponse.json({ ok: false, error: e instanceof Error ? (e.stack || e.message) : String(e) });
+    }
+  }
+
   // Diagnostic : total prospects + clients (comptage global).
   if (url.searchParams.get("countAll") === "1" && supabase) {
     const [pros, cli] = await Promise.all([
