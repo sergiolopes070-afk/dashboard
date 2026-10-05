@@ -6,6 +6,7 @@ import { sendProspectRelanceEmail, sendDevisEmail } from "@/lib/mailer";
 import { buildProspectDevis } from "@/lib/prospectDevis";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60; // génération PDF (Chromium) incluse
 
 // Suivi commercial d'un prospect (devis envoyé + relances manuelles), stocké dans
 // settings/prospects_suivi (aucune colonne DB à créer).
@@ -52,11 +53,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const dv = built.devis;
     if (!dv.prospect.email) return NextResponse.json({ error: "Ce prospect n'a pas d'adresse email — ajoute-la avant d'envoyer le devis." }, { status: 400 });
 
+    // Devis en vrai PDF (A4) ; si le rendu échoue, repli sur le HTML joint.
+    let pdf: Buffer | undefined;
+    try {
+      const { htmlToPdf } = await import("@/lib/htmlToPdf");
+      pdf = await htmlToPdf(dv.html);
+    } catch (e) {
+      console.error("[devis] PDF KO, repli HTML :", e);
+    }
+
     const ok = await sendDevisEmail(dv.prospect.email, {
       prenom: dv.prospect.prenom, nom: dv.prospect.nom, genre: dv.prospect.genre,
       prestation: dv.prestation, prestationVous: dv.prestationVous,
       totalTTC: dv.totalTTC, rac: dv.rac, avance: dv.avance,
-      devisHtml: dv.html, num: dv.num,
+      devisHtml: dv.html, num: dv.num, pdf,
     });
     if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
 
@@ -67,7 +77,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(fresh));
     if (errSet) return NextResponse.json({ error: `Devis envoyé mais suivi non enregistré : ${errSet}` }, { status: 500 });
     await supabase.from("prospects").update({ statut: "CONTACTÉ", updated_at: new Date().toISOString() }).eq("id", id).eq("statut", "NOUVEAU");
-    return NextResponse.json({ suivi: fresh[id], sent: true });
+    return NextResponse.json({ suivi: fresh[id], sent: true, pdf: !!pdf });
   }
 
   if (action === "relance") {

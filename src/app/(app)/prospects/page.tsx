@@ -392,7 +392,7 @@ function ProspectModal({
       setP(prev => ({ ...prev, suivi: d.suivi, statut }));
       setDraftStatut(statut);
       onUpdated({ id: p.id, suivi: d.suivi, statut });
-      toast.success("Devis envoyé par email 📧");
+      toast.success(d.pdf ? "Devis (PDF) envoyé par email 📧" : "Devis envoyé 📧 (joint en HTML — PDF indisponible)");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
     finally { setActionBusy(""); }
   }
@@ -789,9 +789,9 @@ function ProspectModal({
 
                   {/* Aperçu / impression du devis */}
                   <button type="button"
-                    onClick={() => window.open(`/api/prospects/${p.id}/devis`, "_blank")}
+                    onClick={() => window.open(`/api/prospects/${p.id}/devis?pdf=1`, "_blank")}
                     disabled={!hasPrice}
-                    title={hasPrice ? "Aperçu du devis, prêt à imprimer en PDF" : "Ajoute d'abord une prestation souhaitée avec son prix"}
+                    title={hasPrice ? "Aperçu du devis en PDF (identique à la pièce jointe)" : "Ajoute d'abord une prestation souhaitée avec son prix"}
                     className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-sm font-medium hover:bg-amber-100 disabled:opacity-50 transition-colors">
                     <FileText size={15} /> Aperçu du devis (PDF)
                   </button>

@@ -391,7 +391,9 @@ export function buildDevisEmail(d: {
   totalTTC: number; rac: number; avance: boolean;
 }): { objet: string; html: string } {
   const de = d.prestationVous ? d.prestation : `votre ${d.prestation}`;
-  const objet = `Votre devis KinouClean pour le nettoyage de ${de}`;
+  // Objet volontairement générique : un devis peut comporter plusieurs lignes
+  // (ex. 3 canapés différents) — on évite « canapé + canapé + canapé ».
+  const objet = "Votre devis KinouClean";
   const civ = civiliteDeGenre(d.genre);
   const salut = civ && d.nom ? `${civ} ${cassepropre(d.nom)}` : (cassepropre(d.prenom) || "Madame, Monsieur");
   const ttc = eurNombre(d.totalTTC);
@@ -425,19 +427,23 @@ export function buildDevisEmail(d: {
   return { objet, html };
 }
 
-// Envoie le devis par email avec le document en pièce jointe (HTML imprimable).
+// Envoie le devis par email avec le document en pièce jointe.
+// `pdf` fourni → PDF joint ; sinon repli sur le HTML imprimable.
 export async function sendDevisEmail(to: string, d: {
   prenom: string; nom: string; genre?: string; prestation: string; prestationVous: boolean;
-  totalTTC: number; rac: number; avance: boolean; devisHtml: string; num: string;
+  totalTTC: number; rac: number; avance: boolean; devisHtml: string; num: string; pdf?: Buffer;
 }): Promise<boolean> {
   const gmail = await getGmailTransporter();
   if (!gmail) return false;
   const { objet, html } = buildDevisEmail(d);
+  const attachment = d.pdf
+    ? { filename: `Devis-KinouClean-${d.num}.pdf`, content: d.pdf, contentType: "application/pdf" }
+    : { filename: `Devis-KinouClean-${d.num}.html`, content: d.devisHtml, contentType: "text/html; charset=utf-8" };
   await gmail.transporter.sendMail({
     from: `"KinouClean" <${gmail.user}>`, to,
     subject: objet,
     html,
-    attachments: [{ filename: `Devis-KinouClean-${d.num}.html`, content: d.devisHtml, contentType: "text/html; charset=utf-8" }],
+    attachments: [attachment],
   });
   return true;
 }
