@@ -45,8 +45,11 @@ const DESC_STD = "Nettoyage en profondeur à domicile : aspiration, injection-ex
 export const eurNombre = (n: number) =>
   new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
+// Montant en euros français AVEC symbole : 90 → "90,00 €".
+export const formatEuro = (n: number) => eur(n);
+
 // Catalogue : libellé + chip + description selon le type + détail saisi.
-function mapLigne(typePresta: string, detail: string): { libelle: string; chip: string; description: string } {
+export function mapLigne(typePresta: string, detail: string): { libelle: string; chip: string; description: string } {
   const t = (typePresta || "").toLowerCase();
   const d = (detail || "").trim();
   const dl = d.toLowerCase();

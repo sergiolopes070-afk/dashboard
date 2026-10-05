@@ -7,10 +7,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from "./supabase";
 import { getSettingJSON, setSettingRaw, getSettingRaw } from "./settings";
-import { buildDevisHtml, numeroDevis, dateFr, dateFrPlus, prestationPhrase, DevisLigne } from "./devisKinou";
+import { buildDevisHtml, numeroDevis, dateFr, dateFrPlus, prestationPhrase, DevisLigne, DevisData } from "./devisKinou";
 
 export type ProspectDevis = {
-  html: string;        // devis complet prêt à imprimer / joindre
+  html: string;        // devis complet prêt à imprimer / joindre (aperçu HTML)
+  data: DevisData;     // données brutes du devis (pour le rendu PDF natif)
   num: string;         // numéro KC-AAAAMMJJ-NNN
   totalTTC: number;
   rac: number;         // reste à charge = TTC × 50 %
@@ -68,7 +69,7 @@ export async function buildProspectDevis(id: string): Promise<Result> {
     : "vos textiles";
   const prestationVous = prestation.startsWith("vos ");
 
-  const html = buildDevisHtml({
+  const data: DevisData = {
     num,
     dateEmission: dateFr(),
     dateValidite: dateFrPlus(30),
@@ -80,12 +81,13 @@ export async function buildProspectDevis(id: string): Promise<Result> {
     },
     lignes,
     dispositif: avance ? "avance" : "credit",
-  });
+  };
+  const html = buildDevisHtml(data);
 
   return {
     ok: true,
     devis: {
-      html, num, totalTTC, rac, prestation, prestationVous, avance,
+      html, data, num, totalTTC, rac, prestation, prestationVous, avance,
       prospect: {
         prenom: (p.prenom as string) || "",
         nom   : (p.nom as string) || "",

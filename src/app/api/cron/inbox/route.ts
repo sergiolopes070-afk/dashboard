@@ -117,8 +117,13 @@ export async function GET(req: Request) {
   // ou l'erreur exacte. Accessible par clé (?key=...), sans login.
   if (url.searchParams.get("pdfTest") === "1") {
     try {
-      const { htmlToPdf } = await import("@/lib/htmlToPdf");
-      const buf = await htmlToPdf("<!doctype html><html><body><h1>Test KinouClean</h1><p>PDF OK</p></body></html>");
+      const { renderDevisPdf } = await import("@/lib/devisPdf");
+      const buf = await renderDevisPdf({
+        num: "KC-TEST-001", dateEmission: "01/01/2026", dateValidite: "31/01/2026",
+        client: { nom: "Test Client", adresse: "1 rue de Test", tel: "0600000000", email: "test@test.fr" },
+        lignes: [{ typePresta: "Lavage Canapé", detail: "3 places", prixTTC: 180 }],
+        dispositif: "avance",
+      });
       return NextResponse.json({ ok: true, bytes: buf.length, entete: buf.subarray(0, 5).toString("latin1"), estPdf: buf.subarray(0, 4).toString("latin1") === "%PDF" });
     } catch (e) {
       return NextResponse.json({ ok: false, error: e instanceof Error ? (e.stack || e.message) : String(e) });

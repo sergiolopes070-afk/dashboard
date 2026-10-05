@@ -53,11 +53,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const dv = built.devis;
     if (!dv.prospect.email) return NextResponse.json({ error: "Ce prospect n'a pas d'adresse email — ajoute-la avant d'envoyer le devis." }, { status: 400 });
 
-    // Devis en vrai PDF (A4) ; si le rendu échoue, repli sur le HTML joint.
+    // Devis en vrai PDF (A4, natif react-pdf) ; repli HTML si le rendu échoue.
     let pdf: Buffer | undefined;
     try {
-      const { htmlToPdf } = await import("@/lib/htmlToPdf");
-      pdf = await htmlToPdf(dv.html);
+      const { renderDevisPdf } = await import("@/lib/devisPdf");
+      pdf = await renderDevisPdf(dv.data);
     } catch (e) {
       console.error("[devis] PDF KO, repli HTML :", e);
     }
