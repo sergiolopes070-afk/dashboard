@@ -1340,6 +1340,7 @@ export default function AgendaPage() {
                       <div className="space-y-1.5 text-sm text-gray-700">
                         {([
                           ["Date",     `${ev.date}${ev.heure ? ` à ${ev.heure}` : ""}`],
+                          ["Détails",  ev.quantite && ev.quantite !== "1" ? ev.quantite : null],
                           ["Adresse",  ev.adresse || null],
                           ["Statut",   ev.statut  || null],
                           ["Prix",     ev.prix     ? `${ev.prix} €` : null],
