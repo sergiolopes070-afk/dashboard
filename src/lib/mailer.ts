@@ -147,11 +147,27 @@ export const AVIS_OBJET = "Votre avis compte pour nous ⭐";
 // ouvre un formulaire de commentaire (≤3).
 export function buildAvisHtml(d: { prenom: string; typePresta: string; lienBase: string }): string {
   const sep = d.lienBase.includes("?") ? "&" : "?";
-  // Étoiles VIDES (contour) : le client clique le nombre qu'il souhaite. La page
-  // /avis pré-sélectionne cette note puis s'adapte (≥4 → Google, ≤3 → retour privé).
+  // Étoiles interactives : au SURVOL, remplissage en doré jusqu'à l'étoile pointée
+  // (effet « pré-sélection »), en CSS pur (aucun JS — interdit en email).
+  // Astuce : ordre DOM inversé (5→1) + `direction:rtl` pour afficher 1→5, et
+  // `a:hover ~ a` colore l'étoile pointée + toutes celles affichées à sa gauche.
+  // Clients sans :hover (Outlook) → étoiles grises statiques, cliquables : OK.
   const etoile = (n: number) =>
-    `<a href="${d.lienBase}${sep}note=${n}" title="${n} étoile${n > 1 ? "s" : ""}" style="text-decoration:none;font-size:42px;line-height:1;color:#F59E0B;padding:0 5px;">&#9734;</a>`;
+    `<a href="${d.lienBase}${sep}note=${n}" title="${n} étoile${n > 1 ? "s" : ""}" class="kc-star">&#9733;</a>`;
+  const styleEtoiles = `
+    <style>
+      .kc-stars { text-align:center; direction:rtl; font-size:0; }
+      .kc-stars a.kc-star {
+        font-size:46px; line-height:1; text-decoration:none; color:#DCE0E6;
+        padding:0 5px; display:inline-block;
+        transition:color .12s ease, transform .12s ease;
+      }
+      .kc-stars a.kc-star:hover { transform:scale(1.18); }
+      .kc-stars a.kc-star:hover,
+      .kc-stars a.kc-star:hover ~ a.kc-star { color:#F59E0B; }
+    </style>`;
   return shell(`
+    ${styleEtoiles}
     <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour ${d.prenom || ""},</p>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 8px;">
       Merci de votre confiance pour votre prestation${d.typePresta ? ` de ${d.typePresta.toLowerCase()}` : ""} ✨.
@@ -159,11 +175,11 @@ export function buildAvisHtml(d: { prenom: string; typePresta: string; lienBase:
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 20px;">
       Votre satisfaction est notre priorité. Quelle note donneriez-vous à votre expérience ?
     </p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 10px;"><tr><td align="center">
-      ${[1,2,3,4,5].map(etoile).join("")}
-    </td></tr></table>
+    <div class="kc-stars" style="margin:0 0 10px;">
+      ${[5,4,3,2,1].map(etoile).join("")}
+    </div>
     <p style="font-size:13px;color:#9CA3AF;line-height:1.6;margin:0 0 24px;text-align:center;">
-      Cliquez sur le nombre d'étoiles qui correspond à votre satisfaction.
+      Survolez puis cliquez sur le nombre d'étoiles qui correspond à votre satisfaction.
     </p>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0;">
       Merci infiniment pour le temps que vous nous accordez 🙏<br/><strong>L'équipe KinouClean</strong>
