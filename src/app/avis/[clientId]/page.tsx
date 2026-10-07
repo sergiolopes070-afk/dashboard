@@ -137,30 +137,42 @@ function AvisContent() {
             {prestation ? ` — ${prestation}` : ""}
           </p>
 
-          {/* Étoiles */}
-          <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 20 }}>
-            {[1,2,3,4,5].map(i => (
-              <button
-                key={i}
-                onMouseEnter={() => setHovered(i)}
-                onMouseLeave={() => setHovered(0)}
-                onClick={() => setRating(i)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 4,
-                  fontSize: 44,
-                  lineHeight: 1,
-                  transform: effective >= i ? "scale(1.15)" : "scale(1)",
-                  transition: "transform 0.15s, filter 0.15s",
-                  filter: effective >= i ? "drop-shadow(0 0 6px #f59e0b)" : "grayscale(1) opacity(0.4)",
-                }}
-              >
-                ★
-              </button>
-            ))}
+          {/* Smileys */}
+          <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 8 }}>
+            {[
+              { e: "😠", l: "Très mécontent" },
+              { e: "🙁", l: "Mécontent" },
+              { e: "😐", l: "Neutre" },
+              { e: "🙂", l: "Content" },
+              { e: "😄", l: "Très content" },
+            ].map((f, idx) => {
+              const i = idx + 1;
+              const active = effective === i;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  title={f.l}
+                  aria-label={f.l}
+                  onMouseEnter={() => setHovered(i)}
+                  onMouseLeave={() => setHovered(0)}
+                  onClick={() => setRating(i)}
+                  style={{
+                    background: "none", border: "none", cursor: "pointer", padding: "4px 6px",
+                    fontSize: 42, lineHeight: 1,
+                    transform: active ? "scale(1.3)" : "scale(1)",
+                    transition: "transform 0.15s, filter 0.15s",
+                    filter: active ? "none" : (effective ? "grayscale(1) opacity(0.4)" : "grayscale(0.4) opacity(0.85)"),
+                  }}
+                >
+                  {f.e}
+                </button>
+              );
+            })}
           </div>
+          <p style={{ textAlign: "center", color: "#a0a0b0", fontSize: 13, minHeight: 18, margin: "0 0 18px" }}>
+            {effective ? ["Très mécontent","Mécontent","Neutre","Content","Très content"][effective-1] : "Choisissez le smiley qui correspond à votre ressenti"}
+          </p>
 
           {/* Message contextuel */}
           {isHigh && (
@@ -236,7 +248,7 @@ function AvisContent() {
               transition: "background 0.2s",
             }}
           >
-            {submitting ? "Envoi en cours…" : rating >= 4 ? "Publier mon avis ⭐" : rating > 0 ? "Envoyer mon retour" : "Sélectionnez une note"}
+            {submitting ? "Envoi en cours…" : rating >= 4 ? "Publier mon avis" : rating > 0 ? "Envoyer mon retour" : "Choisissez un smiley"}
           </button>
 
         </div>

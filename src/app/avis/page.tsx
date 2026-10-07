@@ -74,7 +74,7 @@ export default function AvisUniverselPage() {
         <div style={{ background: "#1e1e2e", borderRadius: 20, padding: "40px 32px", maxWidth: 460, width: "100%", textAlign: "center", boxShadow: "0 8px 40px rgba(0,0,0,0.6)" }}>
 
           <div style={{ fontSize: 52, marginBottom: 12 }}>🎉</div>
-          <h2 style={{ color: "#ffffff", fontSize: 22, fontWeight: 700, margin: "0 0 8px" }}>Merci pour vos {rating} étoiles !</h2>
+          <h2 style={{ color: "#ffffff", fontSize: 22, fontWeight: 700, margin: "0 0 8px" }}>Merci pour votre avis !</h2>
           <p style={{ color: "#a0a0b0", fontSize: 14, margin: "0 0 24px", lineHeight: 1.5 }}>
             Google s&apos;est ouvert dans un nouvel onglet.
           </p>
@@ -161,31 +161,42 @@ export default function AvisUniverselPage() {
             Comment s&apos;est passée votre expérience avec KinouClean ?
           </p>
 
-          {/* Étoiles */}
-          <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 20 }}>
-            {[1,2,3,4,5].map(i => (
-              <button
-                key={i}
-                onMouseEnter={() => setHovered(i)}
-                onMouseLeave={() => setHovered(0)}
-                onClick={() => setRating(i)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 4,
-                  fontSize: 44,
-                  lineHeight: 1,
-                  transform: effective >= i ? "scale(1.15)" : "scale(1)",
-                  transition: "transform 0.15s, color 0.15s, filter 0.15s",
-                  color: effective >= i ? "#f59e0b" : "#4a4a6a",
-                  filter: effective >= i ? "drop-shadow(0 0 8px #f59e0b88)" : "none",
-                }}
-              >
-                ★
-              </button>
-            ))}
+          {/* Smileys */}
+          <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 8 }}>
+            {[
+              { e: "😠", l: "Très mécontent" },
+              { e: "🙁", l: "Mécontent" },
+              { e: "😐", l: "Neutre" },
+              { e: "🙂", l: "Content" },
+              { e: "😄", l: "Très content" },
+            ].map((f, idx) => {
+              const i = idx + 1;
+              const active = effective === i;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  title={f.l}
+                  aria-label={f.l}
+                  onMouseEnter={() => setHovered(i)}
+                  onMouseLeave={() => setHovered(0)}
+                  onClick={() => setRating(i)}
+                  style={{
+                    background: "none", border: "none", cursor: "pointer", padding: "4px 6px",
+                    fontSize: 42, lineHeight: 1,
+                    transform: active ? "scale(1.3)" : "scale(1)",
+                    transition: "transform 0.15s, filter 0.15s",
+                    filter: active ? "none" : (effective ? "grayscale(1) opacity(0.4)" : "grayscale(0.4) opacity(0.85)"),
+                  }}
+                >
+                  {f.e}
+                </button>
+              );
+            })}
           </div>
+          <p style={{ textAlign: "center", color: "#a0a0b0", fontSize: 13, minHeight: 18, margin: "0 0 20px" }}>
+            {effective ? ["Très mécontent","Mécontent","Neutre","Content","Très content"][effective-1] : "Choisissez le smiley qui correspond à votre ressenti"}
+          </p>
 
           {/* Commentaire */}
           <div style={{ marginBottom: 24 }}>
@@ -207,7 +218,7 @@ export default function AvisUniverselPage() {
             disabled={!rating || submitting}
             style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: rating ? "#2a3694" : "#2a2a3e", color: rating ? "#ffffff" : "#555", fontSize: 15, fontWeight: 700, cursor: rating ? "pointer" : "not-allowed", transition: "background 0.2s" }}
           >
-            {submitting ? "Envoi en cours…" : rating >= 4 ? "Publier mon avis ⭐" : rating > 0 ? "Envoyer mon retour" : "Sélectionnez une note"}
+            {submitting ? "Envoi en cours…" : rating >= 4 ? "Publier mon avis" : rating > 0 ? "Envoyer mon retour" : "Choisissez un smiley"}
           </button>
 
         </div>
