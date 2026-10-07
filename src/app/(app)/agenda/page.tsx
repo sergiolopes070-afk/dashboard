@@ -1559,9 +1559,6 @@ export default function AgendaPage() {
                         const prixNumR = parseFloat((ev.prix || "").replace(",", "."));
                         const resteR = !isNaN(prixNumR) && prixNumR > 0 ? prixNumR / 2 : null;
                         const fmtR = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-                        const ligneReste = resteR != null
-                          ? `💳 Avance immédiate : vous ne réglez que ${fmtR(resteR)} € (reste à charge, −50 %) — les 50 % restants sont pris en charge par l'État.\n`
-                          : "";
                         const rappelMsg =
                           `Bonjour ${ev.prenom || ""},\n\n` +
                           `Petit rappel de votre rendez-vous KinouClean 🙂\n\n` +
@@ -1569,7 +1566,8 @@ export default function AgendaPage() {
                           `📅 ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
                           `📍 ${ev.adresse || "—"}\n` +
                           (ev.prix && ev.prix !== "0" ? `💶 Montant : ${ev.prix} €\n` : "") +
-                          ligneReste +
+                          (resteR != null ? `💳 Reste à charge : ${fmtR(resteR)} €\n` : "") +
+                          (resteR != null ? `\nN'oubliez pas de finaliser votre inscription à l'avance immédiate.\n` : "") +
                           `\nEn cas d'empêchement, merci de nous prévenir au plus tôt.\n\nÀ très bientôt,\nL'équipe KinouClean`;
                         return (
                           <div className="flex flex-col gap-2">

@@ -61,7 +61,7 @@ export default function EmailActions({
   const resteWA = !isNaN(prixNumWA) && prixNumWA > 0 ? prixNumWA / 2 : null;
   const fmtWA = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
   const ligneResteWA = resteWA != null
-    ? `\n💳 Avance immédiate : vous ne réglez que ${fmtWA(resteWA)} € (reste à charge, −50 %) — les 50 % restants sont pris en charge par l'État.`
+    ? `💳 Reste à charge : ${fmtWA(resteWA)} €`
     : "";
 
   async function sendEmail(type: "relance" | "besoin_infos") {
@@ -148,7 +148,9 @@ export default function EmailActions({
     `🧹 Prestation : ${prestaWA}\n` +
     `📍 Adresse : ${adresse || "—"}\n` +
     `${rdvFixe ? "📅 Rendez-vous" : "📅 Date souhaitée"} : ${date || "—"}${heure ? ` à ${heure}` : ""}\n` +
-    `💶 Montant : ${prix ? `${prix} €` : "—"}${ligneResteWA}\n\n` +
+    `💶 Montant : ${prix ? `${prix} €` : "—"}\n` +
+    (ligneResteWA ? `${ligneResteWA}\n` : "") +
+    `\n` +
     (rdvFixe
       ? `Pour toute modification ou question, répondez simplement à ce message ou appelez-nous au 06 20 79 97 47. À très bientôt !`
       : `Nous revenons vers vous très rapidement pour confirmer les détails. Pour toute question, appelez-nous au 06 20 79 97 47.`) +
@@ -163,6 +165,7 @@ export default function EmailActions({
     (adresse ? `📍 ${adresse}\n` : "") +
     (prix ? `💶 Montant : ${prix} €\n` : "") +
     (resteWA != null ? `${ligneResteWA}\n` : "") +
+    (resteWA != null ? `\nN'oubliez pas de finaliser votre inscription à l'avance immédiate.\n` : "") +
     `\nEn cas d'empêchement, prévenez-nous au plus tôt au 06 20 79 97 47. À très bientôt !\n\nL'équipe KinouClean`;
 
   const hasEmail = !!clientEmail;
