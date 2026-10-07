@@ -139,47 +139,52 @@ export function buildBesoinInfosHtml(d: { prenom: string; typePresta: string }):
     </p>`);
 }
 
-// ─── Demande d'avis (étoiles cliquables → page d'avis pré-notée) ────────────────
-export const AVIS_OBJET = "Votre avis compte pour nous ⭐";
+// ─── Demande d'avis (smileys cliquables → page d'avis pré-notée) ────────────────
+export const AVIS_OBJET = "Votre avis compte pour nous 😊";
 
 // `lienBase` = URL de la page d'avis avec ses paramètres (nom, prestation), SANS
-// la note. Chaque étoile ajoute &note=N : la page redirige vers Google (≥4) ou
-// ouvre un formulaire de commentaire (≤3).
+// la note. Chaque smiley ajoute &note=N (1 = très mécontent … 5 = très content) :
+// la page redirige vers Google (≥4) ou ouvre un formulaire de retour privé (≤3).
 export function buildAvisHtml(d: { prenom: string; typePresta: string; lienBase: string }): string {
   const sep = d.lienBase.includes("?") ? "&" : "?";
-  // Étoiles interactives : au SURVOL, remplissage en doré jusqu'à l'étoile pointée
-  // (effet « pré-sélection »), en CSS pur (aucun JS — interdit en email).
-  // Astuce : ordre DOM inversé (5→1) + `direction:rtl` pour afficher 1→5, et
-  // `a:hover ~ a` colore l'étoile pointée + toutes celles affichées à sa gauche.
-  // Clients sans :hover (Outlook) → étoiles grises statiques, cliquables : OK.
-  const etoile = (n: number) =>
-    `<a href="${d.lienBase}${sep}note=${n}" title="${n} étoile${n > 1 ? "s" : ""}" class="kc-star">&#9733;</a>`;
-  const styleEtoiles = `
+  // 5 smileys interactifs : au SURVOL, le smiley pointé ressort (couleur + agrandi)
+  // et les autres s'estompent (effet de sélection), en CSS pur (aucun JS en email).
+  // Clients sans :hover (Outlook) → smileys pleins statiques, cliquables : OK.
+  const faces: { emoji: string; label: string }[] = [
+    { emoji: "😠", label: "Très mécontent" },
+    { emoji: "🙁", label: "Mécontent" },
+    { emoji: "😐", label: "Neutre" },
+    { emoji: "🙂", label: "Content" },
+    { emoji: "😄", label: "Très content" },
+  ];
+  const smiley = (f: { emoji: string; label: string }, n: number) =>
+    `<a href="${d.lienBase}${sep}note=${n}" title="${f.label}" class="kc-face">${f.emoji}</a>`;
+  const styleFaces = `
     <style>
-      .kc-stars { text-align:center; direction:rtl; font-size:0; }
-      .kc-stars a.kc-star {
-        font-size:46px; line-height:1; text-decoration:none; color:#DCE0E6;
-        padding:0 5px; display:inline-block;
-        transition:color .12s ease, transform .12s ease;
+      .kc-faces { text-align:center; font-size:0; }
+      .kc-faces a.kc-face {
+        font-size:38px; line-height:1; text-decoration:none;
+        padding:0 7px; display:inline-block;
+        filter:grayscale(0.35) opacity(0.8);
+        transition:filter .15s ease, transform .15s ease;
       }
-      .kc-stars a.kc-star:hover { transform:scale(1.18); }
-      .kc-stars a.kc-star:hover,
-      .kc-stars a.kc-star:hover ~ a.kc-star { color:#F59E0B; }
+      .kc-faces:hover a.kc-face { filter:grayscale(1) opacity(0.35); }
+      .kc-faces a.kc-face:hover { filter:none; transform:scale(1.3); }
     </style>`;
   return shell(`
-    ${styleEtoiles}
+    ${styleFaces}
     <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour ${d.prenom || ""},</p>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 8px;">
       Merci de votre confiance pour votre prestation${d.typePresta ? ` de ${d.typePresta.toLowerCase()}` : ""} ✨.
     </p>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 20px;">
-      Votre satisfaction est notre priorité. Quelle note donneriez-vous à votre expérience ?
+      Votre satisfaction est notre priorité. Comment s'est passée votre expérience ?
     </p>
-    <div class="kc-stars" style="margin:0 0 10px;">
-      ${[5,4,3,2,1].map(etoile).join("")}
+    <div class="kc-faces" style="margin:0 0 10px;">
+      ${faces.map((f, i) => smiley(f, i + 1)).join("")}
     </div>
     <p style="font-size:13px;color:#9CA3AF;line-height:1.6;margin:0 0 24px;text-align:center;">
-      Survolez puis cliquez sur le nombre d'étoiles qui correspond à votre satisfaction.
+      Cliquez sur le smiley qui correspond le mieux à votre ressenti.
     </p>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0;">
       Merci infiniment pour le temps que vous nous accordez 🙏<br/><strong>L'équipe KinouClean</strong>
