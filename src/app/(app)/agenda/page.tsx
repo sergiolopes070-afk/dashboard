@@ -1553,6 +1553,16 @@ export default function AgendaPage() {
 
                       {/* ── Rappel client : WhatsApp si numéro + copie toujours dispo ── */}
                       {(() => {
+                        // Avance immédiate (mode de paiement OU préférence fiscale OU inscription
+                        // détectée) → on ajoute le reste à charge (−50 %), comme dans les mails.
+                        const modeAvance = ((ev.modePaiement as string) || "").toLowerCase().includes("avance imm");
+                        const avanceRdv = modeAvance || fiscal === "avance" || estInscritAvance(ev.tel, ev.email);
+                        const prixNumR = parseFloat((ev.prix || "").replace(",", "."));
+                        const resteR = avanceRdv && !isNaN(prixNumR) && prixNumR > 0 ? prixNumR / 2 : null;
+                        const fmtR = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+                        const ligneReste = resteR != null
+                          ? `💳 Avance immédiate : vous ne réglez que ${fmtR(resteR)} € (reste à charge, −50 %) — les 50 % restants sont pris en charge par l'État.\n`
+                          : "";
                         const rappelMsg =
                           `Bonjour ${ev.prenom || ""},\n\n` +
                           `Petit rappel de votre rendez-vous KinouClean 🙂\n\n` +
@@ -1560,6 +1570,7 @@ export default function AgendaPage() {
                           `📅 ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
                           `📍 ${ev.adresse || "—"}\n` +
                           (ev.prix && ev.prix !== "0" ? `💶 Montant : ${ev.prix} €\n` : "") +
+                          ligneReste +
                           `\nEn cas d'empêchement, merci de nous prévenir au plus tôt.\n\nÀ très bientôt,\nL'équipe KinouClean`;
                         return (
                           <div className="flex flex-col gap-2">
