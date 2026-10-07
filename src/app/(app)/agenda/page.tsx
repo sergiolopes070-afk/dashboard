@@ -369,9 +369,6 @@ export default function AgendaPage() {
   // Préférence fiscale du client sélectionné (avance immédiate / crédit d'impôt)
   const [fiscal, setFiscal] = useState<"" | "avance" | "credit">("");
   const [fiscalSaving, setFiscalSaving] = useState(false);
-  // Flag « avance immédiate » AUTORITAIRE calculé côté serveur (mode OU fiscal OU
-  // inscrit) — même source que l'email de confirmation, pour le reste à charge.
-  const [selectedAvance, setSelectedAvance] = useState(false);
 
   useEffect(() => {
     const cid = selectedEvent?.clientId;
@@ -382,16 +379,6 @@ export default function AgendaPage() {
       .then(d => { if (d) setFiscal(d.fiscal || ""); })
       .catch(() => {});
   }, [selectedEvent?.clientId]);
-
-  useEffect(() => {
-    const pid = selectedEvent?.row;
-    if (!pid) { setSelectedAvance(false); return; }
-    setSelectedAvance(false);
-    fetch(`/api/emails/action?prestationId=${pid}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setSelectedAvance(!!d.avance); })
-      .catch(() => {});
-  }, [selectedEvent?.row]);
 
   async function setFiscalPref(clientId: string, val: "" | "avance" | "credit") {
     const next = fiscal === val ? "" : val; // re-cliquer = désélectionner
@@ -1566,12 +1553,11 @@ export default function AgendaPage() {
 
                       {/* ── Rappel client : WhatsApp si numéro + copie toujours dispo ── */}
                       {(() => {
-                        // Avance immédiate (mode de paiement OU préférence fiscale OU inscription
-                        // détectée) → on ajoute le reste à charge (−50 %), comme dans les mails.
-                        const modeAvance = ((ev.modePaiement as string) || "").toLowerCase().includes("avance imm");
-                        const avanceRdv = selectedAvance || modeAvance || fiscal === "avance" || estInscritAvance(ev.tel, ev.email);
+                        // Avance immédiate par défaut (≈90 % des clients) → on affiche
+                        // TOUJOURS le reste à charge (−50 %) dès qu'il y a un montant.
+                        // Message manuel : à retirer à la main dans les rares cas « crédit ».
                         const prixNumR = parseFloat((ev.prix || "").replace(",", "."));
-                        const resteR = avanceRdv && !isNaN(prixNumR) && prixNumR > 0 ? prixNumR / 2 : null;
+                        const resteR = !isNaN(prixNumR) && prixNumR > 0 ? prixNumR / 2 : null;
                         const fmtR = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
                         const ligneReste = resteR != null
                           ? `💳 Avance immédiate : vous ne réglez que ${fmtR(resteR)} € (reste à charge, −50 %) — les 50 % restants sont pris en charge par l'État.\n`

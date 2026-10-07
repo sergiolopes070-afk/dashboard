@@ -54,9 +54,11 @@ export default function EmailActions({
       .catch(() => {});
   }, [prestationId]);
 
-  // Reste à charge (−50%) pour les messages WhatsApp si avance immédiate.
+  // Reste à charge (−50%) pour les messages WhatsApp : affiché PAR DÉFAUT dès qu'il
+  // y a un montant (≈90 % des clients en avance immédiate). Message manuel/éditable :
+  // à retirer à la main pour les rares clients « crédit d'impôt ».
   const prixNumWA = parseFloat((prix || "").replace(",", "."));
-  const resteWA = avance && !isNaN(prixNumWA) && prixNumWA > 0 ? prixNumWA / 2 : null;
+  const resteWA = !isNaN(prixNumWA) && prixNumWA > 0 ? prixNumWA / 2 : null;
   const fmtWA = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
   const ligneResteWA = resteWA != null
     ? `\n💳 Avance immédiate : vous ne réglez que ${fmtWA(resteWA)} € (reste à charge, −50 %) — les 50 % restants sont pris en charge par l'État.`
