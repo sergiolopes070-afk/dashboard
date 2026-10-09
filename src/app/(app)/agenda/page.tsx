@@ -326,6 +326,27 @@ function AddressAutocomplete({ value, onChange, onSelect, inputCls }: {
 // ─── Page principale ──────────────────────────────────────────────────────────
 export default function AgendaPage() {
   const toast = useToast();
+  // Pile d'annulation (Ctrl/⌘+Z) : chaque action annulable y dépose sa fonction inverse.
+  const undoStackRef = useRef<{ label: string; undo: () => void | Promise<void> }[]>([]);
+  const pushUndo = (label: string, undo: () => void | Promise<void>) => {
+    undoStackRef.current.push({ label, undo });
+    if (undoStackRef.current.length > 30) undoStackRef.current.shift();
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isZ = e.key === "z" || e.key === "Z";
+      if (!isZ || e.shiftKey || !(e.metaKey || e.ctrlKey)) return;
+      // Dans un champ de saisie : laisser l'annulation native du texte.
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      if (undoStackRef.current.length === 0) return;
+      e.preventDefault();
+      const action = undoStackRef.current.pop()!;
+      Promise.resolve(action.undo()).then(() => toast.success(`Annulé : ${action.label}`));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toast]);
   const [prestations,  setPrestations]  = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.agenda) ?? []);
   const [prestataires, setPrestataires] = useState<Prestataire[]>(() => cacheGet<Prestataire[]>(CACHE_KEYS.prestataires) ?? []);
   const [loading,      setLoading]      = useState(() => !cacheHas(CACHE_KEYS.agenda));
@@ -546,25 +567,31 @@ export default function AgendaPage() {
   }
 
   // ── Reschedule (drag & modal) ───────────────────────────────────────────────
-  async function reschedulePrestation(ev: Prestation, newDate: string, newHeure: string) {
-    setRescheduleSaving(true);
-    // Optimistic UI
-    setPrestations(prev => prev.map(p =>
-      p.row === ev.row ? { ...p, date: newDate, heure: newHeure } : p
-    ));
-    setSelectedEvent(null);
-    setRescheduleEv(null);
+  // Applique un déplacement (UI optimiste + persistance), SANS toucher à la pile
+  // d'annulation — utilisé par l'action utilisateur ET par le Ctrl+Z.
+  async function applyReschedule(row: string, date: string, heure: string) {
+    setPrestations(prev => prev.map(p => p.row === row ? { ...p, date, heure } : p));
     try {
       await fetch("/api/prestations", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ row: ev.row, updates: { date: newDate, heure: newHeure } }),
+        body: JSON.stringify({ row, updates: { date, heure } }),
       });
     } catch {
       loadData(); // rollback
-    } finally {
-      setRescheduleSaving(false);
     }
+  }
+
+  async function reschedulePrestation(ev: Prestation, newDate: string, newHeure: string) {
+    setRescheduleSaving(true);
+    const row = ev.row, prevDate = ev.date, prevHeure = ev.heure;
+    setSelectedEvent(null);
+    setRescheduleEv(null);
+    await applyReschedule(row, newDate, newHeure);
+    setRescheduleSaving(false);
+    // Mémorise l'action pour l'annuler avec Ctrl/⌘+Z (remet l'ancienne date/heure).
+    pushUndo(`Déplacement de ${ev.prenom || "RDV"}`, () => applyReschedule(row, prevDate, prevHeure));
+    toast.success("RDV déplacé — ⌘/Ctrl+Z pour annuler");
   }
 
   // ── Archive depuis l'agenda ────────────────────────────────────────────────
