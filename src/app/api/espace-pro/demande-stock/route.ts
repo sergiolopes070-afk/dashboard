@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePresta } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { addDemande } from "@/lib/demandes";
-import { getGmailTransporter } from "@/lib/mailer";
+import { getGmailTransporter, PATRON_EMAIL } from "@/lib/mailer";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ async function notifierPatron(d: { nom: string; categorie: string; quantite: str
   try {
     const gmail = await getGmailTransporter();
     if (!gmail) return;
-    const dest = process.env.AUTH_EMAIL || gmail.user;
+    const dest = PATRON_EMAIL;
     const ligne = [d.categorie, d.quantite ? `× ${d.quantite}` : "", d.details ? `— ${d.details}` : ""].filter(Boolean).join(" ");
     await gmail.transporter.sendMail({
       from: `"KinouClean" <${gmail.user}>`, to: dest,

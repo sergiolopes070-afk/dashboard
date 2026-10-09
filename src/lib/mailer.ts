@@ -22,6 +22,18 @@ export async function getGmailTransporter() {
   return { transporter: nodemailer.createTransport({ service: "gmail", auth: { user, pass } }), user };
 }
 
+// Adresse du patron pour les notifications internes (demandes congé / matériel…).
+// Par défaut kinouclean@gmail.com ; surchargeable UNIQUEMENT via PATRON_EMAIL.
+export const PATRON_EMAIL = process.env.PATRON_EMAIL || "kinouclean@gmail.com";
+
+// Envoi d'une notification interne au patron (non bloquant côté appelant).
+export async function sendPatronNotif(subject: string, html: string, text: string): Promise<boolean> {
+  const gmail = await getGmailTransporter();
+  if (!gmail) return false;
+  await gmail.transporter.sendMail({ from: `"KinouClean" <${gmail.user}>`, to: PATRON_EMAIL, subject, html, text });
+  return true;
+}
+
 // ─── Relance devis (ton commercial, concis, orienté conversion) ─────────────────
 const TEL = "06 20 79 97 47";
 const TEL_LINK = "tel:0620799747";
