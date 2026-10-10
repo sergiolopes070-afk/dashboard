@@ -285,7 +285,7 @@ export default function HomePage() {
     type Groupe = { nom: string; start: string; end: string; debut?: string; fin?: string; partial?: boolean };
     const ranges: Groupe[] = [];
     for (const nom of Object.keys(byNom)) {
-      const dates = [...new Set(byNom[nom])].sort();
+      const dates = Array.from(new Set(byNom[nom])).sort();
       let start = dates[0], prev = dates[0];
       for (let i = 1; i < dates.length; i++) {
         if (dates[i] === nextDay(prev)) { prev = dates[i]; }
