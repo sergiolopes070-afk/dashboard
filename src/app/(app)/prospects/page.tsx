@@ -342,6 +342,16 @@ function ProspectModal({
     } finally { setSaving(false); }
   }
 
+  // Sélection d'un statut. Choisir « Relancé » pose une date de relance par
+  // défaut au lendemain (si aucune n'est encore fixée) — modifiable juste en dessous.
+  function chooseStatut(s: string) {
+    setDraftStatut(s);
+    if (s === "RELANCÉ" && !p.dateRelance) {
+      const t = new Date(); t.setDate(t.getDate() + 1);
+      patch({ dateRelance: t.toISOString().split("T")[0] });
+    }
+  }
+
   // Prestations souhaitées (besoins) — mêmes champs que la fiche client.
   function addBesoin() {
     if (!draft.typePresta) return;
@@ -623,7 +633,7 @@ function ProspectModal({
               {STATUTS.filter(s => s !== "CONVERTI").map(s => {
                 const sel = draftStatut === s;
                 return (
-                  <button key={s} type="button" onClick={() => setDraftStatut(s)}
+                  <button key={s} type="button" onClick={() => chooseStatut(s)}
                     className={`flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${
                       sel
                         ? `${STATUT_META[s].bg} ${STATUT_META[s].color} border-current shadow-sm scale-[1.03]`
@@ -639,9 +649,10 @@ function ProspectModal({
               <p className="text-[11px] text-amber-600 mt-1.5">Statut modifié — clique sur <strong>Valider</strong> en bas pour enregistrer.</p>
             )}
 
-            {/* Recontacter à une date précise (ex. « rappelez-moi le 15 ») */}
+            {/* Date de relance : par défaut au lendemain quand on clique « Relancé »,
+                ou date précise choisie à la main (ex. « rappelez-moi le 15 »). */}
             <div className="mt-3 flex items-center gap-2 flex-wrap">
-              <label className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Calendar size={13} /> Recontacter le</label>
+              <label className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Calendar size={13} /> Date de relance</label>
               <input type="date" value={p.dateRelance ? p.dateRelance.slice(0, 10) : ""}
                 onChange={e => patch({ dateRelance: e.target.value })}
                 className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
