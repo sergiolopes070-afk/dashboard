@@ -375,6 +375,28 @@ export default function AgendaPage() {
   const [dragOverDay,      setDragOverDay]      = useState<number | null>(null);
   const [dragOverMins,     setDragOverMins]     = useState<number>(0);
 
+  // ── Reprogrammation d'un 2ème passage GRATUIT (offre fidélité) ──────────────
+  const [reprog2Open, setReprog2Open] = useState(false);
+  const [reprog2Date, setReprog2Date] = useState("");
+  const [reprog2Hrs,  setReprog2Hrs]  = useState("");
+  const [reprog2Busy, setReprog2Busy] = useState(false);
+  async function reprogram2(fromId: string) {
+    if (!reprog2Date) return;
+    setReprog2Busy(true);
+    try {
+      const res = await fetch("/api/prestations", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reprogram2", fromId, date: reprog2Date, heure: reprog2Hrs }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur");
+      setReprog2Open(false); setReprog2Date(""); setReprog2Hrs(""); setSelectedEvent(null);
+      loadData();
+      toast.success("2ème passage gratuit programmé ✅");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
+    finally { setReprog2Busy(false); }
+  }
+
   // ── Reschedule modal (pour mobile / vue mois) ──────────────────────────────
   const [rescheduleEv,      setRescheduleEv]      = useState<Prestation | null>(null);
   const [rescheduleDate,    setRescheduleDate]    = useState("");
@@ -1380,6 +1402,11 @@ export default function AgendaPage() {
                         <h3 className={`font-bold text-base mb-1 ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</h3>
                       )}
                       <p className="text-sm text-gray-500 mb-3">{ev.typePresta}</p>
+                      {ev.message?.toLowerCase().includes("2ème passage") && (
+                        <div className="mb-3 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-full">
+                          🎁 2ème passage gratuit
+                        </div>
+                      )}
                       {estInscritAvance(ev.tel, ev.email) && (
                         <div className="mb-3 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
                           <CheckCircle2 size={13} /> Inscrit à l&apos;avance immédiate ⚡
@@ -1706,6 +1733,37 @@ export default function AgendaPage() {
                         >
                           💬 {avisMsgCopied ? "Message copié !" : "Copier message fin de prestation"}
                         </button>
+                      </div>
+                    )}
+
+                    {/* ── Reprogrammer un 2ème passage GRATUIT (offre fidélité) — RDV archivé ── */}
+                    {isArchived && (ev.prenom || ev.nom) && (
+                      <div className="border-t border-gray-100 pt-2 flex flex-col gap-2">
+                        {!reprog2Open ? (
+                          <button type="button" onClick={() => { setReprog2Open(true); setReprog2Date(""); setReprog2Hrs(ev.heure || ""); }}
+                            className="w-full py-2 rounded-xl border border-emerald-200 text-emerald-700 text-sm font-medium hover:bg-emerald-50 transition-colors flex items-center justify-center gap-1.5">
+                            🎁 Reprogrammer un 2ème passage (gratuit)
+                          </button>
+                        ) : (
+                          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                            <p className="text-xs text-emerald-800 font-semibold">2ème passage gratuit — {ev.prenom} {ev.nom}</p>
+                            <p className="text-[11px] text-emerald-700">Même client, même prestation. Créé dans l&apos;agenda à 0 €, marqué « 2ème passage ».</p>
+                            <div className="flex gap-2">
+                              <input type="date" value={reprog2Date} onChange={e => setReprog2Date(e.target.value)}
+                                className="flex-1 border border-emerald-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                              <input type="time" value={reprog2Hrs} onChange={e => setReprog2Hrs(e.target.value)}
+                                className="w-28 border border-emerald-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                            </div>
+                            <div className="flex gap-2">
+                              <button type="button" onClick={() => setReprog2Open(false)}
+                                className="flex-1 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-50">Annuler</button>
+                              <button type="button" onClick={() => reprogram2(ev.row)} disabled={!reprog2Date || reprog2Busy}
+                                className="flex-1 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
+                                {reprog2Busy ? <Loader2 size={14} className="animate-spin" /> : null} Programmer
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>}
