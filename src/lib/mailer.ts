@@ -112,10 +112,10 @@ export function buildRelanceHtml(d: { prenom: string; typePresta: string; prix: 
 // ─── Besoin d'informations pour établir le devis (suite au formulaire de contact) ─
 export const BESOIN_INFOS_OBJET = "Votre demande de devis — informations complémentaires | KinouClean";
 
-export function buildBesoinInfosHtml(d: { prenom: string; typePresta: string }): string {
+export function buildBesoinInfosHtml(d: { prenom?: string; nom?: string; genre?: string; typePresta: string }): string {
   const presta = d.typePresta ? ` concernant votre projet de <strong>${d.typePresta.toLowerCase()}</strong>` : "";
   return shell(`
-    <p style="font-size:16px;color:#1F2937;margin:0 0 16px;">Bonjour ${d.prenom || ""},</p>
+    <p style="font-size:16px;color:#1F2937;margin:0 0 16px;">${salutation(d.genre, d.nom)}</p>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 16px;">
       Nous avons bien reçu votre demande transmise via notre <strong>formulaire de contact</strong>${presta}, et nous vous en remercions.
     </p>
@@ -342,7 +342,7 @@ export const PROSPECT_RELANCE_OBJET: Record<number, string> = {
   3: "Votre devis KinouClean — une offre pour vous décider 🎁",
 };
 
-export function buildProspectRelanceHtml(niveau: number, d: { prenom: string; prestation: string; devisDate?: string; prix?: string }): string {
+export function buildProspectRelanceHtml(niveau: number, d: { prenom?: string; nom?: string; genre?: string; prestation: string; devisDate?: string; prix?: string }): string {
   const presta = d.prestation ? ` pour votre projet de <strong>${d.prestation.toLowerCase()}</strong>` : "";
   const prixNum = parseFloat((d.prix || "").replace(",", "."));
   const remise = !isNaN(prixNum) && prixNum > 0 ? prixNum * 0.9 : null;
@@ -363,7 +363,7 @@ export function buildProspectRelanceHtml(niveau: number, d: { prenom: string; pr
   }
 
   return shell(`
-    <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour ${d.prenom || ""},</p>
+    <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">${salutation(d.genre, d.nom)}</p>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 18px;">${intro}</p>
     ${bloc}
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;"><tr><td align="center">
@@ -376,7 +376,7 @@ export function buildProspectRelanceHtml(niveau: number, d: { prenom: string; pr
     <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0;">Bien cordialement,<br/><strong>L'équipe KinouClean</strong></p>`);
 }
 
-export async function sendProspectRelanceEmail(to: string, niveau: number, d: { prenom: string; prestation: string; devisDate?: string; prix?: string }): Promise<boolean> {
+export async function sendProspectRelanceEmail(to: string, niveau: number, d: { prenom?: string; nom?: string; genre?: string; prestation: string; devisDate?: string; prix?: string }): Promise<boolean> {
   const gmail = await getGmailTransporter();
   if (!gmail) return false;
   await gmail.transporter.sendMail({
@@ -416,7 +416,7 @@ function blocInfos(): string {
     </p>`;
 }
 
-export function buildProspectInfosRelanceHtml(niveau: number, d: { prenom: string; typePresta: string }): string {
+export function buildProspectInfosRelanceHtml(niveau: number, d: { prenom?: string; nom?: string; genre?: string; typePresta: string }): string {
   const presta = d.typePresta ? ` concernant votre projet de <strong>${d.typePresta.toLowerCase()}</strong>` : "";
   let intro = "";
   if (niveau <= 1) {
@@ -427,7 +427,7 @@ export function buildProspectInfosRelanceHtml(niveau: number, d: { prenom: strin
     intro = `Nous revenons une dernière fois vers vous${presta}. Sans nouvelles de votre part dans les prochains jours, nous clôturerons votre demande — mais il nous suffit d'un message pour la rouvrir à tout moment.`;
   }
   return shell(`
-    <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour ${d.prenom || ""},</p>
+    <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">${salutation(d.genre, d.nom)}</p>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 16px;">${intro}</p>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 12px;">Pour rappel, voici ce qui nous serait utile :</p>
     ${blocInfos()}
@@ -435,13 +435,13 @@ export function buildProspectInfosRelanceHtml(niveau: number, d: { prenom: strin
 }
 
 // Envoie la demande d'infos (niveau 0 = demande initiale) ou sa relance (1→3).
-export async function sendProspectInfosEmail(to: string, niveau: number, d: { prenom: string; typePresta: string }): Promise<boolean> {
+export async function sendProspectInfosEmail(to: string, niveau: number, d: { prenom?: string; nom?: string; genre?: string; typePresta: string }): Promise<boolean> {
   const gmail = await getGmailTransporter();
   if (!gmail) return false;
   await gmail.transporter.sendMail({
     from: `"KinouClean" <${gmail.user}>`, to,
     subject: PROSPECT_INFOS_OBJET[niveau] ?? PROSPECT_INFOS_OBJET[1],
-    html: niveau <= 0 ? buildBesoinInfosHtml({ prenom: d.prenom, typePresta: d.typePresta }) : buildProspectInfosRelanceHtml(niveau, d),
+    html: niveau <= 0 ? buildBesoinInfosHtml(d) : buildProspectInfosRelanceHtml(niveau, d),
   });
   return true;
 }
@@ -460,6 +460,15 @@ function civiliteDeGenre(genre?: string): string {
   return "";
 }
 
+// Salutation professionnelle : « Bonjour Monsieur/Madame NOM, » si la civilité
+// ET le nom de famille sont connus ; sinon simplement « Bonjour, » (jamais le
+// prénom). Utilisée pour les emails prospect (devis, demande d'infos, relances).
+export function salutation(genre?: string, nom?: string): string {
+  const civ = civiliteDeGenre(genre);
+  const n = (nom || "").trim();
+  return civ && n ? `Bonjour ${civ} ${cassepropre(n)},` : "Bonjour,";
+}
+
 export function buildDevisEmail(d: {
   prenom: string; nom: string; genre?: string; prestation: string; prestationVous: boolean;
   totalTTC: number; rac: number; avance: boolean;
@@ -468,8 +477,6 @@ export function buildDevisEmail(d: {
   // Objet volontairement générique : un devis peut comporter plusieurs lignes
   // (ex. 3 canapés différents) — on évite « canapé + canapé + canapé ».
   const objet = "Votre devis KinouClean";
-  const civ = civiliteDeGenre(d.genre);
-  const salut = civ && d.nom ? `${civ} ${cassepropre(d.nom)}` : (cassepropre(d.prenom) || "Madame, Monsieur");
   const ttc = eurNombre(d.totalTTC);
   const rac = eurNombre(d.rac);
   const P = (txt: string) => `<p style="font-size:15px;color:#374151;line-height:1.75;margin:0 0 16px;">${txt}</p>`;
@@ -491,7 +498,7 @@ export function buildDevisEmail(d: {
     ${P("Indiquez-moi votre adresse et le créneau qui vous conviendrait le mieux, et je vous réserve le rendez-vous.")}`;
 
   const html = shell(`
-    <p style="font-size:16px;color:#1F2937;margin:0 0 16px;">Bonjour ${salut},</p>
+    <p style="font-size:16px;color:#1F2937;margin:0 0 16px;">${salutation(d.genre, d.nom)}</p>
     ${d.avance ? corpsAvance : corpsSansAvance}
     <p style="font-size:15px;color:#374151;line-height:1.75;margin:20px 0 0;">Cordialement,</p>`);
 
