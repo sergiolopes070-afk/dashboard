@@ -136,5 +136,45 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ suivi: all[id], niveau });
   }
 
+  // ── Relance « auto » depuis le tableau de bord : envoie le bon mail selon l'état
+  // (devis déjà envoyé → relance devis ; demande d'infos envoyée → relance infos ;
+  // sinon → demande d'infos initiale) et REPROGRAMME la relance à demain (sort de
+  // « en retard »). Un seul clic, le serveur choisit le bon contenu.
+  if (action === "relance_auto") {
+    const { data: p } = await supabase
+      .from("prospects").select("prenom, nom, genre, email, type_presta, besoins, budget").eq("id", id).single();
+    if (!p) return NextResponse.json({ error: "Prospect introuvable" }, { status: 404 });
+    if (!p.email) return NextResponse.json({ error: "Ce prospect n'a pas d'adresse email." }, { status: 400 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const besoins: any[] = Array.isArray(p.besoins) ? p.besoins : [];
+    const prenom = (p.prenom as string) || "", nom = (p.nom as string) || "", genre = (p.genre as string) || "";
+    const typePresta = (besoins[0]?.typePresta as string) || (p.type_presta as string) || "";
+    const prix = (besoins[0]?.prix as string) || (p.budget as string) || "";
+    const demain = new Date(); demain.setDate(demain.getDate() + 1);
+    const demainIso = demain.toISOString().split("T")[0];
+
+    let ok = false; let suiviNext: Suivi;
+    if (cur.devisEnvoye) {
+      const niveau = Math.min((cur.relanceNiveau || 0) + 1, 3);
+      ok = await sendProspectRelanceEmail(p.email as string, niveau, { prenom, nom, genre, prestation: typePresta, devisDate: cur.devisDate, prix });
+      suiviNext = { ...cur, relanceNiveau: niveau, relanceDate: new Date().toISOString() };
+    } else if (cur.infosEnvoye) {
+      const niveau = Math.min((cur.infoRelanceNiveau || 0) + 1, 3);
+      ok = await sendProspectInfosEmail(p.email as string, niveau, { prenom, nom, genre, typePresta });
+      suiviNext = { ...cur, infoRelanceNiveau: niveau, relanceDate: new Date().toISOString() };
+    } else {
+      ok = await sendProspectInfosEmail(p.email as string, 0, { prenom, nom, genre, typePresta });
+      suiviNext = { ...cur, infosEnvoye: true, infosDate: todayFr, infoRelanceNiveau: 0 };
+    }
+    if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
+
+    all[id] = suiviNext;
+    const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(all));
+    if (errSet) return NextResponse.json({ error: `Email envoyé mais suivi non enregistré : ${errSet}` }, { status: 500 });
+    // Reprogramme la prochaine relance à demain (quitte « en retard ») + statut Relancé.
+    await supabase.from("prospects").update({ statut: "RELANCÉ", date_relance: demainIso, updated_at: new Date().toISOString() }).eq("id", id);
+    return NextResponse.json({ suivi: all[id], dateRelance: demainIso });
+  }
+
   return NextResponse.json({ error: "action invalide" }, { status: 400 });
 }

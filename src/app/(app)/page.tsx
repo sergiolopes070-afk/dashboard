@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   AlertTriangle, Clock, CalendarCheck, UserPlus, UserCheck,
   CalendarDays, ChevronRight, BellRing, ChevronDown, UserSearch, X, Loader2,
-  Package, Sparkles, Phone, ArrowRight, CheckCircle2,
+  Package, Sparkles, Phone, ArrowRight, CheckCircle2, Mail,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import StatusBadge from "@/components/StatusBadge";
@@ -150,6 +150,7 @@ export default function HomePage() {
   const [demandesModalOpen, setDemandesModalOpen] = useState(false);
   const [clotureOpen, setClotureOpen]         = useState(false); // modale « RDV à clôturer »
   const [relanceOpen, setRelanceOpen]         = useState(false); // modale « relances en retard »
+  const [rdvOpen, setRdvOpen]                 = useState(false); // modale « prochains rendez-vous »
   const [busyId, setBusyId]                   = useState("");    // action en cours sur une ligne
   const [clotPay, setClotPay]                 = useState<Record<string, string>>({}); // mode de paiement choisi par RDV
   const [rentaPeriod, setRentaPeriod]         = useState<"semaine" | "mois">("mois");
@@ -206,8 +207,9 @@ export default function HomePage() {
       .sort((a, b) => (frToDateMini(a.date)?.getTime() ?? 0) - (frToDateMini(b.date)?.getTime() ?? 0)),
     [stats?.prestations, today],
   );
+  // À relancer = aujourd'hui + en retard (⩽ aujourd'hui), pour la pop-up unique.
   const relanceEnRetard = useMemo(
-    () => prospects.filter(p => p.dateRelance && p.dateRelance < todayIso && !["CONVERTI", "PERDU"].includes(p.statut))
+    () => prospects.filter(p => p.dateRelance && p.dateRelance <= todayIso && !["CONVERTI", "PERDU"].includes(p.statut))
       .sort((a, b) => a.dateRelance.localeCompare(b.dateRelance)),
     [prospects, todayIso],
   );
@@ -236,6 +238,20 @@ export default function HomePage() {
     } catch { /* non bloquant */ }
     finally { setBusyId(""); }
   }
+  // Envoie le mail de relance adapté (devis / infos / demande initiale) et
+  // reprogramme à demain — directement depuis le tableau de bord.
+  async function relancerMail(id: string) {
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/prospects/${id}/relance`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "relance_auto" }),
+      });
+      const d = await res.json();
+      if (res.ok) setProspects(ps => ps.map(p => p.id === id ? { ...p, dateRelance: d.dateRelance ?? p.dateRelance, statut: "RELANCÉ" } : p));
+    } catch { /* non bloquant */ }
+    finally { setBusyId(""); }
+  }
 
   // ── Alerte produits intelligente ────────────────────────────────────────────
   const produitsAlerte = useMemo(() => stock.filter(it => {
@@ -257,6 +273,36 @@ export default function HomePage() {
   const congesAvenir = (stats?.prestataires ?? [])
     .flatMap(p => (p.indispos ?? []).filter(x => x.date >= todayIso).map(x => ({ nom: p.nom, ...x })))
     .sort((a, b) => (a.date + a.debut).localeCompare(b.date + b.debut));
+
+  // Congés groupés : on fusionne les jours ENTIERS consécutifs d'un même prestataire
+  // en une seule plage (« du 10 au 14 déc. »). Les créneaux partiels restent à part.
+  const congesGroupes = useMemo(() => {
+    const nextDay = (iso: string) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; };
+    const full = congesAvenir.filter(x => !x.debut && !x.fin);
+    const partials = congesAvenir.filter(x => x.debut || x.fin);
+    const byNom: Record<string, string[]> = {};
+    full.forEach(x => { (byNom[x.nom] ||= []).push(x.date); });
+    type Groupe = { nom: string; start: string; end: string; debut?: string; fin?: string; partial?: boolean };
+    const ranges: Groupe[] = [];
+    for (const nom of Object.keys(byNom)) {
+      const dates = [...new Set(byNom[nom])].sort();
+      let start = dates[0], prev = dates[0];
+      for (let i = 1; i < dates.length; i++) {
+        if (dates[i] === nextDay(prev)) { prev = dates[i]; }
+        else { ranges.push({ nom, start, end: prev }); start = dates[i]; prev = dates[i]; }
+      }
+      if (start) ranges.push({ nom, start, end: prev });
+    }
+    const parts: Groupe[] = partials.map(p => ({ nom: p.nom, start: p.date, end: p.date, debut: p.debut, fin: p.fin, partial: true }));
+    return [...ranges, ...parts].sort((a, b) => a.start.localeCompare(b.start));
+  }, [congesAvenir]);
+  // Libellé d'une plage : « le 10 déc. » / « du 10 au 14 déc. » / « du 30 nov. au 2 déc. ».
+  const fmtPlage = (start: string, end: string) => {
+    const j = (iso: string, withMonth: boolean) => { const d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("fr-FR", withMonth ? { day: "numeric", month: "short" } : { day: "numeric" }); };
+    if (start === end) return `le ${j(start, true)}`;
+    const sameMonth = start.slice(0, 7) === end.slice(0, 7);
+    return `du ${j(start, !sameMonth)} au ${j(end, true)}`;
+  };
 
   const greeting = (() => { const h = new Date().getHours(); return h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; })();
   const dateLabel = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
@@ -482,7 +528,7 @@ export default function HomePage() {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold text-gray-900">📅 Prochains rendez-vous</h2>
-              <a href="/agenda" className="text-sm text-blue-600 hover:underline font-medium">Agenda</a>
+              <button type="button" onClick={() => setRdvOpen(true)} className="text-sm text-blue-600 hover:underline font-medium">Tout voir</button>
             </div>
             <div className="space-y-2">
               {stats.upcomingList.map((p) => (
@@ -512,7 +558,7 @@ export default function HomePage() {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold text-gray-900 flex items-center gap-2"><BellRing size={16} className="text-amber-500" /> À relancer aujourd&apos;hui</h2>
-              <a href="/prospects" className="text-sm text-blue-600 hover:underline font-medium">Tout voir</a>
+              <button type="button" onClick={() => setRelanceOpen(true)} className="text-sm text-blue-600 hover:underline font-medium">Tout voir</button>
             </div>
             <div className="space-y-2">
               {aRelancer.slice(0, 4).map(p => {
@@ -553,10 +599,12 @@ export default function HomePage() {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
             <h2 className="font-bold text-gray-900 flex items-center gap-2 mb-3">🌴 Congés &amp; indispos à venir</h2>
             <div className="space-y-1.5">
-              {congesAvenir.slice(0, 8).map((c, i) => (
-                <div key={i} className="flex items-center justify-between text-sm">
+              {congesGroupes.slice(0, 8).map((c, i) => (
+                <div key={i} className="flex items-center justify-between text-sm gap-2">
                   <span className="text-gray-700 font-medium">{c.nom}</span>
-                  <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">{c.date.split("-").reverse().join("/")}{(c.debut || c.fin) ? ` · ${c.debut || "…"}–${c.fin || "…"}` : " · journée"}</span>
+                  <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md text-right">
+                    {c.partial ? `${fmtPlage(c.start, c.end)} · ${c.debut || "…"}–${c.fin || "…"}` : fmtPlage(c.start, c.end)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -714,7 +762,7 @@ export default function HomePage() {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setRelanceOpen(false); }}>
           <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-              <h2 className="font-bold text-gray-900 flex items-center gap-2">⏰ Relances en retard <span className="text-xs font-normal text-gray-400">{relanceEnRetard.length}</span></h2>
+              <h2 className="font-bold text-gray-900 flex items-center gap-2">⏰ À relancer <span className="text-xs font-normal text-gray-400">{relanceEnRetard.length}</span></h2>
               <button onClick={() => setRelanceOpen(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><X size={18} /></button>
             </div>
             <div className="overflow-y-auto flex-1 p-4 space-y-2.5">
@@ -731,12 +779,16 @@ export default function HomePage() {
                         <p className="text-[11px] text-red-500">À relancer depuis le {p.dateRelance.slice(0, 10).split("-").reverse().join("/")}{p.typePresta ? ` · ${p.typePresta}` : ""}</p>
                       </div>
                     </div>
-                    <div className="flex gap-2 mt-2.5">
+                    <div className="flex flex-wrap gap-2 mt-2.5">
+                      <button onClick={() => relancerMail(p.id)} disabled={busyId === p.id}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 flex-shrink-0">
+                        {busyId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />} Mail de relance
+                      </button>
                       {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 flex-shrink-0"><Phone size={14} /> WhatsApp</a>}
                       {p.tel && <a href={`tel:${p.tel}`} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50 flex-shrink-0"><Phone size={14} /> Appeler</a>}
                       <button onClick={() => reporterRelance(p.id, demain)} disabled={busyId === p.id}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-100 text-amber-800 text-sm font-medium hover:bg-amber-200 disabled:opacity-50">
-                        {busyId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />} Reporter à demain
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-100 text-amber-800 text-sm font-medium hover:bg-amber-200 disabled:opacity-50 flex-shrink-0">
+                        {busyId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />} Reporter
                       </button>
                     </div>
                   </div>
@@ -745,6 +797,47 @@ export default function HomePage() {
             </div>
             <div className="px-4 py-2.5 border-t border-gray-100 text-center flex-shrink-0">
               <a href="/prospects" className="text-xs text-gray-400 hover:text-gray-600">Ouvrir la page prospects pour plus d'options</a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pop-up « Prochains rendez-vous » ── */}
+      {rdvOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setRdvOpen(false); }}>
+          <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <h2 className="font-bold text-gray-900 flex items-center gap-2">📅 Prochains rendez-vous <span className="text-xs font-normal text-gray-400">{stats?.upcomingList.length ?? 0}</span></h2>
+              <button onClick={() => setRdvOpen(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><X size={18} /></button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-4 space-y-2.5">
+              {(stats?.upcomingList ?? []).length === 0 ? (
+                <div className="text-center py-10 text-gray-400"><CalendarDays size={36} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Aucun rendez-vous à venir</p></div>
+              ) : (stats?.upcomingList ?? []).map(p => {
+                const wa = p.tel ? `https://wa.me/${p.tel.replace(/\s/g, "").replace(/^0/, "33")}` : null;
+                return (
+                  <div key={p.row} className="rounded-xl border border-gray-100 p-3">
+                    <div className="flex items-start gap-3">
+                      <div className="text-center flex-shrink-0 w-12">
+                        <p className="text-sm font-bold text-blue-700 leading-tight">{p.date?.slice(0, 5)}</p>
+                        {p.heure && <p className="text-[11px] text-gray-400">{p.heure}</p>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 truncate">{p.prenom} {p.nom}</p>
+                        <p className="text-xs text-gray-500 truncate">{p.typePresta}{p.prix ? ` · ${p.prix} €` : ""}{p.adresse ? ` — ${p.adresse}` : ""}</p>
+                        <p className="text-[11px] mt-0.5">{p.prestataire ? <span className="text-green-700 inline-flex items-center gap-1"><UserCheck size={11} />{p.prestataire}</span> : <span className="text-amber-600 inline-flex items-center gap-1"><Clock size={11} />À affecter</span>}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-2.5">
+                      {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600"><Phone size={13} /> WhatsApp</a>}
+                      {p.tel && <a href={`tel:${p.tel}`} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50"><Phone size={13} /> Appeler</a>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="px-4 py-2.5 border-t border-gray-100 text-center flex-shrink-0">
+              <a href="/agenda" className="text-xs text-gray-400 hover:text-gray-600">Ouvrir l'agenda pour gérer</a>
             </div>
           </div>
         </div>
