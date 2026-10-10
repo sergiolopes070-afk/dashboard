@@ -334,6 +334,39 @@ export async function sendRappelEmail(to: string, d: {
   return true;
 }
 
+// ─── Rappel d'INSCRIPTION à l'avance immédiate (SANS détails de RDV) — MANUEL ────
+// Message court et autonome : on invite le client à finaliser son inscription à
+// l'avance immédiate via son lien personnel (déjà transmis, aucun lien inséré),
+// pour fluidifier les RDV. Décliné en email (ci-dessous) et WhatsApp (EmailActions).
+export const INSCRIPTION_AVANCE_OBJET = "Avance immédiate : finalisez votre inscription (−50 %)";
+
+export function buildInscriptionAvanceHtml(d: { prenom: string }): string {
+  return shell(`
+    <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour ${d.prenom || ""},</p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 16px;">
+      Pour profiter de l'<strong>Avance Immédiate de l'URSSAF</strong>, il ne reste qu'une étape : <strong>finaliser votre inscription</strong> via le lien personnel que nous vous avons transmis. La démarche prend <strong>moins de 5 minutes</strong>, et vos informations ne servent qu'à l'URSSAF (nous n'y avons pas accès).
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;margin:0 0 18px;"><tr><td style="padding:14px 18px;font-size:14px;color:#065F46;line-height:1.6;">
+      <strong>💳 Vous ne réglez que la moitié</strong><br/>
+      Une fois inscrit, vous payez <strong>50 %</strong> de votre prestation : l'autre moitié est prise en charge <strong>directement par l'État</strong>. Vous n'avancez rien et n'attendez aucun remboursement.
+    </td></tr></table>
+    <p style="font-size:14px;color:#6B7280;line-height:1.7;margin:0 0 18px;">
+      Vous n'avez pas reçu votre lien, ou une question ? Répondez simplement à cet email ou appelez-nous au <strong>${TEL}</strong>.
+    </p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0;">À très bientôt,<br/><strong>L'équipe KinouClean</strong></p>`);
+}
+
+export async function sendInscriptionAvanceEmail(to: string, d: { prenom: string }): Promise<boolean> {
+  const gmail = await getGmailTransporter();
+  if (!gmail) return false;
+  await gmail.transporter.sendMail({
+    from: `"KinouClean" <${gmail.user}>`, to,
+    subject: INSCRIPTION_AVANCE_OBJET,
+    html: buildInscriptionAvanceHtml(d),
+  });
+  return true;
+}
+
 // ─── Relances PROSPECT (devis envoyé, sans réponse) — déclenchées MANUELLEMENT ──
 // 3 niveaux : rappel doux → relance → offre -10%. Le prospect a un devis envoyé.
 export const PROSPECT_RELANCE_OBJET: Record<number, string> = {

@@ -40,7 +40,7 @@ export default function EmailActions({
   heure?: string;
   compact?: boolean;
 }) {
-  const [busy, setBusy]            = useState<"" | "relance" | "besoin_infos" | "confirmation" | "rappel">("");
+  const [busy, setBusy]            = useState<"" | "relance" | "besoin_infos" | "confirmation" | "rappel" | "inscription">("");
   const [relanceNiveau, setNiveau] = useState<number | null>(null);
   const [confirmSent, setConfirmSent] = useState(false); // confirmation déjà envoyée ?
   const [rappelSent, setRappelSent]   = useState(false); // rappel de RDV déjà envoyé ?
@@ -124,6 +124,24 @@ export default function EmailActions({
     }
   }
 
+  // Rappel d'inscription à l'avance immédiate SEUL (sans détails de RDV) — email.
+  async function sendInscription() {
+    setBusy("inscription"); setFeedback("");
+    try {
+      const res = await fetch("/api/emails/send-inscription", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prestationId }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur");
+      setFeedback("✅ Rappel d'inscription à l'avance immédiate envoyé par email.");
+    } catch (e) {
+      setFeedback(`❌ ${e instanceof Error ? e.message : "Erreur d'envoi"}`);
+    } finally {
+      setBusy("");
+    }
+  }
+
   // Messages WhatsApp (envoi manuel) — professionnels, sans emoji, vouvoiement.
   const msgBesoinInfos =
     `Bonjour Madame, Monsieur,\n\n` +
@@ -167,6 +185,13 @@ export default function EmailActions({
     (resteWA != null ? `${ligneResteWA}\n` : "") +
     (resteWA != null ? `\nN'oubliez pas de finaliser votre inscription à l'avance immédiate.\n` : "") +
     `\nEn cas d'empêchement, prévenez-nous au plus tôt au 06 20 79 97 47. À très bientôt !\n\nL'équipe KinouClean`;
+
+  // Rappel d'INSCRIPTION à l'avance immédiate SEUL (sans détails de RDV) — WhatsApp.
+  const msgInscription =
+    `Bonjour ${prenom || ""} 👋,\n\n` +
+    `Pour profiter de l'avance immédiate (−50 % déduits tout de suite, sans rien avancer), il ne reste qu'à finaliser votre inscription via votre lien personnel. La démarche prend moins de 5 minutes et vos informations ne servent qu'à l'URSSAF.\n\n` +
+    `Une fois inscrit, vous ne réglez que la moitié de votre prestation : l'État prend en charge le reste.\n\n` +
+    `Vous n'avez pas reçu votre lien ou une question ? Répondez simplement à ce message. À très vite !\n\nL'équipe KinouClean`;
 
   const hasEmail = !!clientEmail;
   const hasTel   = !!clientTel;
@@ -225,6 +250,25 @@ export default function EmailActions({
           </div>
         </div>
       )}
+
+      {/* Rappel d'inscription à l'avance immédiate (seul, sans RDV) — toujours dispo */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="text-xs text-gray-600 font-medium">Rappel inscription ⚡</span>
+        <div className="flex gap-1.5">
+          {hasEmail && (
+            <button type="button" onClick={sendInscription} disabled={busy !== ""}
+              title="Rappel d'inscription à l'avance immédiate (sans détails de RDV) par email"
+              className={`${emailBtn} border-gray-200 text-gray-700 hover:border-blue-300 hover:bg-blue-50`}>
+              {busy === "inscription" ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />} Email
+            </button>
+          )}
+          {hasTel && (
+            <a href={waLink(clientTel!, msgInscription)} target="_blank" rel="noopener noreferrer" className={waBtn}>
+              <MessageCircle size={13} /> WhatsApp
+            </a>
+          )}
+        </div>
+      </div>
 
       {/* Besoin d'infos */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
