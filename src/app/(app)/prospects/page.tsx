@@ -479,10 +479,17 @@ function ProspectModal({
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ addComment: commentText.trim() }),
       });
-      const { comment } = await res.json();
-      const next = { ...p, commentaires: [...p.commentaires, comment] };
+      const d = await res.json();
+      // Ajouter une note = action faite → « à recontacter » aujourd'hui + sortie de « Nouveau ».
+      const next = {
+        ...p,
+        commentaires: [...p.commentaires, d.comment],
+        dateRelance : d.dateRelance ?? p.dateRelance,
+        statut      : d.statut ?? p.statut,
+      };
       setP(next);
-      onUpdated({ id: p.id, commentaires: next.commentaires });
+      setDraftStatut(next.statut);
+      onUpdated({ id: p.id, commentaires: next.commentaires, dateRelance: next.dateRelance, statut: next.statut });
       setCommentText("");
     } finally { setAddingComment(false); }
   }
@@ -607,11 +614,13 @@ function ProspectModal({
             ))}
           </div>
 
-          {/* Statut — on choisit (le bouton se met en avant), puis on valide en bas */}
+          {/* Statut — on choisit (le bouton se met en avant), puis on valide en bas.
+              « Converti » n'est pas un statut manuel : la conversion se fait via le
+              bouton « Convertir en client » plus bas. */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Statut</p>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-              {STATUTS.map(s => {
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {STATUTS.filter(s => s !== "CONVERTI").map(s => {
                 const sel = draftStatut === s;
                 return (
                   <button key={s} type="button" onClick={() => setDraftStatut(s)}
@@ -629,6 +638,19 @@ function ProspectModal({
             {draftStatut !== p.statut && (
               <p className="text-[11px] text-amber-600 mt-1.5">Statut modifié — clique sur <strong>Valider</strong> en bas pour enregistrer.</p>
             )}
+
+            {/* Recontacter à une date précise (ex. « rappelez-moi le 15 ») */}
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <label className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Calendar size={13} /> Recontacter le</label>
+              <input type="date" value={p.dateRelance ? p.dateRelance.slice(0, 10) : ""}
+                onChange={e => patch({ dateRelance: e.target.value })}
+                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              {p.dateRelance && (
+                <button type="button" onClick={() => patch({ dateRelance: "" })}
+                  className="text-[11px] text-gray-400 hover:text-gray-600 underline">retirer</button>
+              )}
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">Le prospect remonte dans « À rappeler » à cette date. Enregistré immédiatement.</p>
           </div>
 
           {/* Infos contact */}

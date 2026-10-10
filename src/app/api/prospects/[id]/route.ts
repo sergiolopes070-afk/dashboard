@@ -13,11 +13,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const { id } = params;
   const body = await req.json();
 
-  // Ajout d'un commentaire interne
+  // Ajout d'un commentaire interne. Ajouter une note = une action a eu lieu et on
+  // a des infos sur le prospect → on le marque « à recontacter » tout de suite :
+  // date de relance = aujourd'hui (remonte dans « À rappeler ») et sortie de « Nouveau ».
   if (body.addComment) {
     const { data: current } = await supabase
       .from("prospects")
-      .select("commentaires")
+      .select("commentaires, statut")
       .eq("id", id)
       .single();
 
@@ -27,15 +29,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       date : new Date().toISOString(),
       texte: body.addComment,
     };
+    const today = new Date().toISOString().split("T")[0];
+    const nouveauStatut = (current?.statut === "NOUVEAU") ? "CONTACTÉ" : (current?.statut as string);
     const { error } = await supabase
       .from("prospects")
       .update({
         commentaires: [...existing, newComment],
+        date_relance: today,
+        statut      : nouveauStatut,
         updated_at  : new Date().toISOString(),
       })
       .eq("id", id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ success: true, comment: newComment });
+    return NextResponse.json({ success: true, comment: newComment, dateRelance: today, statut: nouveauStatut });
   }
 
   // Mise à jour standard (statut, date_relance, notes, champs contact…)
