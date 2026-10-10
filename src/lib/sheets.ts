@@ -141,7 +141,9 @@ export async function getArchive(): Promise<Prestation[]> {
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
-  return (data || []).map(rowToPrestation);
+  // Fusionne le flag « a laissé un avis » (réglage avis_laisse) → champ avis = "OUI".
+  const avisMap = await getSettingJSON<Record<string, boolean>>("avis_laisse", {});
+  return (data || []).map(r => { const p = rowToPrestation(r); if (avisMap[p.row]) p.avis = "OUI"; return p; });
 }
 
 // ─── WRITE ───────────────────────────────────────────────────────────────────

@@ -52,7 +52,7 @@ export async function PATCH(req: Request) {
   const unauth = await requireAuth();
   if (unauth) return unauth;
   try {
-    const { id, reason, modePaiement } = await req.json();
+    const { id, reason, modePaiement, satisfaction, avisLaisse } = await req.json();
     if (!id) return NextResponse.json({ error: "id manquant" }, { status: 400 });
 
     // Type de la prestation (avant archivage) pour la consommation de stock.
@@ -64,6 +64,18 @@ export async function PATCH(req: Request) {
 
     await archivePrestation(id, reason || "", modePaiement || "");
     await clearRelanceTracking(id);
+
+    // Satisfaction (colonne) + « a laissé un avis » (réglage avis_laisse) saisis à l'archivage.
+    if (supabase && satisfaction != null && satisfaction !== "") {
+      try { await supabase.from("prestations").update({ satisfaction: parseInt(String(satisfaction)) || null }).eq("id", id); } catch { /* non bloquant */ }
+    }
+    if (avisLaisse != null) {
+      try {
+        const map = await getSettingJSON<Record<string, boolean>>("avis_laisse", {});
+        if (avisLaisse) map[id] = true; else delete map[id];
+        await setSettingRaw("avis_laisse", JSON.stringify(map));
+      } catch { /* non bloquant */ }
+    }
 
     // Clôture réelle (pas une annulation) → décrémente le stock selon les recettes.
     if (typePresta && !estAnnulation(reason || "")) {

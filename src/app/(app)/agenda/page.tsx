@@ -180,6 +180,7 @@ function DayDetailModal({
                             {Array.isArray(ev.photos) && ev.photos.length > 0 && (
                               <span className="shrink-0 text-[11px]" title={`${ev.photos.length} photo(s) d'intervention`}>📷 {ev.photos.length}</span>
                             )}
+                            {ev.avis === "OUI" && <span className="shrink-0 text-[11px]" title="Avis laissé">⭐</span>}
                             {ev.modePaiement && PAYMENT_ICONS[ev.modePaiement] && (
                               <span className="shrink-0 text-xs font-semibold px-1.5 py-0.5 rounded-full"
                                 style={{ backgroundColor: color.bg + "20", color: color.bg }}>
@@ -453,6 +454,8 @@ export default function AgendaPage() {
   const [archivePayment, setArchivePayment] = useState("");
   const [archiveComment, setArchiveComment] = useState("");
   const [archiveSendAvis, setArchiveSendAvis] = useState(true); // demander un avis au client à l'archivage
+  const [archiveSatisf,  setArchiveSatisf]  = useState(0);     // satisfaction 1-5 (0 = non noté)
+  const [archiveAvisLaisse, setArchiveAvisLaisse] = useState(false); // le client a laissé un avis Google
   const [archiving,      setArchiving]      = useState(false);
   const [avisGlobalActif, setAvisGlobalActif] = useState(true); // interrupteur global (Configuration)
 
@@ -628,13 +631,15 @@ export default function AgendaPage() {
       await fetch("/api/archive", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: prestationId, reason: fullReason, modePaiement: archivePayment }),
+        body: JSON.stringify({ id: prestationId, reason: fullReason, modePaiement: archivePayment, satisfaction: archiveSatisf || "", avisLaisse: archiveAvisLaisse }),
       });
       setArchiveEv(null);
       setArchiveReason("");
       setArchivePayment("");
       setArchiveComment("");
       setArchiveSendAvis(true);
+      setArchiveSatisf(0);
+      setArchiveAvisLaisse(false);
       loadData();
       toast.success("Prestation archivée");
 
@@ -931,6 +936,7 @@ export default function AgendaPage() {
                         {Array.isArray(ev.photos) && ev.photos.length > 0 && (
                           <span className="text-[11px] mt-0.5 text-gray-600" title={`${ev.photos.length} photo(s) d'intervention`}>📷 {ev.photos.length} photo{ev.photos.length > 1 ? "s" : ""}</span>
                         )}
+                        {ev.avis === "OUI" && <span className="text-[11px] mt-0.5 text-amber-600" title="Avis laissé">⭐ Avis</span>}
                       </div>
                     </button>
                   );
@@ -1098,6 +1104,9 @@ export default function AgendaPage() {
                             {Array.isArray(ev.photos) && ev.photos.length > 0 && (
                               <span className="absolute top-0 right-0 z-20 inline-flex items-center rounded-bl-md bg-black/55 text-white text-[9px] font-bold px-1 py-0.5 leading-none" title={`${ev.photos.length} photo(s) d'intervention`}>📷{ev.photos.length}</span>
                             )}
+                            {ev.avis === "OUI" && (
+                              <span className="absolute top-0 left-0 z-20 inline-flex items-center rounded-br-md bg-amber-400 text-white text-[9px] font-bold px-1 py-0.5 leading-none" title="Avis laissé">⭐</span>
+                            )}
                             <div className="px-1.5 py-1 h-full flex flex-col overflow-hidden gap-px">
                               {ev.heure && (
                                 <span className="font-bold leading-tight truncate text-[11px]" style={{ color: isArchived ? "#9CA3AF" : color.bg }}>{ev.heure}</span>
@@ -1178,6 +1187,9 @@ export default function AgendaPage() {
                             style={{ backgroundColor: isArchived ? "#F3F4F6" : color.light }}>
                             {Array.isArray(ev.photos) && ev.photos.length > 0 && (
                               <span className="absolute top-0 right-0 z-20 inline-flex items-center rounded-bl bg-black/55 text-white text-[9px] font-bold px-1 py-0.5 leading-none" title={`${ev.photos.length} photo(s) d'intervention`}>📷{ev.photos.length}</span>
+                            )}
+                            {ev.avis === "OUI" && (
+                              <span className="absolute top-0 left-0 z-20 inline-flex items-center rounded-br bg-amber-400 text-white text-[9px] font-bold px-1 py-0.5 leading-none" title="Avis laissé">⭐</span>
                             )}
                             <button
                               onClick={e => { e.stopPropagation(); setSelectedEvent(ev); }}
@@ -1411,6 +1423,18 @@ export default function AgendaPage() {
                       {estInscritAvance(ev.tel, ev.email) && (
                         <div className="mb-3 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
                           <CheckCircle2 size={13} /> Inscrit à l&apos;avance immédiate ⚡
+                        </div>
+                      )}
+                      {(ev.satisfaction || ev.avis === "OUI") && (
+                        <div className="mb-3 flex flex-wrap gap-2">
+                          {ev.satisfaction ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-700 bg-gray-100 border border-gray-200 px-2.5 py-1 rounded-full">
+                              {["😠", "🙁", "😐", "🙂", "😄"][ev.satisfaction - 1]} Satisfaction {ev.satisfaction}/5
+                            </span>
+                          ) : null}
+                          {ev.avis === "OUI" && (
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">⭐ Avis laissé</span>
+                          )}
                         </div>
                       )}
                       <div className="space-y-1.5 text-sm text-gray-700">
@@ -1888,6 +1912,26 @@ export default function AgendaPage() {
               value={archiveComment}
               onChange={e => setArchiveComment(e.target.value)}
             />
+
+            {/* Satisfaction client + avis laissé — seulement si prestation réalisée */}
+            {!isCancellationReason(archiveReason) && (
+              <div className="mb-3 rounded-xl border border-gray-100 p-3">
+                <p className="text-xs font-medium text-gray-600 mb-2">Satisfaction du client <span className="text-gray-400 font-normal">(optionnel)</span></p>
+                <div className="flex items-center justify-between gap-1">
+                  {[{ e: "😠", n: 1 }, { e: "🙁", n: 2 }, { e: "😐", n: 3 }, { e: "🙂", n: 4 }, { e: "😄", n: 5 }].map(({ e, n }) => (
+                    <button key={n} type="button" onClick={() => setArchiveSatisf(archiveSatisf === n ? 0 : n)}
+                      title={["Très mécontent", "Mécontent", "Neutre", "Content", "Très content"][n - 1]}
+                      className={`flex-1 py-1.5 rounded-lg text-2xl transition-all ${archiveSatisf === n ? "bg-emerald-50 scale-110" : "grayscale opacity-50 hover:opacity-80"}`}>
+                      {e}
+                    </button>
+                  ))}
+                </div>
+                <label className="flex items-center gap-2.5 mt-3 pt-3 border-t border-gray-100 cursor-pointer">
+                  <input type="checkbox" checked={archiveAvisLaisse} onChange={e => setArchiveAvisLaisse(e.target.checked)} className="w-4 h-4 accent-yellow-500" />
+                  <span className="text-sm text-gray-700">⭐ Le client a laissé un avis (Google)</span>
+                </label>
+              </div>
+            )}
 
             {/* Demande d'avis — proposée seulement si prestation réalisée (pas une annulation) */}
             {!isCancellationReason(archiveReason) && (
