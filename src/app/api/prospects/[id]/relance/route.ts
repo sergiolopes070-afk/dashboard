@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { getSettingJSON, setSettingRaw } from "@/lib/settings";
-import { sendProspectRelanceEmail, sendDevisEmail } from "@/lib/mailer";
+import { sendProspectRelanceEmail, sendDevisEmail, sendProspectInfosEmail } from "@/lib/mailer";
 import { buildProspectDevis } from "@/lib/prospectDevis";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export const maxDuration = 60; // génération PDF (Chromium) incluse
 //   POST { action: "relance" }             → envoie la relance suivante (1→2→3), statut → RELANCÉ.
 const SUIVI_KEY = "prospects_suivi";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Suivi = { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string; devisNum?: string; avanceImmediate?: boolean } & Record<string, any>;
+type Suivi = { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string; devisNum?: string; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number } & Record<string, any>;
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const unauth = await requireAuth();
@@ -101,6 +101,35 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(all));
     if (errSet) return NextResponse.json({ error: `Relance envoyée mais suivi non enregistré : ${errSet}` }, { status: 500 });
     await supabase.from("prospects").update({ statut: "RELANCÉ", updated_at: new Date().toISOString() }).eq("id", id);
+    return NextResponse.json({ suivi: all[id], niveau });
+  }
+
+  // ── Parcours « demande d'informations » (prospect injoignable) ──
+  // demande_infos = envoi initial ; relance_infos = relance 1→3. Clôture auto
+  // gérée comme les autres relances (via relanceDate, 3 j après la dernière).
+  if (action === "demande_infos" || action === "relance_infos") {
+    const { data: p } = await supabase
+      .from("prospects").select("prenom, email, type_presta, besoins").eq("id", id).single();
+    if (!p) return NextResponse.json({ error: "Prospect introuvable" }, { status: 404 });
+    if (!p.email) return NextResponse.json({ error: "Ce prospect n'a pas d'adresse email — ajoute-la avant d'envoyer la demande d'infos." }, { status: 400 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const besoins: any[] = Array.isArray(p.besoins) ? p.besoins : [];
+    const typePresta = (besoins[0]?.typePresta as string) || (p.type_presta as string) || "";
+    const prenom = (p.prenom as string) || "";
+
+    const niveau = action === "demande_infos" ? 0 : Math.min((cur.infoRelanceNiveau || 0) + 1, 3);
+    const ok = await sendProspectInfosEmail(p.email as string, niveau, { prenom, typePresta });
+    if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
+
+    if (action === "demande_infos") {
+      all[id] = { ...cur, infosEnvoye: true, infosDate: todayFr, infoRelanceNiveau: 0 };
+      if (!cur.devisEnvoye) await supabase.from("prospects").update({ statut: "CONTACTÉ", updated_at: new Date().toISOString() }).eq("id", id).eq("statut", "NOUVEAU");
+    } else {
+      all[id] = { ...cur, infoRelanceNiveau: niveau, relanceDate: new Date().toISOString() };
+      await supabase.from("prospects").update({ statut: "RELANCÉ", updated_at: new Date().toISOString() }).eq("id", id);
+    }
+    const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(all));
+    if (errSet) return NextResponse.json({ error: `Email envoyé mais suivi non enregistré : ${errSet}` }, { status: 500 });
     return NextResponse.json({ suivi: all[id], niveau });
   }
 

@@ -56,7 +56,7 @@ interface Prospect {
 }
 
 // Suivi commercial d'un prospect (stocké dans settings/prospects_suivi).
-interface Suivi { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string; avanceImmediate?: boolean }
+interface Suivi { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number }
 
 // Une prestation souhaitée notée sur le prospect (même forme que les articles client).
 // `details` = valeurs structurées des champs intelligents (tissu, places…), pour
@@ -314,7 +314,7 @@ function ProspectModal({
   const [coordForm, setCoordForm] = useState({ tel: prospect.tel, email: prospect.email, adresse: prospect.adresse, budget: prospect.budget });
   const [draft, setDraft] = useState<Besoin>({ typePresta: "", quantite: "1", prix: "" }); // saisie d'une prestation souhaitée
   const [draftStatut, setDraftStatut] = useState<string>(prospect.statut); // statut choisi, en attente de validation
-  const [actionBusy, setActionBusy] = useState<"" | "devis" | "relance" | "avance">("");
+  const [actionBusy, setActionBusy] = useState<"" | "devis" | "relance" | "avance" | "infos" | "relance_infos">("");
   const toast = useToast();
   const commentsEndRef = useRef<HTMLDivElement>(null);
 
@@ -427,6 +427,46 @@ function ProspectModal({
       setDraftStatut("RELANCÉ");
       onUpdated({ id: p.id, suivi: d.suivi, statut: "RELANCÉ" });
       toast.success(`Relance ${d.niveau} envoyée par email 📧`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
+    finally { setActionBusy(""); }
+  }
+
+  // ── Parcours « demande d'informations » (prospect injoignable) ──
+  async function envoyerDemandeInfos() {
+    const dest = p.email || "(aucun email)";
+    if (!confirm(`Envoyer une DEMANDE D'INFORMATIONS par email à ${p.prenom} ${p.nom} (${dest}) ?`)) return;
+    setActionBusy("infos");
+    try {
+      const res = await fetch(`/api/prospects/${p.id}/relance`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "demande_infos" }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur");
+      const statut = p.statut === "NOUVEAU" ? "CONTACTÉ" : p.statut;
+      setP(prev => ({ ...prev, suivi: d.suivi, statut }));
+      setDraftStatut(statut);
+      onUpdated({ id: p.id, suivi: d.suivi, statut });
+      toast.success("Demande d'informations envoyée 📧");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
+    finally { setActionBusy(""); }
+  }
+
+  async function envoyerRelanceInfos() {
+    const niveau = Math.min((p.suivi?.infoRelanceNiveau || 0) + 1, 3);
+    if (!confirm(`Envoyer la RELANCE ${niveau} (demande d'infos) par email à ${p.prenom} ${p.nom} ?\n\n(À ne faire que si le prospect n'a pas répondu.)`)) return;
+    setActionBusy("relance_infos");
+    try {
+      const res = await fetch(`/api/prospects/${p.id}/relance`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "relance_infos" }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur");
+      setP(prev => ({ ...prev, suivi: d.suivi, statut: "RELANCÉ" }));
+      setDraftStatut("RELANCÉ");
+      onUpdated({ id: p.id, suivi: d.suivi, statut: "RELANCÉ" });
+      toast.success(`Relance ${d.niveau} (infos) envoyée par email 📧`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
     finally { setActionBusy(""); }
   }
@@ -827,6 +867,61 @@ function ProspectModal({
                     );
                   })}
                   {niv >= 3 && <p className="text-[11px] text-gray-400">Les 3 relances ont été envoyées.</p>}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Demande d'information : prospect contacté mais injoignable (100% manuel) */}
+          <div className="bg-white border border-gray-200 rounded-xl p-3.5 space-y-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+              <MessageSquare size={12} className="text-indigo-500" /> Demande d'information
+            </p>
+            <p className="text-[11px] text-gray-400 -mt-1">Pour un prospect qui vous a contacté mais reste injoignable : on lui demande les infos manquantes, puis 3 relances, puis clôture.</p>
+
+            <button type="button" onClick={envoyerDemandeInfos} disabled={actionBusy !== "" || !p.email}
+              title={!p.email ? "Ce prospect n'a pas d'email — ajoute-le dans Coordonnées" : "Envoie l'email de demande d'informations"}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-indigo-300 bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:bg-gray-300 disabled:border-gray-200 transition-colors">
+              {actionBusy === "infos" ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
+              <span className="flex-1 text-left">{p.suivi?.infosEnvoye ? "Renvoyer la demande d'infos" : "Envoyer une demande d'infos"}</span>
+            </button>
+            {!p.email && <p className="text-[11px] text-amber-600 -mt-1">⚠️ Ajoute une adresse email au prospect (bloc Coordonnées).</p>}
+
+            {p.suivi?.infosEnvoye && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm">
+                <CheckCircle2 size={15} className="shrink-0" />
+                <span className="flex-1">Demande d'infos envoyée{p.suivi?.infosDate ? ` le ${p.suivi.infosDate}` : ""}</span>
+              </div>
+            )}
+
+            {/* Relances « infos » — visibles une fois la demande envoyée */}
+            {p.suivi?.infosEnvoye && (() => {
+              const niv = p.suivi?.infoRelanceNiveau || 0;
+              const labels: Record<number, string> = { 1: "Relance 1 · rappel", 2: "Relance 2 · relance", 3: "Relance 3 · dernière (avant clôture)" };
+              return (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-gray-400">Sans réponse ? Relance par email (à faire à la main) :</p>
+                  {[1, 2, 3].map(n => {
+                    const done = niv >= n;
+                    const isNext = niv + 1 === n;
+                    return (
+                      <div key={n} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
+                        done ? "bg-green-50 border-green-200 text-green-700"
+                        : isNext ? "bg-white border-indigo-200 text-gray-700"
+                        : "bg-gray-50 border-gray-100 text-gray-400"
+                      }`}>
+                        <span className="flex-1">{labels[n]}</span>
+                        {done ? <span className="text-xs font-medium">Envoyée ✓</span>
+                          : isNext ? (
+                            <button onClick={envoyerRelanceInfos} disabled={actionBusy !== ""}
+                              className="px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50">
+                              {actionBusy === "relance_infos" ? "Envoi…" : "Envoyer"}
+                            </button>
+                          ) : <span className="text-[11px]">en attente</span>}
+                      </div>
+                    );
+                  })}
+                  {niv >= 3 && <p className="text-[11px] text-gray-400">Les 3 relances ont été envoyées — clôture automatique en « perdu » faute de réponse.</p>}
                 </div>
               );
             })()}

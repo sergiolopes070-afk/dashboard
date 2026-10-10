@@ -405,6 +405,62 @@ export async function sendProspectRelanceEmail(to: string, niveau: number, d: { 
   return true;
 }
 
+// ─── DEMANDE D'INFORMATIONS (prospect contacté, injoignable) — MANUEL ───────────
+// Parcours parallèle au devis : on demande les infos nécessaires, puis on relance
+// (1→3), puis clôture automatique faute de réponse.
+export const PROSPECT_INFOS_OBJET: Record<number, string> = {
+  0: BESOIN_INFOS_OBJET,
+  1: "Votre demande KinouClean — nous attendons vos précisions",
+  2: "Votre demande KinouClean — avez-vous reçu notre message ?",
+  3: "Votre demande KinouClean — dernière relance avant clôture",
+};
+
+// Bloc « infos nécessaires » réutilisé dans toutes les relances.
+function blocInfos(): string {
+  return `
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#F9FAFB;border-radius:10px;padding:18px 20px;margin:0 0 20px;">
+      <tr><td style="font-size:14px;color:#374151;line-height:1.9;">
+        • La <strong>surface</strong> concernée ou le <strong>nombre de pièces</strong><br/>
+        • L'<strong>état</strong> des lieux / le niveau de salissure<br/>
+        • Les éventuelles <strong>contraintes d'accès</strong> (étage, ascenseur, stationnement…)<br/>
+        • La <strong>date</strong> ou la période souhaitée pour l'intervention
+      </td></tr>
+    </table>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 8px;">
+      Vous pouvez simplement <strong>répondre à cet email</strong>, ou nous joindre au <strong>${TEL}</strong>.
+    </p>`;
+}
+
+export function buildProspectInfosRelanceHtml(niveau: number, d: { prenom: string; typePresta: string }): string {
+  const presta = d.typePresta ? ` concernant votre projet de <strong>${d.typePresta.toLowerCase()}</strong>` : "";
+  let intro = "";
+  if (niveau <= 1) {
+    intro = `Nous revenons vers vous${presta}. Nous n'avons pas encore reçu les précisions nécessaires pour établir votre devis — un simple message de votre part suffit pour que nous avancions.`;
+  } else if (niveau === 2) {
+    intro = `Sauf erreur de notre part, nous n'avons pas eu de retour à notre précédent message${presta}. Nous restons à votre disposition : quelques informations nous permettraient de vous préparer un devis précis.`;
+  } else {
+    intro = `Nous revenons une dernière fois vers vous${presta}. Sans nouvelles de votre part dans les prochains jours, nous clôturerons votre demande — mais il nous suffit d'un message pour la rouvrir à tout moment.`;
+  }
+  return shell(`
+    <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour ${d.prenom || ""},</p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 16px;">${intro}</p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 12px;">Pour rappel, voici ce qui nous serait utile :</p>
+    ${blocInfos()}
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:16px 0 0;">Bien cordialement,<br/><strong>L'équipe KinouClean</strong></p>`);
+}
+
+// Envoie la demande d'infos (niveau 0 = demande initiale) ou sa relance (1→3).
+export async function sendProspectInfosEmail(to: string, niveau: number, d: { prenom: string; typePresta: string }): Promise<boolean> {
+  const gmail = await getGmailTransporter();
+  if (!gmail) return false;
+  await gmail.transporter.sendMail({
+    from: `"KinouClean" <${gmail.user}>`, to,
+    subject: PROSPECT_INFOS_OBJET[niveau] ?? PROSPECT_INFOS_OBJET[1],
+    html: niveau <= 0 ? buildBesoinInfosHtml({ prenom: d.prenom, typePresta: d.typePresta }) : buildProspectInfosRelanceHtml(niveau, d),
+  });
+  return true;
+}
+
 // ─── Envoi du DEVIS par email (devis joint) — déclenché MANUELLEMENT ────────────
 // Mail commercial : rassure, explique l'Avance Immédiate simplement (reste à
 // charge = 50 % mis en avant AVANT le total), et demande adresse + créneau.
