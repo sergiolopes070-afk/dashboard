@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   const unauth = await requireAuth();
   if (unauth) return unauth;
   try {
-    const { action, fromId, date, heure } = await req.json() as { action?: string; fromId?: string; date?: string; heure?: string };
+    const { action, fromId, date, heure, prestataire } = await req.json() as { action?: string; fromId?: string; date?: string; heure?: string; prestataire?: string };
     if (action !== "reprogram2") return NextResponse.json({ error: "action invalide" }, { status: 400 });
     if (!fromId || !date) return NextResponse.json({ error: "fromId et date requis" }, { status: 400 });
     if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
@@ -34,6 +34,8 @@ export async function POST(req: Request) {
       prix      : "0",
       message   : PASSAGE2_TAG + " (offre fidélité)",
     });
+    // Assigne le prestataire choisi (par nom → prestataire_id), si fourni.
+    if (prestataire) { try { await updatePrestation(id, { prestataire }); } catch { /* non bloquant */ } }
     return NextResponse.json({ success: true, id });
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Erreur inconnue" }, { status: 500 });

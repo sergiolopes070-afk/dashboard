@@ -379,6 +379,7 @@ export default function AgendaPage() {
   const [reprog2Open, setReprog2Open] = useState(false);
   const [reprog2Date, setReprog2Date] = useState("");
   const [reprog2Hrs,  setReprog2Hrs]  = useState("");
+  const [reprog2Presta, setReprog2Presta] = useState("");
   const [reprog2Busy, setReprog2Busy] = useState(false);
   async function reprogram2(fromId: string) {
     if (!reprog2Date) return;
@@ -386,11 +387,11 @@ export default function AgendaPage() {
     try {
       const res = await fetch("/api/prestations", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reprogram2", fromId, date: reprog2Date, heure: reprog2Hrs }),
+        body: JSON.stringify({ action: "reprogram2", fromId, date: reprog2Date, heure: reprog2Hrs, prestataire: reprog2Presta }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Erreur");
-      setReprog2Open(false); setReprog2Date(""); setReprog2Hrs(""); setSelectedEvent(null);
+      setReprog2Open(false); setReprog2Date(""); setReprog2Hrs(""); setReprog2Presta(""); setSelectedEvent(null);
       loadData();
       toast.success("2ème passage gratuit programmé ✅");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
@@ -1754,6 +1755,11 @@ export default function AgendaPage() {
                               <input type="time" value={reprog2Hrs} onChange={e => setReprog2Hrs(e.target.value)}
                                 className="w-28 border border-emerald-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
                             </div>
+                            <select value={reprog2Presta} onChange={e => setReprog2Presta(e.target.value)}
+                              className="w-full border border-emerald-200 rounded-lg px-2.5 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                              <option value="">Prestataire : à affecter plus tard</option>
+                              {prestataires.map(pr => <option key={pr.nom} value={pr.nom}>{pr.nom}</option>)}
+                            </select>
                             <div className="flex gap-2">
                               <button type="button" onClick={() => setReprog2Open(false)}
                                 className="flex-1 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-50">Annuler</button>
