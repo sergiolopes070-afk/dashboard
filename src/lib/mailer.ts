@@ -125,25 +125,7 @@ export function buildBesoinInfosHtml(d: { prenom: string; typePresta: string }):
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 12px;">
       Afin d'établir un <strong>devis précis et personnalisé</strong>, quelques précisions nous seraient utiles :
     </p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#F9FAFB;border-radius:10px;padding:18px 20px;margin:0 0 20px;">
-      <tr><td style="font-size:14px;color:#374151;line-height:1.9;">
-        • La <strong>surface</strong> concernée ou le <strong>nombre de pièces</strong><br/>
-        • L'<strong>état</strong> des lieux / le niveau de salissure<br/>
-        • Les éventuelles <strong>contraintes d'accès</strong> (étage, ascenseur, stationnement…)<br/>
-        • La <strong>date</strong> ou la période souhaitée pour l'intervention
-      </td></tr>
-    </table>
-    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 8px;">
-      Vous pouvez simplement <strong>répondre à cet email</strong> avec ces éléments, ou nous joindre directement :
-    </p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
-      <tr><td style="font-size:15px;color:#1C3557;line-height:1.8;font-weight:bold;">
-        📞 06 20 79 97 47
-      </td></tr>
-    </table>
-    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 4px;">
-      Nous restons à votre entière disposition et reviendrons vers vous dans les meilleurs délais.
-    </p>
+    ${blocInfos()}
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:16px 0 0;">
       Bien cordialement,<br/>
       <strong>L'équipe KinouClean</strong><br/>
@@ -415,19 +397,22 @@ export const PROSPECT_INFOS_OBJET: Record<number, string> = {
   3: "Votre demande KinouClean — dernière relance avant clôture",
 };
 
-// Bloc « infos nécessaires » réutilisé dans toutes les relances.
+// Numéro affiché dans les demandes d'infos (= numéro du site kinouclean.fr).
+const TEL_SITE = "01 70 25 39 85";
+
+// Bloc « infos nécessaires » (centré textile/mobilier) réutilisé partout.
 function blocInfos(): string {
   return `
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#F9FAFB;border-radius:10px;padding:18px 20px;margin:0 0 20px;">
       <tr><td style="font-size:14px;color:#374151;line-height:1.9;">
-        • La <strong>surface</strong> concernée ou le <strong>nombre de pièces</strong><br/>
-        • L'<strong>état</strong> des lieux / le niveau de salissure<br/>
-        • Les éventuelles <strong>contraintes d'accès</strong> (étage, ascenseur, stationnement…)<br/>
-        • La <strong>date</strong> ou la période souhaitée pour l'intervention
+        • Le <strong>type de prestation</strong> : canapé, matelas, fauteuil, chaises, tapis, vitres, sièges auto… <em>(ou autre)</em><br/>
+        • Le <strong>nombre de places</strong> (canapé, fauteuil) ou les <strong>dimensions</strong> (matelas, tapis)<br/>
+        • L'<strong>état</strong> / le niveau de salissure (taches à traiter…)<br/>
+        • La <strong>date</strong> ou la période souhaitée, et votre <strong>ville</strong>
       </td></tr>
     </table>
     <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 8px;">
-      Vous pouvez simplement <strong>répondre à cet email</strong>, ou nous joindre au <strong>${TEL}</strong>.
+      Vous pouvez simplement <strong>répondre à cet email</strong>, ou nous joindre au <strong>${TEL_SITE}</strong>.
     </p>`;
 }
 
