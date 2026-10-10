@@ -14,6 +14,8 @@ import { Prestation, Prestataire, Depense } from "@/lib/constants";
 // ── Mini agenda helpers ──────────────────────────────────────────────────────
 const PALETTE_MINI = ["#4285F4","#EA4335","#34A853","#FBBC04","#8B5CF6","#F97316","#06B6D4","#EC4899","#10B981","#6366F1"];
 const JOURS_MINI = ["L","M","M","J","V","S","D"];
+// Modes de paiement pour la clôture rapide depuis le tableau de bord (avance en 1er, ~90% des cas).
+const PAIEMENTS_CLOTURE = ["Avance immédiate", "Espèces", "Virement bancaire", "Carte sur place", "Chèque", "Lien de paiement"];
 
 function getMondayOfWeek(d: Date): Date {
   const day = d.getDay();
@@ -146,6 +148,10 @@ export default function HomePage() {
   const [showNewProspect, setShowNewProspect] = useState(false);
   const [showDropdown, setShowDropdown]       = useState(false);
   const [demandesModalOpen, setDemandesModalOpen] = useState(false);
+  const [clotureOpen, setClotureOpen]         = useState(false); // modale « RDV à clôturer »
+  const [relanceOpen, setRelanceOpen]         = useState(false); // modale « relances en retard »
+  const [busyId, setBusyId]                   = useState("");    // action en cours sur une ligne
+  const [clotPay, setClotPay]                 = useState<Record<string, string>>({}); // mode de paiement choisi par RDV
   const [rentaPeriod, setRentaPeriod]         = useState<"semaine" | "mois">("mois");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -193,6 +199,43 @@ export default function HomePage() {
   const aRelancer = prospects.filter(p => p.dateRelance && p.dateRelance <= todayIso && !["CONVERTI", "PERDU"].includes(p.statut));
   const rdvAujourdhui = (stats?.prestations ?? []).filter(p => { const d = frToDateMini(p.date); return d && sameDayMini(d, today); });
   const toReassign = stats?.toReassign ?? 0;
+
+  // ── Listes gérées en pop-up depuis le tableau de bord (sans quitter la page) ──
+  const rdvPasses = useMemo(
+    () => (stats?.prestations ?? []).filter(p => { const d = frToDateMini(p.date); return d && d < today; })
+      .sort((a, b) => (frToDateMini(a.date)?.getTime() ?? 0) - (frToDateMini(b.date)?.getTime() ?? 0)),
+    [stats?.prestations, today],
+  );
+  const relanceEnRetard = useMemo(
+    () => prospects.filter(p => p.dateRelance && p.dateRelance < todayIso && !["CONVERTI", "PERDU"].includes(p.statut))
+      .sort((a, b) => a.dateRelance.localeCompare(b.dateRelance)),
+    [prospects, todayIso],
+  );
+
+  // Clôture (archive) d'un RDV passé, avec le mode de paiement choisi → MAJ CA/stock.
+  async function cloturerRdv(id: string, modePaiement: string) {
+    setBusyId(id);
+    try {
+      await fetch("/api/archive", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, reason: "Prestation terminée", modePaiement }),
+      });
+      setStats(s => s ? { ...s, prestations: s.prestations.filter(p => p.row !== id) } : s);
+    } catch { /* non bloquant */ }
+    finally { setBusyId(""); }
+  }
+  // Reporte la relance d'un prospect à demain (reste géré depuis le tableau de bord).
+  async function reporterRelance(id: string, isoDate: string) {
+    setBusyId(id);
+    try {
+      await fetch(`/api/prospects/${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dateRelance: isoDate }),
+      });
+      setProspects(ps => ps.map(p => p.id === id ? { ...p, dateRelance: isoDate } : p));
+    } catch { /* non bloquant */ }
+    finally { setBusyId(""); }
+  }
 
   // ── Alerte produits intelligente ────────────────────────────────────────────
   const produitsAlerte = useMemo(() => stock.filter(it => {
@@ -290,16 +333,16 @@ export default function HomePage() {
           const leadsFroids  = prospects.filter(p => p.statut === "NOUVEAU" && p.createdAt && (now - new Date(p.createdAt).getTime()) / 86_400_000 > 3);
           const relanceRetard = prospects.filter(p => p.dateRelance && p.dateRelance < todayIso && !["CONVERTI", "PERDU"].includes(p.statut));
 
-          type Ins = { icon: string; color: string; title: string; text: string; href: string; cta: string };
+          type Ins = { icon: string; color: string; title: string; text: string; href: string; cta: string; modal?: "cloture" | "relance" };
           const ins: Ins[] = [];
           if (rdvPasses.length > 0)
-            ins.push({ icon: "🗓️", color: "blue", title: `${rdvPasses.length} RDV passé${rdvPasses.length > 1 ? "s" : ""} à clôturer`, text: `Clôture-les (archive) pour que ton CA réalisé${caM === 0 ? " (actuellement 0 €)" : ""} et ton stock soient justes.`, href: "/agenda", cta: "Clôturer" });
+            ins.push({ icon: "🗓️", color: "blue", title: `${rdvPasses.length} RDV passé${rdvPasses.length > 1 ? "s" : ""} à clôturer`, text: `Clôture-les (archive) pour que ton CA réalisé${caM === 0 ? " (actuellement 0 €)" : ""} et ton stock soient justes.`, href: "/agenda", cta: "Clôturer", modal: "cloture" });
           if (benefM < 0)
             ins.push({ icon: "📉", color: "orange", title: "Bénéfice du mois négatif", text: `${caM.toFixed(0)} € réalisé pour ${depM.toFixed(0)} € de charges. Encaisse tes prestations faites ou allège les charges fixes.`, href: "/depenses", cta: "Voir charges" });
           if (leadsFroids.length > 0)
             ins.push({ icon: "🔥", color: "purple", title: `${leadsFroids.length} lead${leadsFroids.length > 1 ? "s" : ""} en attente depuis +3 j`, text: "Un lead contacté vite convertit bien mieux. Rappelle-les tant qu'ils sont chauds.", href: "/prospects", cta: "Contacter" });
           if (relanceRetard.length > 0)
-            ins.push({ icon: "⏰", color: "amber", title: `${relanceRetard.length} relance${relanceRetard.length > 1 ? "s" : ""} en retard`, text: "Des prospects devaient être relancés avant aujourd'hui.", href: "/prospects", cta: "Relancer" });
+            ins.push({ icon: "⏰", color: "amber", title: `${relanceRetard.length} relance${relanceRetard.length > 1 ? "s" : ""} en retard`, text: "Des prospects devaient être relancés avant aujourd'hui.", href: "/prospects", cta: "Relancer", modal: "relance" });
           if (ins.length === 0)
             ins.push({ icon: "💪", color: "emerald", title: "Tout roule !", text: benefM > 0 ? `Bénéfice positif ce mois (+${benefM.toFixed(0)} €). Continue comme ça.` : "Aucune action urgente. Pense à démarcher pour remplir l'agenda.", href: "/agenda", cta: "Agenda" });
 
@@ -309,13 +352,21 @@ export default function HomePage() {
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <h2 className="font-bold text-gray-900 mb-3 flex items-center gap-2">🧭 À optimiser <span className="text-xs font-normal text-gray-400">tes priorités business</span></h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                {ins.slice(0, 3).map((x, i) => (
-                  <a key={i} href={x.href} className={`flex flex-col gap-1 p-3 rounded-xl border ${C[x.color]} hover:brightness-[0.98] transition-all`}>
-                    <p className={`text-sm font-semibold ${CT[x.color]} flex items-center gap-1.5`}><span>{x.icon}</span>{x.title}</p>
-                    <p className="text-xs text-gray-600 leading-snug">{x.text}</p>
-                    <span className={`text-xs font-medium ${CT[x.color]} inline-flex items-center gap-1 mt-1`}>{x.cta} <ArrowRight size={12} /></span>
-                  </a>
-                ))}
+                {ins.slice(0, 3).map((x, i) => {
+                  const inner = (
+                    <>
+                      <p className={`text-sm font-semibold ${CT[x.color]} flex items-center gap-1.5`}><span>{x.icon}</span>{x.title}</p>
+                      <p className="text-xs text-gray-600 leading-snug">{x.text}</p>
+                      <span className={`text-xs font-medium ${CT[x.color]} inline-flex items-center gap-1 mt-1`}>{x.cta} <ArrowRight size={12} /></span>
+                    </>
+                  );
+                  const cls = `flex flex-col gap-1 p-3 rounded-xl border text-left ${C[x.color]} hover:brightness-[0.98] transition-all`;
+                  return x.modal ? (
+                    <button key={i} type="button" onClick={() => x.modal === "cloture" ? setClotureOpen(true) : setRelanceOpen(true)} className={cls}>{inner}</button>
+                  ) : (
+                    <a key={i} href={x.href} className={cls}>{inner}</a>
+                  );
+                })}
               </div>
             </div>
           );
@@ -610,6 +661,90 @@ export default function HomePage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pop-up « RDV à clôturer » — géré sur place, sans quitter le tableau de bord ── */}
+      {clotureOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setClotureOpen(false); }}>
+          <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <h2 className="font-bold text-gray-900 flex items-center gap-2">🗓️ RDV à clôturer <span className="text-xs font-normal text-gray-400">{rdvPasses.length}</span></h2>
+              <button onClick={() => setClotureOpen(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><X size={18} /></button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-4 space-y-2.5">
+              {rdvPasses.length === 0 ? (
+                <div className="text-center py-10 text-gray-400"><CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Tout est clôturé 🎉</p></div>
+              ) : rdvPasses.map(p => {
+                const pay = clotPay[p.row] ?? "Avance immédiate";
+                return (
+                  <div key={p.row} className="rounded-xl border border-gray-100 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-900 truncate">{p.prenom} {p.nom}</p>
+                        <p className="text-[11px] text-gray-500">{p.date}{p.heure ? ` à ${p.heure}` : ""}{p.typePresta ? ` · ${p.typePresta}` : ""}</p>
+                      </div>
+                      {p.prix ? <span className="text-sm font-bold text-gray-700 flex-shrink-0">{p.prix} €</span> : null}
+                    </div>
+                    <div className="flex gap-2 mt-2.5">
+                      <select value={pay} onChange={e => setClotPay(m => ({ ...m, [p.row]: e.target.value }))}
+                        className="flex-1 border border-gray-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                        {PAIEMENTS_CLOTURE.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                      <button onClick={() => cloturerRdv(p.row, pay)} disabled={busyId === p.row}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 disabled:opacity-50 flex-shrink-0">
+                        {busyId === p.row ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Clôturer
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="px-4 py-2.5 border-t border-gray-100 text-center flex-shrink-0">
+              <a href="/agenda" className="text-xs text-gray-400 hover:text-gray-600">Ouvrir l'agenda pour plus d'options</a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pop-up « Relances en retard » — géré sur place ── */}
+      {relanceOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setRelanceOpen(false); }}>
+          <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <h2 className="font-bold text-gray-900 flex items-center gap-2">⏰ Relances en retard <span className="text-xs font-normal text-gray-400">{relanceEnRetard.length}</span></h2>
+              <button onClick={() => setRelanceOpen(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><X size={18} /></button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-4 space-y-2.5">
+              {relanceEnRetard.length === 0 ? (
+                <div className="text-center py-10 text-gray-400"><CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Aucune relance en retard 🎉</p></div>
+              ) : relanceEnRetard.map(p => {
+                const wa = p.tel ? `https://wa.me/${p.tel.replace(/\s/g, "").replace(/^0/, "33")}` : null;
+                const demain = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; })();
+                return (
+                  <div key={p.id} className="rounded-xl border border-gray-100 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-900 truncate">{p.prenom} {p.nom}</p>
+                        <p className="text-[11px] text-red-500">À relancer depuis le {p.dateRelance.slice(0, 10).split("-").reverse().join("/")}{p.typePresta ? ` · ${p.typePresta}` : ""}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-2.5">
+                      {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 flex-shrink-0"><Phone size={14} /> WhatsApp</a>}
+                      {p.tel && <a href={`tel:${p.tel}`} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50 flex-shrink-0"><Phone size={14} /> Appeler</a>}
+                      <button onClick={() => reporterRelance(p.id, demain)} disabled={busyId === p.id}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-100 text-amber-800 text-sm font-medium hover:bg-amber-200 disabled:opacity-50">
+                        {busyId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />} Reporter à demain
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="px-4 py-2.5 border-t border-gray-100 text-center flex-shrink-0">
+              <a href="/prospects" className="text-xs text-gray-400 hover:text-gray-600">Ouvrir la page prospects pour plus d'options</a>
             </div>
           </div>
         </div>
