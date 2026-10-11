@@ -195,7 +195,7 @@ export default function ClientFiche({
     } catch { toast.error("Erreur lors de l'ajout du RDV"); }
     finally { setRdvSaving(false); }
   }
-  const RDV_TYPES = ["Ménage", "Repassage", "Vitres", "Lavage Canapé", "Lavage fauteuil", "Lavage chaises", "Lavage de matelas", "Lavage tapis", "Sièges auto", "Lavage véhicule", "Après travaux", "Bureaux", "Débarras", "Autre"];
+  const RDV_TYPES = ["Ménage", "Repassage", "Vitres", "Lavage Canapé", "Lavage fauteuil", "Lavage chaises", "Lavage de matelas", "Lavage tapis", "Lavage moquette", "Sièges auto", "Lavage véhicule", "Après travaux", "Bureaux", "Débarras", "Autre"];
 
   const fmtDate = (iso: string) => {
     const d = new Date(iso);

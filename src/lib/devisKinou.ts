@@ -70,7 +70,11 @@ export function mapLigne(typePresta: string, detail: string): { libelle: string;
   if (t.includes("fauteuil")) return { libelle: "Nettoyage fauteuil", chip: soin, description: DESC_STD };
   if (t.includes("chaise")) return { libelle: "Nettoyage chaise (à l'unité)", chip: "", description: DESC_STD };
   if (t.includes("pouf")) return { libelle: "Nettoyage pouf", chip: "", description: DESC_STD };
-  if (t.includes("tapis") || t.includes("moquette")) {
+  if (t.includes("moquette")) {
+    const surf = (d.match(/[\d.,]+\s*m²?/) || [])[0] || (d ? `${d} m²` : "");
+    return { libelle: `Nettoyage moquette${surf ? ` — ${surf}` : ""}`, chip: soin, description: DESC_STD };
+  }
+  if (t.includes("tapis")) {
     const surf = (d.match(/[\d.,]+\s*m²?/) || [])[0];
     return { libelle: `Nettoyage tapis${surf ? ` — ${surf}` : ""}`, chip: soin, description: DESC_STD };
   }

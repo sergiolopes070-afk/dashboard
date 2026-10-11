@@ -32,6 +32,7 @@ const TYPES_PRESTA = [
   "Lavage chaises",
   "Lavage de matelas",
   "Lavage tapis",
+  "Lavage moquette",
   "Sièges auto",
   "Lavage véhicule",
   "Autre",

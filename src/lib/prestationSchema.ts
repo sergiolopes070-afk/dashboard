@@ -35,7 +35,13 @@ export const PRESTATION_SCHEMAS: PrestaSchema[] = [
     ],
   },
   {
-    match: ["tapis", "moquette"],
+    match: ["moquette"],
+    fields: [
+      { key: "surface", label: "Surface", type: "number", suffix: "m²", placeholder: "m²" },
+    ],
+  },
+  {
+    match: ["tapis"],
     fields: [
       { key: "dimensions", label: "Dimensions", type: "text", placeholder: "ex : 2×3 m / 6 m²" },
     ],

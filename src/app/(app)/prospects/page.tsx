@@ -78,7 +78,7 @@ const SOURCES = ["Google", "Réseaux sociaux", "Bouche à oreille", "Recommandat
 const TYPES_PRESTA = [
   "Ménage", "Repassage", "Vitres", "Débarras", "Après travaux", "Bureaux",
   "Lavage Canapé", "Lavage fauteuil", "Lavage chaises", "Lavage de matelas",
-  "Lavage tapis", "Sièges auto", "Lavage véhicule", "Autre",
+  "Lavage tapis", "Lavage moquette", "Sièges auto", "Lavage véhicule", "Autre",
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

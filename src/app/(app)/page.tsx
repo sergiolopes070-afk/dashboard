@@ -43,7 +43,7 @@ interface Demande { id: string; at: string; prestataireNom: string; categorie: s
 interface StockItem { id: string; nom: string; unite: string; quantite: number; seuil: number; prixUnitaire: number | null; conso: Record<string, number>; historique: { date: string; type: string; quantite: number }[]; }
 
 const SOURCES_PROSPECT   = ["Google","Réseaux sociaux","Bouche à oreille","Recommandation","Formulaire web","Autre"];
-const TYPES_PRESTA_QUICK = ["Ménage","Repassage","Vitres","Débarras","Après travaux","Bureaux","Lavage Canapé","Lavage véhicule","Lavage de matelas","Autre"];
+const TYPES_PRESTA_QUICK = ["Ménage","Repassage","Vitres","Débarras","Après travaux","Bureaux","Lavage Canapé","Lavage véhicule","Lavage de matelas","Lavage tapis","Lavage moquette","Autre"];
 
 // Autonomie d'un produit = stock / consommation hebdo réelle (sorties 30 j).
 function autonomieSemaines(it: StockItem): number | null {
