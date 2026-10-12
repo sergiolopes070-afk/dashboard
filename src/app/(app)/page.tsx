@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   AlertTriangle, Clock, CalendarCheck, UserPlus, UserCheck,
   CalendarDays, ChevronRight, BellRing, ChevronDown, UserSearch, X, Loader2,
-  Package, Sparkles, Phone, ArrowRight, CheckCircle2, Mail,
+  Package, Sparkles, Phone, ArrowRight, CheckCircle2, Mail, Download, FileSpreadsheet,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import StatusBadge from "@/components/StatusBadge";
@@ -16,6 +16,20 @@ const PALETTE_MINI = ["#4285F4","#EA4335","#34A853","#FBBC04","#8B5CF6","#F97316
 const JOURS_MINI = ["L","M","M","J","V","S","D"];
 // Modes de paiement pour la clôture rapide depuis le tableau de bord (avance en 1er, ~90% des cas).
 const PAIEMENTS_CLOTURE = ["Avance immédiate", "Espèces", "Virement bancaire", "Carte sur place", "Chèque", "Lien de paiement"];
+
+// ── Export CSV (ouvre dans Excel/Sheets) ──────────────────────────────────────
+// BOM UTF-8 + séparateur « ; » pour un affichage correct des accents dans Excel FR.
+function toCsv(headers: string[], rows: (string | number)[][]): string {
+  const esc = (v: string | number) => { const s = String(v ?? ""); return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  return "﻿" + [headers, ...rows].map(r => r.map(esc).join(";")).join("\r\n");
+}
+function downloadCsv(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  a.remove(); URL.revokeObjectURL(url);
+}
 
 function getMondayOfWeek(d: Date): Date {
   const day = d.getDay();
@@ -147,6 +161,8 @@ export default function HomePage() {
   const [showNewClient, setShowNewClient]     = useState(false);
   const [showNewProspect, setShowNewProspect] = useState(false);
   const [showDropdown, setShowDropdown]       = useState(false);
+  const [showExport, setShowExport]           = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
   const [demandesModalOpen, setDemandesModalOpen] = useState(false);
   const [clotureOpen, setClotureOpen]         = useState(false); // modale « RDV à clôturer »
   const [relanceOpen, setRelanceOpen]         = useState(false); // modale « relances en retard »
@@ -157,10 +173,40 @@ export default function HomePage() {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) { if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowDropdown(false); }
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowDropdown(false);
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setShowExport(false);
+    }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  // ── Exports CSV (historique) ────────────────────────────────────────────────
+  const todayTag = () => new Date().toISOString().split("T")[0];
+  function exportPrestations() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const arch: any[] = stats?.archive ?? [];
+    const headers = ["Date", "Heure", "Client", "Téléphone", "Email", "Prestation", "Détail", "Adresse", "Prix (€)", "Mode paiement", "Prestataire", "Satisfaction", "Avis laissé", "Motif"];
+    const rows = arch.map(p => [
+      p.date || "", p.heure || "", `${p.prenom || ""} ${p.nom || ""}`.trim(), p.tel || "", p.email || "",
+      p.typePresta || "", p.quantite || "", p.adresse || "", p.prix || "", p.modePaiement || "", p.prestataire || "",
+      p.satisfaction ? `${p.satisfaction}/5` : "", p.avis === "OUI" ? "Oui" : "", p.archiveReason || "",
+    ]);
+    downloadCsv(`historique-prestations-${todayTag()}.csv`, toCsv(headers, rows));
+    setShowExport(false);
+  }
+  function exportProspects(perdusOnly = false) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let list: any[] = prospects as any[];
+    if (perdusOnly) list = list.filter(p => p.statut === "PERDU");
+    const headers = ["Date création", "Prénom", "Nom", "Téléphone", "Email", "Source", "Type prestation", "Statut", "Date relance", "Budget"];
+    const rows = list.map(p => [
+      p.createdAt ? new Date(p.createdAt).toLocaleDateString("fr-FR") : "", p.prenom || "", p.nom || "", p.tel || "",
+      p.email || "", p.source || "", p.typePresta || "", p.statut || "", p.dateRelance || "", p.budget || "",
+    ]);
+    downloadCsv(`${perdusOnly ? "prospects-perdus" : "prospects"}-${todayTag()}.csv`, toCsv(headers, rows));
+    setShowExport(false);
+  }
 
   const weekStart = useMemo(() => getMondayOfWeek(new Date()), []);
   const weekDays  = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysMini(weekStart, i)), [weekStart]);
@@ -323,6 +369,31 @@ export default function HomePage() {
         title="Tableau de bord" subtitle={dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)}
         onRefresh={load} loading={loading} alerts={toReassign + produitsAlerte.length + demandesNouvelles.length}
         action={
+          <div className="flex items-center gap-2">
+          <div className="relative" ref={exportRef}>
+            <button onClick={() => setShowExport(v => !v)} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50">
+              <Download size={15} /> <span className="hidden sm:inline">Exporter</span> <ChevronDown size={14} className={`transition-transform ${showExport ? "rotate-180" : ""}`} />
+            </button>
+            {showExport && (
+              <div className="absolute right-0 top-full mt-1.5 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-30 w-64">
+                <p className="px-4 pt-3 pb-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Export CSV (Excel)</p>
+                <button onClick={exportPrestations} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 text-left">
+                  <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center"><FileSpreadsheet size={13} className="text-blue-600" /></div>
+                  <div><p className="font-medium">Historique prestations</p><p className="text-xs text-gray-400">{stats?.archive?.length ?? 0} archivées (CA réalisé)</p></div>
+                </button>
+                <div className="border-t border-gray-50" />
+                <button onClick={() => exportProspects(false)} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-purple-50 text-left">
+                  <div className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center"><FileSpreadsheet size={13} className="text-purple-600" /></div>
+                  <div><p className="font-medium">Tous les prospects</p><p className="text-xs text-gray-400">avec statut (dont perdus)</p></div>
+                </button>
+                <div className="border-t border-gray-50" />
+                <button onClick={() => exportProspects(true)} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 text-left">
+                  <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center"><FileSpreadsheet size={13} className="text-gray-500" /></div>
+                  <div><p className="font-medium">Prospects perdus</p><p className="text-xs text-gray-400">historique des perdus</p></div>
+                </button>
+              </div>
+            )}
+          </div>
           <div className="relative" ref={dropdownRef}>
             <button onClick={() => setShowDropdown(v => !v)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700">
               <UserPlus size={15} /> Nouveau <ChevronDown size={14} className={`transition-transform ${showDropdown ? "rotate-180" : ""}`} />
@@ -340,6 +411,7 @@ export default function HomePage() {
                 </button>
               </div>
             )}
+          </div>
           </div>
         }
       />
