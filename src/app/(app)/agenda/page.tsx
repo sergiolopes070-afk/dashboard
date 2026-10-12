@@ -399,6 +399,27 @@ export default function AgendaPage() {
     finally { setReprog2Busy(false); }
   }
 
+  // ── Satisfaction / avis manuels (modifiables même après archivage, pour les primes) ──
+  async function majAvisSatisf(row: string, patch: { avisLaisse?: boolean; satisfaction?: number }) {
+    // MAJ optimiste (tuiles + panneau), puis persistance.
+    setPrestations(ps => ps.map(p => p.row === row ? {
+      ...p,
+      ...(patch.avisLaisse !== undefined ? { avis: patch.avisLaisse ? "OUI" : "" } : {}),
+      ...(patch.satisfaction !== undefined ? { satisfaction: patch.satisfaction || undefined } : {}),
+    } : p));
+    setSelectedEvent(prev => prev && prev.row === row ? {
+      ...prev,
+      ...(patch.avisLaisse !== undefined ? { avis: patch.avisLaisse ? "OUI" : "" } : {}),
+      ...(patch.satisfaction !== undefined ? { satisfaction: patch.satisfaction || undefined } : {}),
+    } : prev);
+    try {
+      await fetch("/api/prestations/avis", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: row, ...(patch.avisLaisse !== undefined ? { avisLaisse: patch.avisLaisse } : {}), ...(patch.satisfaction !== undefined ? { satisfaction: patch.satisfaction || "" } : {}) }),
+      });
+    } catch { toast.error("Enregistrement impossible"); }
+  }
+
   // ── Reschedule modal (pour mobile / vue mois) ──────────────────────────────
   const [rescheduleEv,      setRescheduleEv]      = useState<Prestation | null>(null);
   const [rescheduleDate,    setRescheduleDate]    = useState("");
@@ -1425,18 +1446,24 @@ export default function AgendaPage() {
                           <CheckCircle2 size={13} /> Inscrit à l&apos;avance immédiate ⚡
                         </div>
                       )}
-                      {(ev.satisfaction || ev.avis === "OUI") && (
-                        <div className="mb-3 flex flex-wrap gap-2">
-                          {ev.satisfaction ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-700 bg-gray-100 border border-gray-200 px-2.5 py-1 rounded-full">
-                              {["😠", "🙁", "😐", "🙂", "😄"][ev.satisfaction - 1]} Satisfaction {ev.satisfaction}/5
-                            </span>
-                          ) : null}
-                          {ev.avis === "OUI" && (
-                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">⭐ Avis laissé</span>
-                          )}
+                      {/* Satisfaction + avis — modifiables manuellement, même après archivage (primes) */}
+                      <div className="mb-3 rounded-xl border border-gray-100 p-2.5">
+                        <div className="flex items-center justify-between gap-1 mb-2">
+                          {[{ e: "😠", n: 1 }, { e: "🙁", n: 2 }, { e: "😐", n: 3 }, { e: "🙂", n: 4 }, { e: "😄", n: 5 }].map(({ e, n }) => (
+                            <button key={n} type="button" onClick={() => majAvisSatisf(ev.row, { satisfaction: ev.satisfaction === n ? 0 : n })}
+                              title={["Très mécontent", "Mécontent", "Neutre", "Content", "Très content"][n - 1]}
+                              className={`flex-1 py-1 rounded-lg text-xl transition-all ${ev.satisfaction === n ? "bg-emerald-50 scale-110" : "grayscale opacity-45 hover:opacity-80"}`}>
+                              {e}
+                            </button>
+                          ))}
                         </div>
-                      )}
+                        <button type="button" onClick={() => majAvisSatisf(ev.row, { avisLaisse: ev.avis !== "OUI" })}
+                          className={`w-full py-2 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
+                            ev.avis === "OUI" ? "bg-amber-100 border-amber-300 text-amber-800" : "bg-white border-gray-200 text-gray-500 hover:border-amber-300 hover:bg-amber-50"
+                          }`}>
+                          ⭐ {ev.avis === "OUI" ? "Avis laissé (prime) — cliquer pour retirer" : "Marquer : avis laissé"}
+                        </button>
+                      </div>
                       <div className="space-y-1.5 text-sm text-gray-700">
                         {([
                           ["Date",     `${ev.date}${ev.heure ? ` à ${ev.heure}` : ""}`],
