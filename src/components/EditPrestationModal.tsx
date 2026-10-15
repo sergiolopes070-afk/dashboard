@@ -52,6 +52,18 @@ export default function EditPrestationModal({
   const [error, setError]   = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<number | null>(null); // index photo ouverte
 
+  // Quantité : prix unitaire × nombre d'unités → écrit le TOTAL dans form.prix
+  // (ex. fauteuil 90 € × 3 = 270 €). Permet d'ajouter une unité à la dernière minute.
+  const [uMainUnit, setUMainUnit] = useState<string>(prestation.prix || "");
+  const [uMainNb, setUMainNb]     = useState<string>("1");
+  const applyUPrice = (unit: string, nb: string) => {
+    setUMainUnit(unit); setUMainNb(nb);
+    const u = parseFloat(unit.replace(",", ".")) || 0;
+    const n = Math.max(1, parseInt(nb) || 1);
+    setForm(f => ({ ...f, prix: u > 0 ? String(Number((u * n).toFixed(2))) : "" }));
+  };
+  const uMainTotal = (parseFloat(uMainUnit.replace(",", ".")) || 0) * Math.max(1, parseInt(uMainNb) || 1);
+
   // Auto-fill emailPresta when prestataire changes from dropdown
   useEffect(() => {
     const found = prestataires.find((p) => p.nom === form.prestataire);
@@ -342,12 +354,38 @@ export default function EditPrestationModal({
             })()}
           </fieldset>
 
+          {/* Quantité : prix unitaire × nombre (ajout d'unité de dernière minute) */}
+          <fieldset className="space-y-2">
+            <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Quantité & prix unitaire</legend>
+            <div className="flex items-end gap-3 flex-wrap">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Prix unitaire (€)</label>
+                <input type="number" step="0.01" value={uMainUnit} onChange={(e) => applyUPrice(e.target.value, uMainNb)}
+                  className="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder="0.00" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Nombre</label>
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => applyUPrice(uMainUnit, String(Math.max(1, (parseInt(uMainNb) || 1) - 1)))}
+                    className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">–</button>
+                  <input type="number" min={1} value={uMainNb} onChange={(e) => applyUPrice(uMainUnit, e.target.value)}
+                    className="w-14 text-center border border-gray-200 rounded-lg px-1 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                  <button type="button" onClick={() => applyUPrice(uMainUnit, String((parseInt(uMainNb) || 1) + 1))}
+                    className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">+</button>
+                </div>
+              </div>
+              {(parseInt(uMainNb) || 1) > 1 && uMainTotal > 0 && (
+                <div className="text-sm text-gray-600 pb-2">= <strong className="text-gray-900">{uMainTotal.toFixed(2)} €</strong> <span className="text-xs text-gray-400">({uMainNb} × {uMainUnit} €)</span></div>
+              )}
+            </div>
+          </fieldset>
+
           {/* Détails */}
           <fieldset className="space-y-3">
             <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Détails</legend>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Prix (€)</label>
+                <label className="block text-xs text-gray-500 mb-1">Prix total (€)</label>
                 <input
                   type="number"
                   step="0.01"
