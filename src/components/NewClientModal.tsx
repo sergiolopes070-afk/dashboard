@@ -231,6 +231,18 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
   // Champs adaptatifs pilotés par le schéma (src/lib/prestationSchema).
   const hasSchema = getSchema(form.typePresta).length > 0;
 
+  // Prix unitaire × nombre d'unités → écrit le TOTAL dans form.prix (ex. 180 × 2 = 360).
+  // form.prix reste le total (le reste du code ne change pas).
+  const [mainUnit, setMainUnit] = useState<string>(String(({ ...EMPTY, ...initialValues }).prix ?? ""));
+  const [mainNb, setMainNb]     = useState<string>("1");
+  const applyMainPrice = (unit: string, nb: string) => {
+    setMainUnit(unit); setMainNb(nb);
+    const u = parseFloat(unit.replace(",", ".")) || 0;
+    const n = Math.max(1, parseInt(nb) || 1);
+    set("prix", u > 0 ? String(Number((u * n).toFixed(2))) : "");
+  };
+  const mainTotal = (parseFloat(mainUnit.replace(",", ".")) || 0) * Math.max(1, parseInt(mainNb) || 1);
+
   // Total de la fiche (1re prestation + articles). Prix saisis = TTC, TVA 10%.
   const totalTTC = (parseFloat(form.prix) || 0)
     + articlesSupp.reduce((s, a) => s + (parseFloat(a.prix) || 0), 0);
@@ -593,10 +605,25 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
                   {TYPES_PRESTA.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </Field>
-              <Field label="Prix (€)">
-                <input type="number" step="0.01" value={form.prix}
-                  onChange={(e) => set("prix", e.target.value)} className={inputCls} placeholder="0.00" />
+              <Field label="Prix unitaire (€)">
+                <input type="number" step="0.01" value={mainUnit}
+                  onChange={(e) => applyMainPrice(e.target.value, mainNb)} className={inputCls} placeholder="0.00" />
               </Field>
+            </div>
+            <div className="flex items-center gap-3">
+              <Field label="Nombre">
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => applyMainPrice(mainUnit, String(Math.max(1, (parseInt(mainNb) || 1) - 1)))}
+                    className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">–</button>
+                  <input type="number" min={1} value={mainNb} onChange={(e) => applyMainPrice(mainUnit, e.target.value)}
+                    className="w-14 text-center border border-gray-200 rounded-lg px-1 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                  <button type="button" onClick={() => applyMainPrice(mainUnit, String((parseInt(mainNb) || 1) + 1))}
+                    className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">+</button>
+                </div>
+              </Field>
+              {(parseInt(mainNb) || 1) > 1 && mainTotal > 0 && (
+                <div className="text-sm text-gray-600 pb-0.5">= <strong className="text-gray-900">{mainTotal.toFixed(2)} €</strong> <span className="text-xs text-gray-400">({mainNb} × {mainUnit} €)</span></div>
+              )}
             </div>
 
             {/* Quantité / durée seulement si aucun champ intelligent pour ce type */}
