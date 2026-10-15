@@ -497,6 +497,37 @@ export default function AgendaPage() {
   const [editVille,  setEditVille]  = useState("");
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [cancelConfirm, setCancelConfirm] = useState(false);
+  // Multiplicateur de prix en édition (prix unitaire × nombre → editForm.prix)
+  const [editUnit, setEditUnit] = useState("");
+  const [editNb,   setEditNb]   = useState("1");
+  const applyEditPrice = (unit: string, nb: string) => {
+    setEditUnit(unit); setEditNb(nb);
+    const u = parseFloat(unit.replace(",", ".")) || 0; const n = Math.max(1, parseInt(nb) || 1);
+    setEditForm(f => ({ ...f, prix: u > 0 ? String(Number((u * n).toFixed(2))) : "" }));
+  };
+  // Ajout d'une prestation à un RDV déjà programmé (même client, même créneau).
+  const [addOpen, setAddOpen]   = useState(false);
+  const [addType, setAddType]   = useState("");
+  const [addUnit, setAddUnit]   = useState("");
+  const [addNb,   setAddNb]     = useState("1");
+  const [addBusy, setAddBusy]   = useState(false);
+  async function ajouterPrestation(fromId: string) {
+    if (!addType) { toast.error("Choisis un type de prestation"); return; }
+    const prixTotal = (parseFloat(addUnit.replace(",", ".")) || 0) * Math.max(1, parseInt(addNb) || 1);
+    setAddBusy(true);
+    try {
+      const res = await fetch("/api/prestations", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "add_prestation", fromId, typePresta: addType, prix: prixTotal > 0 ? String(prixTotal) : "", quantite: parseInt(addNb) > 1 ? `×${addNb}` : "" }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur");
+      setAddOpen(false); setAddType(""); setAddUnit(""); setAddNb("1"); setSelectedEvent(null);
+      loadData();
+      toast.success("Prestation ajoutée au RDV ✅");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
+    finally { setAddBusy(false); }
+  }
   const [cancelling,    setCancelling]    = useState(false);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
@@ -1289,6 +1320,7 @@ export default function AgendaPage() {
                                   modePaiement: ev.modePaiement,
                                 });
                                 setEditCp(""); setEditVille("");
+                                setEditUnit(ev.prix || ""); setEditNb("1");
                                 setEditMode(true);
                               }}
                               className="text-xs text-blue-500 hover:text-blue-700 font-semibold"
@@ -1366,15 +1398,26 @@ export default function AgendaPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="text-xs text-gray-400 mb-1 block">Prix (€)</label>
-                          <input className={inputCls} type="number" value={editForm.prix ?? ""} onChange={e => setEditForm(f => ({ ...f, prix: e.target.value }))} />
+                          <label className="text-xs text-gray-400 mb-1 block">Prix unitaire (€)</label>
+                          <input className={inputCls} type="number" value={editUnit} onChange={e => applyEditPrice(e.target.value, editNb)} />
                         </div>
                         <div>
-                          <label className="text-xs text-gray-400 mb-1 block">Statut</label>
-                          <select className={inputCls} value={editForm.statut ?? ""} onChange={e => setEditForm(f => ({ ...f, statut: e.target.value as Prestation["statut"] }))}>
-                            {STATUTS.map(s => <option key={s} value={s}>{s || "—"}</option>)}
-                          </select>
+                          <label className="text-xs text-gray-400 mb-1 block">Nombre</label>
+                          <div className="flex items-center gap-1">
+                            <button type="button" onClick={() => applyEditPrice(editUnit, String(Math.max(1, (parseInt(editNb) || 1) - 1)))} className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">–</button>
+                            <input className="w-12 text-center border border-gray-200 rounded-lg px-1 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" type="number" min={1} value={editNb} onChange={e => applyEditPrice(editUnit, e.target.value)} />
+                            <button type="button" onClick={() => applyEditPrice(editUnit, String((parseInt(editNb) || 1) + 1))} className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">+</button>
+                          </div>
                         </div>
+                      </div>
+                      {(parseInt(editNb) || 1) > 1 && (
+                        <p className="text-xs text-gray-500 -mt-1">Total : <strong className="text-gray-800">{editForm.prix || 0} €</strong> ({editNb} × {editUnit || 0} €)</p>
+                      )}
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">Statut</label>
+                        <select className={inputCls} value={editForm.statut ?? ""} onChange={e => setEditForm(f => ({ ...f, statut: e.target.value as Prestation["statut"] }))}>
+                          {STATUTS.map(s => <option key={s} value={s}>{s || "—"}</option>)}
+                        </select>
                       </div>
                       <div>
                         <label className="text-xs text-gray-400 mb-1 block">Prestataire</label>
@@ -1656,6 +1699,46 @@ export default function AgendaPage() {
                       >
                         📦 Archiver ce RDV
                       </button>
+
+                      {/* ── Ajouter une prestation à ce RDV (même client, même créneau) ── */}
+                      {!addOpen ? (
+                        <button type="button" onClick={() => { setAddOpen(true); setAddType(""); setAddUnit(""); setAddNb("1"); }}
+                          className="w-full py-2 rounded-xl border border-emerald-200 text-emerald-700 text-sm font-medium hover:bg-emerald-50 transition-colors flex items-center justify-center gap-1.5">
+                          ➕ Ajouter une prestation
+                        </button>
+                      ) : (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                          <p className="text-xs text-emerald-800 font-semibold">Ajouter une prestation — {ev.prenom} {ev.nom}</p>
+                          <select value={addType} onChange={e => setAddType(e.target.value)}
+                            className="w-full bg-white border border-emerald-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                            <option value="">— Type de prestation —</option>
+                            {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                          <div className="flex items-end gap-2 flex-wrap">
+                            <div>
+                              <label className="text-[11px] text-gray-500 block mb-0.5">Prix unitaire (€)</label>
+                              <input type="number" step="0.01" value={addUnit} onChange={e => setAddUnit(e.target.value)}
+                                className="w-24 bg-white border border-emerald-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="0.00" />
+                            </div>
+                            <div>
+                              <label className="text-[11px] text-gray-500 block mb-0.5">Nombre</label>
+                              <div className="flex items-center gap-1">
+                                <button type="button" onClick={() => setAddNb(String(Math.max(1, (parseInt(addNb) || 1) - 1)))} className="w-7 h-7 rounded-lg border border-emerald-200 bg-white text-gray-600 text-lg leading-none">–</button>
+                                <input type="number" min={1} value={addNb} onChange={e => setAddNb(e.target.value)} className="w-11 text-center bg-white border border-emerald-200 rounded-lg px-1 py-1.5 text-sm" />
+                                <button type="button" onClick={() => setAddNb(String((parseInt(addNb) || 1) + 1))} className="w-7 h-7 rounded-lg border border-emerald-200 bg-white text-gray-600 text-lg leading-none">+</button>
+                              </div>
+                            </div>
+                            {(() => { const t = (parseFloat(addUnit.replace(",", ".")) || 0) * Math.max(1, parseInt(addNb) || 1); return t > 0 ? <div className="text-sm text-gray-700 pb-1.5">= <strong>{t.toFixed(2)} €</strong></div> : null; })()}
+                          </div>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => setAddOpen(false)} className="flex-1 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-50">Annuler</button>
+                            <button type="button" onClick={() => ajouterPrestation(ev.row)} disabled={!addType || addBusy}
+                              className="flex-1 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
+                              {addBusy ? <Loader2 size={14} className="animate-spin" /> : null} Ajouter
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {/* ── Rappel client : WhatsApp si numéro + copie toujours dispo ── */}
                       {(() => {

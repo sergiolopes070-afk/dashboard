@@ -14,29 +14,51 @@ export async function POST(req: Request) {
   const unauth = await requireAuth();
   if (unauth) return unauth;
   try {
-    const { action, fromId, date, heure, prestataire } = await req.json() as { action?: string; fromId?: string; date?: string; heure?: string; prestataire?: string };
-    if (action !== "reprogram2") return NextResponse.json({ error: "action invalide" }, { status: 400 });
-    if (!fromId || !date) return NextResponse.json({ error: "fromId et date requis" }, { status: 400 });
+    const body = await req.json() as { action?: string; fromId?: string; date?: string; heure?: string; prestataire?: string; typePresta?: string; prix?: string; quantite?: string };
+    const { action, fromId } = body;
     if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
+    if (!fromId) return NextResponse.json({ error: "fromId requis" }, { status: 400 });
 
     const { data: orig } = await supabase
-      .from("prestations").select("client_id, type_prestation, quantite, adresse").eq("id", fromId).single();
+      .from("prestations").select("client_id, type_prestation, quantite, adresse, date_intervention, heure_intervention, prestataires(nom)").eq("id", fromId).single();
     if (!orig?.client_id) return NextResponse.json({ error: "RDV d'origine introuvable" }, { status: 404 });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const origPrestaNom = (Array.isArray(orig.prestataires) ? orig.prestataires[0]?.nom : (orig.prestataires as any)?.nom) as string | undefined;
+    const toFr = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) ? d.split("-").reverse().join("/") : d;
 
-    // insertPrestationForClient attend une date FR (dd/mm/yyyy).
-    const dateFr = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.split("-").reverse().join("/") : date;
-    const id = await insertPrestationForClient(orig.client_id as string, {
-      typePresta: (orig.type_prestation as string) || "Prestation",
-      quantite  : String(orig.quantite ?? "1"),
-      adresse   : (orig.adresse as string) || "",
-      date      : dateFr,
-      heure     : heure || "",
-      prix      : "0",
-      message   : PASSAGE2_TAG + " (offre fidélité)",
-    });
-    // Assigne le prestataire choisi (par nom → prestataire_id), si fourni.
-    if (prestataire) { try { await updatePrestation(id, { prestataire }); } catch { /* non bloquant */ } }
-    return NextResponse.json({ success: true, id });
+    // Reprogrammer un 2ème passage GRATUIT (offre fidélité).
+    if (action === "reprogram2") {
+      if (!body.date) return NextResponse.json({ error: "date requise" }, { status: 400 });
+      const id = await insertPrestationForClient(orig.client_id as string, {
+        typePresta: (orig.type_prestation as string) || "Prestation",
+        quantite  : String(orig.quantite ?? "1"),
+        adresse   : (orig.adresse as string) || "",
+        date      : toFr(body.date), heure: body.heure || "",
+        prix      : "0",
+        message   : PASSAGE2_TAG + " (offre fidélité)",
+      });
+      if (body.prestataire) { try { await updatePrestation(id, { prestataire: body.prestataire }); } catch { /* non bloquant */ } }
+      return NextResponse.json({ success: true, id });
+    }
+
+    // Ajouter une prestation au MÊME client / même créneau (RDV déjà programmé).
+    if (action === "add_prestation") {
+      const origDate = orig.date_intervention ? toFr(String(orig.date_intervention)) : "";
+      const origHeure = ((orig.heure_intervention as string) || "").substring(0, 5);
+      const id = await insertPrestationForClient(orig.client_id as string, {
+        typePresta: (body.typePresta as string) || "Prestation",
+        quantite  : (body.quantite as string) || "1",
+        adresse   : (orig.adresse as string) || "",
+        date      : body.date ? toFr(body.date) : origDate,
+        heure     : body.heure || origHeure,
+        prix      : (body.prix as string) || "",
+      });
+      const presta = body.prestataire || origPrestaNom;
+      if (presta) { try { await updatePrestation(id, { prestataire: presta }); } catch { /* non bloquant */ } }
+      return NextResponse.json({ success: true, id });
+    }
+
+    return NextResponse.json({ error: "action invalide" }, { status: 400 });
   } catch (err: unknown) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Erreur inconnue" }, { status: 500 });
   }
