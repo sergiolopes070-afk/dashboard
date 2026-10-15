@@ -56,11 +56,12 @@ export async function GET(req: Request) {
       status  : null,
     })),
     ...(prospects ?? []).map((p: ProspectRow) => ({
-      type   : "prospect",
-      label  : `${p.prenom ?? ""} ${p.nom ?? ""}`.trim(),
-      sub    : [p.statut, p.email || p.tel].filter(Boolean).join(" · "),
-      href   : "/prospects",
-      status : p.statut,
+      type      : "prospect",
+      label     : `${p.prenom ?? ""} ${p.nom ?? ""}`.trim(),
+      sub       : [p.statut, p.email || p.tel].filter(Boolean).join(" · "),
+      href      : `/prospects?fiche=${p.id}`, // ← ouvre directement la fiche (même perdue)
+      prospectId: p.id,
+      status    : p.statut,
     })),
     ...(prestations ?? []).map((p: PrestaRow) => ({
       type   : "prestation",

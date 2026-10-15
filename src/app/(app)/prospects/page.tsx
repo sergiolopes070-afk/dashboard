@@ -1088,6 +1088,21 @@ function ProspectModal({
               </div>
             </div>
           )}
+
+          {p.statut === "PERDU" && (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center gap-3">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-gray-700">Prospect perdu (archivé)</p>
+                <p className="text-xs text-gray-500">Le client revient vers toi ? Rouvre-le pour le remettre dans le suivi.</p>
+              </div>
+              <button
+                onClick={async () => { const today = new Date().toISOString().split("T")[0]; await patch({ statut: "CONTACTÉ", dateRelance: today }); setDraftStatut("CONTACTÉ"); toast.success("Prospect rouvert — à recontacter"); }}
+                disabled={saving}
+                className="shrink-0 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5">
+                <ArrowRight size={15} /> Rouvrir
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── Footer ── */}
@@ -1156,6 +1171,17 @@ export default function ProspectsPage() {
     } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, []);
+
+  // Ouverture directe d'une fiche depuis la recherche globale (?fiche=<id>),
+  // quel que soit le statut (y compris PERDU / converti).
+  const ficheOpenedRef = useRef(false);
+  useEffect(() => {
+    if (ficheOpenedRef.current || prospects.length === 0) return;
+    const id = new URLSearchParams(window.location.search).get("fiche");
+    if (!id) return;
+    const p = prospects.find(x => x.id === id);
+    if (p) { setSelected(p); ficheOpenedRef.current = true; }
+  }, [prospects]);
 
   // Liste des prestataires (pour pouvoir en affecter un lors de la conversion en client).
   useEffect(() => {
