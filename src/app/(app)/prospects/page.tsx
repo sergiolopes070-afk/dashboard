@@ -293,7 +293,7 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
 // ─── Composant : Modal détail / édition ───────────────────────────────────────
 function ProspectModal({
-  prospect, prestataires, onClose, onUpdated, onDeleted, onConverted,
+  prospect, prestataires, onClose, onUpdated, onDeleted, onConverted, onRefresh,
 }: {
   prospect: Prospect;
   prestataires: Prestataire[];
@@ -301,6 +301,7 @@ function ProspectModal({
   onUpdated: (p: Partial<Prospect> & { id: string }) => void;
   onDeleted: (id: string) => void;
   onConverted: (id: string) => void;
+  onRefresh?: () => void;
 }) {
   const [p, setP] = useState<Prospect>({ ...prospect, genre: prospect.genre ?? "", relanceSteps: prospect.relanceSteps ?? [] });
   const [commentText, setCommentText] = useState("");
@@ -402,6 +403,7 @@ function ProspectModal({
       setP(prev => ({ ...prev, suivi: d.suivi, statut, dateRelance: d.dateRelance ?? prev.dateRelance }));
       setDraftStatut(statut);
       onUpdated({ id: p.id, suivi: d.suivi, statut, dateRelance: d.dateRelance });
+      onRefresh?.();
       toast.success(d.pdf ? "Devis (PDF) envoyé 📧 — à recontacter demain" : "Devis envoyé 📧 — à recontacter demain");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
     finally { setActionBusy(""); }
@@ -436,6 +438,7 @@ function ProspectModal({
       setP(prev => ({ ...prev, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance ?? prev.dateRelance }));
       setDraftStatut("RELANCÉ");
       onUpdated({ id: p.id, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance });
+      onRefresh?.();
       toast.success(`Relance ${d.niveau} envoyée 📧 — à recontacter demain`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
     finally { setActionBusy(""); }
@@ -457,6 +460,7 @@ function ProspectModal({
       setP(prev => ({ ...prev, suivi: d.suivi, statut, dateRelance: d.dateRelance ?? prev.dateRelance }));
       setDraftStatut(statut);
       onUpdated({ id: p.id, suivi: d.suivi, statut, dateRelance: d.dateRelance });
+      onRefresh?.();
       toast.success("Demande d'infos envoyée 📧 — à recontacter demain");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
     finally { setActionBusy(""); }
@@ -476,6 +480,7 @@ function ProspectModal({
       setP(prev => ({ ...prev, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance ?? prev.dateRelance }));
       setDraftStatut("RELANCÉ");
       onUpdated({ id: p.id, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance });
+      onRefresh?.();
       toast.success(`Relance ${d.niveau} (infos) envoyée 📧 — à recontacter demain`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
     finally { setActionBusy(""); }
@@ -1549,6 +1554,7 @@ export default function ProspectsPage() {
           onUpdated={handleUpdated}
           onDeleted={handleDeleted}
           onConverted={handleConverted}
+          onRefresh={load}
         />
       )}
 
