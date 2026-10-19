@@ -983,7 +983,7 @@ export default function AgendaPage() {
                       <div className="px-2.5 py-1.5 h-full flex flex-col overflow-hidden">
                         {ev.heure && <span className="font-bold text-xs" style={{ color: isArchived ? "#9CA3AF" : color.bg }}>{ev.heure}</span>}
                         <span className={`font-semibold text-sm truncate ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</span>
-                        <span className="text-xs text-gray-500 truncate">{ev.typePresta}{ev.prestataire ? ` · ${ev.prestataire}` : ""}</span>
+                        <span className="text-xs text-gray-500 truncate">{ev.typePresta}{ev.quantite && ev.quantite !== "1" ? ` — ${ev.quantite}` : ""}{ev.prestataire ? ` · ${ev.prestataire}` : ""}</span>
                         {ev.modePaiement && PAYMENT_ICONS[ev.modePaiement] && <span className="text-[11px] mt-0.5">{PAYMENT_ICONS[ev.modePaiement]} {PAYMENT_SHORT[ev.modePaiement] ?? ev.modePaiement}</span>}
                         {Array.isArray(ev.photos) && ev.photos.length > 0 && (
                           <span className="text-[11px] mt-0.5 text-gray-600" title={`${ev.photos.length} photo(s) d'intervention`}>📷 {ev.photos.length} photo{ev.photos.length > 1 ? "s" : ""}</span>
@@ -1478,7 +1478,10 @@ export default function AgendaPage() {
                       ) : (
                         <h3 className={`font-bold text-base mb-1 ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</h3>
                       )}
-                      <p className="text-sm text-gray-500 mb-3">{ev.typePresta}</p>
+                      <p className="text-sm text-gray-500 mb-3">
+                        {ev.typePresta}
+                        {ev.quantite && ev.quantite !== "1" && <span className="text-gray-700 font-medium"> — {ev.quantite}</span>}
+                      </p>
                       {ev.message?.toLowerCase().includes("2ème passage") && (
                         <div className="mb-3 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-full">
                           🎁 2ème passage gratuit
@@ -1510,7 +1513,6 @@ export default function AgendaPage() {
                       <div className="space-y-1.5 text-sm text-gray-700">
                         {([
                           ["Date",     `${ev.date}${ev.heure ? ` à ${ev.heure}` : ""}`],
-                          ["Détails",  ev.quantite && ev.quantite !== "1" ? ev.quantite : null],
                           ["Adresse",  ev.adresse || null],
                           ["Statut",   ev.statut  || null],
                           ["Prix",     ev.prix     ? `${ev.prix} €` : null],
