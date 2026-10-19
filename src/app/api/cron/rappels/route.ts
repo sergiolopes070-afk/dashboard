@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { getGmailTransporter, buildRappelMessage } from "@/lib/mailer";
-import { getSettingJSON } from "@/lib/settings";
+import { getGmailTransporter, buildRappelMessage, sendRappelEmail } from "@/lib/mailer";
+import { getSettingJSON, setSettingRaw } from "@/lib/settings";
 import { getInscrits, estInscrit } from "@/lib/avanceInscrits";
 
 export const dynamic = "force-dynamic";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Cron quotidien 18h (Paris) : envoie à l'équipe (kinouclean@gmail.com) la liste
-// des RDV du LENDEMAIN, chacun avec un lien WhatsApp prêt à cliquer pour envoyer
-// le rappel au client. Si un client a plusieurs prestations le même jour, elles
-// sont regroupées en un seul message.
+// Cron quotidien (veille) : pour les RDV du LENDEMAIN —
+//   • email à l'équipe : liste des RDV + liens WhatsApp prêts à cliquer ;
+//   • email à chaque prestataire : ses missions du lendemain (sans prix) ;
+//   • email récapitulatif AUTOMATIQUE au client : « n'oubliez pas votre RDV »
+//     (+ reste à charge si avance immédiate), avec garde anti-doublon.
+// Si un client a plusieurs prestations le même jour, elles sont regroupées.
 //
 // Sécurité : en-tête interne x-vercel-cron (invocation planifiée) OU ?key=<secret>.
 // ?test=1 → renvoie le détail JSON sans envoyer l'email.
@@ -244,5 +246,33 @@ export async function GET(req: Request) {
     } catch { /* on continue avec les autres prestataires */ }
   }
 
-  return NextResponse.json({ demain: demainISO, nbRappels: rappels.length, ownerEnvoyeA: ownerOk ? dest : null, prestaEnvoyes });
+  // ── Email récapitulatif AUTOMATIQUE au CLIENT (la veille) ──
+  // « N'oubliez pas votre rendez-vous » + reste à charge si avance immédiate.
+  // Garde anti-doublon par client+date (settings/rappel_client_envoye).
+  const guard = await getSettingJSON<Record<string, boolean>>("rappel_client_envoye", {});
+  let clientEnvoyes = 0;
+  for (const g of Array.from(groupes.values())) {
+    if (!g.email) continue;
+    const gkey = `${g.clientId || g.tel || g.email}_${demainISO}`;
+    if (guard[gkey]) continue;
+    const heure = g.heures.slice().sort()[0] || "";
+    const avance = g.avanceMode || fiscalMap[g.clientId] === "avance" || !!estInscrit(inscritsList, g.tel, g.email);
+    try {
+      const ok = await sendRappelEmail(g.email, {
+        prenom: g.prenom, typePresta: g.prestations.join(" + ") || "Prestation", quantite: "",
+        adresse: g.adresse, date: frDate(demainISO), heure,
+        prix: g.montant > 0 ? String(g.montant) : "", modePaiement: "", avanceInscrit: avance,
+      });
+      if (ok) { guard[gkey] = true; clientEnvoyes++; }
+    } catch { /* on continue avec les autres clients */ }
+  }
+  // Purge des entrées de plus de 10 jours pour que le réglage ne gonfle pas.
+  try {
+    const limite = new Date(); limite.setDate(limite.getDate() - 10);
+    const limiteIso = limite.toISOString().slice(0, 10);
+    for (const k of Object.keys(guard)) { const d = k.split("_").pop() || ""; if (d < limiteIso) delete guard[k]; }
+    await setSettingRaw("rappel_client_envoye", JSON.stringify(guard));
+  } catch { /* non bloquant */ }
+
+  return NextResponse.json({ demain: demainISO, nbRappels: rappels.length, ownerEnvoyeA: ownerOk ? dest : null, prestaEnvoyes, clientEnvoyes });
 }
