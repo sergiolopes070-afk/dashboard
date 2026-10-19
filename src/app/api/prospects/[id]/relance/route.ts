@@ -29,6 +29,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const all = await getSettingJSON<Record<string, Suivi>>(SUIVI_KEY, {});
   const cur: Suivi = all[id] || {};
   const todayFr = new Date().toLocaleDateString("fr-FR");
+  // Après chaque envoi, on reprogramme le prospect à DEMAIN : il quitte « à
+  // recontacter aujourd'hui » (balle dans le camp du client) et remonte le lendemain.
+  const demain = new Date(); demain.setDate(demain.getDate() + 1);
+  const demainIso = demain.toISOString().split("T")[0];
 
   // Active / désactive l'avance immédiate pour ce prospect (impacte le devis + le mail).
   if (action === "set_avance") {
@@ -76,8 +80,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     fresh[id] = { ...freshCur, devisEnvoye: true, devisDate: todayFr };
     const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(fresh));
     if (errSet) return NextResponse.json({ error: `Devis envoyé mais suivi non enregistré : ${errSet}` }, { status: 500 });
+    // Devis envoyé → on reprogramme à demain (quitte « aujourd'hui ») + sortie de « Nouveau ».
+    await supabase.from("prospects").update({ date_relance: demainIso, updated_at: new Date().toISOString() }).eq("id", id);
     await supabase.from("prospects").update({ statut: "CONTACTÉ", updated_at: new Date().toISOString() }).eq("id", id).eq("statut", "NOUVEAU");
-    return NextResponse.json({ suivi: fresh[id], sent: true, pdf: !!pdf });
+    return NextResponse.json({ suivi: fresh[id], sent: true, pdf: !!pdf, dateRelance: demainIso });
   }
 
   if (action === "relance") {
@@ -101,8 +107,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     all[id] = { ...cur, relanceNiveau: niveau, relanceDate: new Date().toISOString() };
     const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(all));
     if (errSet) return NextResponse.json({ error: `Relance envoyée mais suivi non enregistré : ${errSet}` }, { status: 500 });
-    await supabase.from("prospects").update({ statut: "RELANCÉ", updated_at: new Date().toISOString() }).eq("id", id);
-    return NextResponse.json({ suivi: all[id], niveau });
+    // Relance envoyée → reprogrammée à demain (quitte « aujourd'hui »).
+    await supabase.from("prospects").update({ statut: "RELANCÉ", date_relance: demainIso, updated_at: new Date().toISOString() }).eq("id", id);
+    return NextResponse.json({ suivi: all[id], niveau, dateRelance: demainIso });
   }
 
   // ── Parcours « demande d'informations » (prospect injoignable) ──
@@ -124,6 +131,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const ok = await sendProspectInfosEmail(p.email as string, niveau, { prenom, nom, genre, typePresta });
     if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
 
+    // Dans tous les cas : reprogrammé à demain (quitte « aujourd'hui »).
+    await supabase.from("prospects").update({ date_relance: demainIso, updated_at: new Date().toISOString() }).eq("id", id);
     if (action === "demande_infos") {
       all[id] = { ...cur, infosEnvoye: true, infosDate: todayFr, infoRelanceNiveau: 0 };
       if (!cur.devisEnvoye) await supabase.from("prospects").update({ statut: "CONTACTÉ", updated_at: new Date().toISOString() }).eq("id", id).eq("statut", "NOUVEAU");
@@ -133,7 +142,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
     const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(all));
     if (errSet) return NextResponse.json({ error: `Email envoyé mais suivi non enregistré : ${errSet}` }, { status: 500 });
-    return NextResponse.json({ suivi: all[id], niveau });
+    return NextResponse.json({ suivi: all[id], niveau, dateRelance: demainIso });
   }
 
   // ── Relance « auto » depuis le tableau de bord : envoie le bon mail selon l'état

@@ -399,10 +399,10 @@ function ProspectModal({
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Erreur");
       const statut = p.statut === "NOUVEAU" ? "CONTACTÉ" : p.statut;
-      setP(prev => ({ ...prev, suivi: d.suivi, statut }));
+      setP(prev => ({ ...prev, suivi: d.suivi, statut, dateRelance: d.dateRelance ?? prev.dateRelance }));
       setDraftStatut(statut);
-      onUpdated({ id: p.id, suivi: d.suivi, statut });
-      toast.success(d.pdf ? "Devis (PDF) envoyé par email 📧" : "Devis envoyé 📧 (joint en HTML — PDF indisponible)");
+      onUpdated({ id: p.id, suivi: d.suivi, statut, dateRelance: d.dateRelance });
+      toast.success(d.pdf ? "Devis (PDF) envoyé 📧 — à recontacter demain" : "Devis envoyé 📧 — à recontacter demain");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
     finally { setActionBusy(""); }
   }
@@ -433,10 +433,10 @@ function ProspectModal({
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Erreur");
-      setP(prev => ({ ...prev, suivi: d.suivi, statut: "RELANCÉ" }));
+      setP(prev => ({ ...prev, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance ?? prev.dateRelance }));
       setDraftStatut("RELANCÉ");
-      onUpdated({ id: p.id, suivi: d.suivi, statut: "RELANCÉ" });
-      toast.success(`Relance ${d.niveau} envoyée par email 📧`);
+      onUpdated({ id: p.id, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance });
+      toast.success(`Relance ${d.niveau} envoyée 📧 — à recontacter demain`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
     finally { setActionBusy(""); }
   }
@@ -454,10 +454,10 @@ function ProspectModal({
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Erreur");
       const statut = p.statut === "NOUVEAU" ? "CONTACTÉ" : p.statut;
-      setP(prev => ({ ...prev, suivi: d.suivi, statut }));
+      setP(prev => ({ ...prev, suivi: d.suivi, statut, dateRelance: d.dateRelance ?? prev.dateRelance }));
       setDraftStatut(statut);
-      onUpdated({ id: p.id, suivi: d.suivi, statut });
-      toast.success("Demande d'informations envoyée 📧");
+      onUpdated({ id: p.id, suivi: d.suivi, statut, dateRelance: d.dateRelance });
+      toast.success("Demande d'infos envoyée 📧 — à recontacter demain");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
     finally { setActionBusy(""); }
   }
@@ -473,10 +473,10 @@ function ProspectModal({
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Erreur");
-      setP(prev => ({ ...prev, suivi: d.suivi, statut: "RELANCÉ" }));
+      setP(prev => ({ ...prev, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance ?? prev.dateRelance }));
       setDraftStatut("RELANCÉ");
-      onUpdated({ id: p.id, suivi: d.suivi, statut: "RELANCÉ" });
-      toast.success(`Relance ${d.niveau} (infos) envoyée par email 📧`);
+      onUpdated({ id: p.id, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance });
+      toast.success(`Relance ${d.niveau} (infos) envoyée 📧 — à recontacter demain`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
     finally { setActionBusy(""); }
   }
@@ -879,6 +879,7 @@ function ProspectModal({
               return (
                 <div className="space-y-1.5">
                   <p className="text-[11px] text-gray-400">Sans réponse ? Relance par email (à faire à la main) :</p>
+                  {p.suivi?.relanceDate && <p className="text-[11px] text-gray-500">📅 Dernière relance envoyée le {formatDate(p.suivi.relanceDate)}</p>}
                   {[1, 2, 3].map(n => {
                     const done = niv >= n;
                     const isNext = niv + 1 === n;
