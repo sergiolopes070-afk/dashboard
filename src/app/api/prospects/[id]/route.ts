@@ -13,13 +13,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const { id } = params;
   const body = await req.json();
 
-  // Ajout d'un commentaire interne. Ajouter une note = une action a eu lieu et on
-  // a des infos sur le prospect → on le marque « à recontacter » tout de suite :
-  // date de relance = aujourd'hui (remonte dans « À rappeler ») et sortie de « Nouveau ».
+  // Ajout d'un commentaire interne. Ajouter une note = une action a eu lieu → on
+  // le marque « à recontacter » et on le sort de « Nouveau ». MAIS si une date de
+  // relance FUTURE est déjà posée (relance déjà programmée), on la conserve — on
+  // ne ramène pas un prospect déjà planifié dans l'onglet « aujourd'hui ».
   if (body.addComment) {
     const { data: current } = await supabase
       .from("prospects")
-      .select("commentaires, statut")
+      .select("commentaires, statut, date_relance")
       .eq("id", id)
       .single();
 
@@ -30,18 +31,21 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       texte: body.addComment,
     };
     const today = new Date().toISOString().split("T")[0];
+    const curDate = current?.date_relance ? String(current.date_relance).slice(0, 10) : "";
+    // On ne touche la date que si aucune n'est posée, ou si elle est déjà passée/aujourd'hui.
+    const newDate = (!curDate || curDate <= today) ? today : curDate;
     const nouveauStatut = (current?.statut === "NOUVEAU") ? "CONTACTÉ" : (current?.statut as string);
     const { error } = await supabase
       .from("prospects")
       .update({
         commentaires: [...existing, newComment],
-        date_relance: today,
+        date_relance: newDate,
         statut      : nouveauStatut,
         updated_at  : new Date().toISOString(),
       })
       .eq("id", id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ success: true, comment: newComment, dateRelance: today, statut: nouveauStatut });
+    return NextResponse.json({ success: true, comment: newComment, dateRelance: newDate, statut: nouveauStatut });
   }
 
   // Mise à jour standard (statut, date_relance, notes, champs contact…)

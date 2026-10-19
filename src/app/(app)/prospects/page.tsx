@@ -1228,9 +1228,10 @@ export default function ProspectsPage() {
   const counts = useMemo(() => {
     const actifs = prospects.filter(p => !["CONVERTI","PERDU"].includes(p.statut));
     return {
+      // Buckets DISJOINTS : aujourd'hui (≤ auj.), 3 jours (J+1→J+3), semaine (J+4→J+7).
       urgent : actifs.filter(p => p.dateRelance && p.dateRelance <= todayIso).length,
-      j3     : actifs.filter(p => p.dateRelance && p.dateRelance <= in3Iso).length,
-      j7     : actifs.filter(p => p.dateRelance && p.dateRelance <= in7Iso).length,
+      j3     : actifs.filter(p => p.dateRelance && p.dateRelance > todayIso && p.dateRelance <= in3Iso).length,
+      j7     : actifs.filter(p => p.dateRelance && p.dateRelance > in3Iso   && p.dateRelance <= in7Iso).length,
       actifs : actifs.length,
       total  : prospects.length,
       convertis: prospects.filter(p => p.statut === "CONVERTI").length,
@@ -1252,11 +1253,11 @@ export default function ProspectsPage() {
       }
       if (filterRelance === "j3") {
         if (["CONVERTI","PERDU"].includes(p.statut)) return false;
-        return p.dateRelance && p.dateRelance <= in3Iso;
+        return !!(p.dateRelance && p.dateRelance > todayIso && p.dateRelance <= in3Iso);
       }
       if (filterRelance === "j7") {
         if (["CONVERTI","PERDU"].includes(p.statut)) return false;
-        return p.dateRelance && p.dateRelance <= in7Iso;
+        return !!(p.dateRelance && p.dateRelance > in3Iso && p.dateRelance <= in7Iso);
       }
       if (filterRelance === "ACTIFS" || actifs) {
         if (filterRelance === "ACTIFS" && ["CONVERTI","PERDU"].includes(p.statut)) return false;
