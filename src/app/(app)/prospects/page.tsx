@@ -56,7 +56,7 @@ interface Prospect {
 }
 
 // Suivi commercial d'un prospect (stocké dans settings/prospects_suivi).
-interface Suivi { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number }
+interface Suivi { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string; relanceDates?: string[]; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number; infoRelanceDates?: string[] }
 
 // Une prestation souhaitée notée sur le prospect (même forme que les articles client).
 // `details` = valeurs structurées des champs intelligents (tissu, places…), pour
@@ -884,10 +884,10 @@ function ProspectModal({
               return (
                 <div className="space-y-1.5">
                   <p className="text-[11px] text-gray-400">Sans réponse ? Relance par email (à faire à la main) :</p>
-                  {p.suivi?.relanceDate && <p className="text-[11px] text-gray-500">📅 Dernière relance envoyée le {formatDate(p.suivi.relanceDate)}</p>}
                   {[1, 2, 3].map(n => {
                     const done = niv >= n;
                     const isNext = niv + 1 === n;
+                    const dateEnvoi = p.suivi?.relanceDates?.[n - 1];
                     return (
                       <div key={n} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
                         done ? "bg-green-50 border-green-200 text-green-700"
@@ -895,7 +895,7 @@ function ProspectModal({
                         : "bg-gray-50 border-gray-100 text-gray-400"
                       }`}>
                         <span className="flex-1">{labels[n]}</span>
-                        {done ? <span className="text-xs font-medium">Envoyée ✓</span>
+                        {done ? <span className="text-xs font-medium whitespace-nowrap">✓ {dateEnvoi ? `le ${dateEnvoi}` : "envoyée"}</span>
                           : isNext ? (
                             <button onClick={envoyerRelance} disabled={actionBusy !== ""}
                               className="px-3 py-1 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50">
@@ -943,6 +943,7 @@ function ProspectModal({
                   {[1, 2, 3].map(n => {
                     const done = niv >= n;
                     const isNext = niv + 1 === n;
+                    const dateEnvoi = p.suivi?.infoRelanceDates?.[n - 1];
                     return (
                       <div key={n} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
                         done ? "bg-green-50 border-green-200 text-green-700"
@@ -950,7 +951,7 @@ function ProspectModal({
                         : "bg-gray-50 border-gray-100 text-gray-400"
                       }`}>
                         <span className="flex-1">{labels[n]}</span>
-                        {done ? <span className="text-xs font-medium">Envoyée ✓</span>
+                        {done ? <span className="text-xs font-medium whitespace-nowrap">✓ {dateEnvoi ? `le ${dateEnvoi}` : "envoyée"}</span>
                           : isNext ? (
                             <button onClick={envoyerRelanceInfos} disabled={actionBusy !== ""}
                               className="px-3 py-1 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50">

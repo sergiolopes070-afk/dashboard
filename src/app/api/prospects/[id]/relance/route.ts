@@ -15,7 +15,7 @@ export const maxDuration = 60; // génération PDF (Chromium) incluse
 //   POST { action: "relance" }             → envoie la relance suivante (1→2→3), statut → RELANCÉ.
 const SUIVI_KEY = "prospects_suivi";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Suivi = { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string; devisNum?: string; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number } & Record<string, any>;
+type Suivi = { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string; relanceDates?: string[]; devisNum?: string; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number; infoRelanceDates?: string[] } & Record<string, any>;
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const unauth = await requireAuth();
@@ -104,7 +104,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     });
     if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
 
-    all[id] = { ...cur, relanceNiveau: niveau, relanceDate: new Date().toISOString() };
+    const relanceDates = [...(cur.relanceDates || [])]; relanceDates[niveau - 1] = todayFr;
+    all[id] = { ...cur, relanceNiveau: niveau, relanceDate: new Date().toISOString(), relanceDates };
     const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(all));
     if (errSet) return NextResponse.json({ error: `Relance envoyée mais suivi non enregistré : ${errSet}` }, { status: 500 });
     // Relance envoyée → reprogrammée à demain (quitte « aujourd'hui »).
@@ -137,7 +138,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       all[id] = { ...cur, infosEnvoye: true, infosDate: todayFr, infoRelanceNiveau: 0 };
       if (!cur.devisEnvoye) await supabase.from("prospects").update({ statut: "CONTACTÉ", updated_at: new Date().toISOString() }).eq("id", id).eq("statut", "NOUVEAU");
     } else {
-      all[id] = { ...cur, infoRelanceNiveau: niveau, relanceDate: new Date().toISOString() };
+      const infoRelanceDates = [...(cur.infoRelanceDates || [])]; infoRelanceDates[niveau - 1] = todayFr;
+      all[id] = { ...cur, infoRelanceNiveau: niveau, relanceDate: new Date().toISOString(), infoRelanceDates };
       await supabase.from("prospects").update({ statut: "RELANCÉ", updated_at: new Date().toISOString() }).eq("id", id);
     }
     const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(all));
@@ -166,11 +168,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (cur.devisEnvoye) {
       const niveau = Math.min((cur.relanceNiveau || 0) + 1, 3);
       ok = await sendProspectRelanceEmail(p.email as string, niveau, { prenom, nom, genre, prestation: typePresta, devisDate: cur.devisDate, prix });
-      suiviNext = { ...cur, relanceNiveau: niveau, relanceDate: new Date().toISOString() };
+      const relanceDates = [...(cur.relanceDates || [])]; relanceDates[niveau - 1] = todayFr;
+      suiviNext = { ...cur, relanceNiveau: niveau, relanceDate: new Date().toISOString(), relanceDates };
     } else if (cur.infosEnvoye) {
       const niveau = Math.min((cur.infoRelanceNiveau || 0) + 1, 3);
       ok = await sendProspectInfosEmail(p.email as string, niveau, { prenom, nom, genre, typePresta });
-      suiviNext = { ...cur, infoRelanceNiveau: niveau, relanceDate: new Date().toISOString() };
+      const infoRelanceDates = [...(cur.infoRelanceDates || [])]; infoRelanceDates[niveau - 1] = todayFr;
+      suiviNext = { ...cur, infoRelanceNiveau: niveau, relanceDate: new Date().toISOString(), infoRelanceDates };
     } else {
       ok = await sendProspectInfosEmail(p.email as string, 0, { prenom, nom, genre, typePresta });
       suiviNext = { ...cur, infosEnvoye: true, infosDate: todayFr, infoRelanceNiveau: 0 };
