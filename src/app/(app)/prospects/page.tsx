@@ -926,7 +926,7 @@ function ProspectModal({
                   {[1, 2, 3].map(n => {
                     const done = niv >= n;
                     const isNext = niv + 1 === n;
-                    const dateEnvoi = p.suivi?.relanceDates?.[n - 1];
+                    const dateEnvoi = p.suivi?.relanceDates?.[n - 1] || (n === niv && p.suivi?.relanceDate ? formatDate(p.suivi.relanceDate) : "");
                     return (
                       <div key={n} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
                         done ? "bg-green-50 border-green-200 text-green-700"
@@ -982,7 +982,7 @@ function ProspectModal({
                   {[1, 2, 3].map(n => {
                     const done = niv >= n;
                     const isNext = niv + 1 === n;
-                    const dateEnvoi = p.suivi?.infoRelanceDates?.[n - 1];
+                    const dateEnvoi = p.suivi?.infoRelanceDates?.[n - 1] || (n === niv && p.suivi?.relanceDate ? formatDate(p.suivi.relanceDate) : "");
                     return (
                       <div key={n} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${
                         done ? "bg-green-50 border-green-200 text-green-700"
