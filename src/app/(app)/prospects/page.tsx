@@ -126,7 +126,14 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   // structurés (tissu, places…) + montant, mémorisés dans besoins[0] à la création.
   const [prestaDetails, setPrestaDetails] = useState<Record<string, string>>({});
   const [prestaResume,  setPrestaResume]  = useState(""); // résumé lisible des détails (= quantite)
-  const [montant,       setMontant]       = useState("");
+  const [montant,       setMontant]       = useState("");   // TOTAL (prix unitaire × nombre)
+  const [montantUnit,   setMontantUnit]   = useState("");   // prix unitaire
+  const [montantNb,     setMontantNb]     = useState("1");  // nombre d'unités (ex. 4 tapis)
+  const applyMontant = (unit: string, nb: string) => {
+    setMontantUnit(unit); setMontantNb(nb);
+    const u = parseFloat(unit.replace(",", ".")) || 0; const n = Math.max(1, parseInt(nb) || 1);
+    setMontant(u > 0 ? String(Number((u * n).toFixed(2))) : "");
+  };
   const [saving,    setSaving]    = useState(false);
   const [extracted, setExtracted] = useState(false);
   const [error,     setError]     = useState("");
@@ -260,9 +267,22 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
                 </select>
               </div>
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Montant (€)</label>
-                <input type="number" inputMode="decimal" value={montant} onChange={e => setMontant(e.target.value)} className={inputCls} placeholder="ex : 190" />
+                <label className="text-xs text-gray-500 mb-1 block">Prix unitaire (€)</label>
+                <input type="number" inputMode="decimal" value={montantUnit} onChange={e => applyMontant(e.target.value, montantNb)} className={inputCls} placeholder="ex : 190" />
               </div>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">Nombre</label>
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => applyMontant(montantUnit, String(Math.max(1, (parseInt(montantNb) || 1) - 1)))} className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">–</button>
+                  <input type="number" min={1} value={montantNb} onChange={e => applyMontant(montantUnit, e.target.value)} className="w-14 text-center border border-gray-200 rounded-lg px-1 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  <button type="button" onClick={() => applyMontant(montantUnit, String((parseInt(montantNb) || 1) + 1))} className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">+</button>
+                </div>
+              </div>
+              {(parseInt(montantNb) || 1) > 1 && montant && (
+                <div className="text-sm text-gray-600 pb-0.5">= <strong className="text-gray-900">{montant} €</strong> <span className="text-xs text-gray-400">({montantNb} × {montantUnit} €)</span></div>
+              )}
             </div>
             {form.typePresta && getSchema(form.typePresta).length > 0 && (
               <PrestationFields
@@ -314,6 +334,14 @@ function ProspectModal({
   const [editingCoord, setEditingCoord] = useState(false);
   const [coordForm, setCoordForm] = useState({ tel: prospect.tel, email: prospect.email, adresse: prospect.adresse, budget: prospect.budget });
   const [draft, setDraft] = useState<Besoin>({ typePresta: "", quantite: "1", prix: "" }); // saisie d'une prestation souhaitée
+  // Multiplicateur prix unitaire × nombre pour le besoin en cours (ex. 4 tapis identiques).
+  const [besoinUnit, setBesoinUnit] = useState("");
+  const [besoinNb,   setBesoinNb]   = useState("1");
+  const applyBesoinPrix = (unit: string, nb: string) => {
+    setBesoinUnit(unit); setBesoinNb(nb);
+    const u = parseFloat(unit.replace(",", ".")) || 0; const n = Math.max(1, parseInt(nb) || 1);
+    setDraft(x => ({ ...x, prix: u > 0 ? String(Number((u * n).toFixed(2))) : "" }));
+  };
   const [draftStatut, setDraftStatut] = useState<string>(prospect.statut); // statut choisi, en attente de validation
   const [actionBusy, setActionBusy] = useState<"" | "devis" | "relance" | "avance" | "infos" | "relance_infos">("");
   const toast = useToast();
@@ -363,6 +391,7 @@ function ProspectModal({
     if (p.statut === "NOUVEAU") { updates.statut = "CONTACTÉ"; setDraftStatut("CONTACTÉ"); }
     patch(updates);
     setDraft({ typePresta: "", quantite: "1", prix: "" });
+    setBesoinUnit(""); setBesoinNb("1");
   }
   function removeBesoin(i: number) {
     patch({ besoins: (p.besoins || []).filter((_, j) => j !== i) });
@@ -787,14 +816,24 @@ function ProspectModal({
               {draft.typePresta && getSchema(draft.typePresta).length > 0 && (
                 <PrestationFields typePresta={draft.typePresta} initialValues={draft.details} onDetailChange={(d, v) => setDraft(x => ({ ...x, quantite: d, details: v }))} />
               )}
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Prix (optionnel)</label>
-                <div className="relative">
-                  <input type="number" inputMode="decimal" min={0} step="0.01" value={draft.prix} placeholder="ex. 210"
-                    onChange={e => setDraft(x => ({ ...x, prix: e.target.value }))}
-                    className="w-full bg-white border border-gray-200 rounded-lg pl-3 pr-8 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300" />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">€</span>
+              <div className="flex items-end gap-2 flex-wrap">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Prix unitaire (€)</label>
+                  <input type="number" inputMode="decimal" min={0} step="0.01" value={besoinUnit} placeholder="ex. 210"
+                    onChange={e => applyBesoinPrix(e.target.value, besoinNb)}
+                    className="w-28 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300" />
                 </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Nombre</label>
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => applyBesoinPrix(besoinUnit, String(Math.max(1, (parseInt(besoinNb) || 1) - 1)))} className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">–</button>
+                    <input type="number" min={1} value={besoinNb} onChange={e => applyBesoinPrix(besoinUnit, e.target.value)} className="w-12 text-center border border-gray-200 rounded-lg px-1 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                    <button type="button" onClick={() => applyBesoinPrix(besoinUnit, String((parseInt(besoinNb) || 1) + 1))} className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">+</button>
+                  </div>
+                </div>
+                {(parseInt(besoinNb) || 1) > 1 && draft.prix && (
+                  <div className="text-sm text-gray-700 pb-1.5">= <strong>{draft.prix} €</strong></div>
+                )}
               </div>
               <button onClick={addBesoin} disabled={!draft.typePresta || saving}
                 className="w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors">
