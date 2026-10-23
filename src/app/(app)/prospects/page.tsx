@@ -1265,9 +1265,10 @@ export default function ProspectsPage() {
   }
 
   // ── Dates de référence ──
-  const todayIso = useMemo(() => new Date().toISOString().split("T")[0], []);
-  const in3Iso   = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().split("T")[0]; }, []);
-  const in7Iso   = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().split("T")[0]; }, []);
+  const todayIso    = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const tomorrowIso = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; }, []);
+  const in3Iso      = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().split("T")[0]; }, []);
+  const in7Iso      = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().split("T")[0]; }, []);
 
   // ── Compteurs pour badges ──
   const counts = useMemo(() => {
@@ -1275,13 +1276,14 @@ export default function ProspectsPage() {
     return {
       // Buckets DISJOINTS : aujourd'hui (≤ auj.), 3 jours (J+1→J+3), semaine (J+4→J+7).
       urgent : actifs.filter(p => p.dateRelance && p.dateRelance <= todayIso).length,
-      j3     : actifs.filter(p => p.dateRelance && p.dateRelance > todayIso && p.dateRelance <= in3Iso).length,
+      demain : actifs.filter(p => p.dateRelance && p.dateRelance === tomorrowIso).length,
+      j3     : actifs.filter(p => p.dateRelance && p.dateRelance > tomorrowIso && p.dateRelance <= in3Iso).length,
       j7     : actifs.filter(p => p.dateRelance && p.dateRelance > in3Iso   && p.dateRelance <= in7Iso).length,
       actifs : actifs.length,
       total  : prospects.length,
       convertis: prospects.filter(p => p.statut === "CONVERTI").length,
     };
-  }, [prospects, todayIso, in3Iso, in7Iso]);
+  }, [prospects, todayIso, tomorrowIso, in3Iso, in7Iso]);
 
   // ── Filtrage + tri ──
   const sorted = useMemo(() => {
@@ -1296,9 +1298,13 @@ export default function ProspectsPage() {
         if (["CONVERTI","PERDU"].includes(p.statut)) return false;
         return p.dateRelance && p.dateRelance <= todayIso;
       }
+      if (filterRelance === "demain") {
+        if (["CONVERTI","PERDU"].includes(p.statut)) return false;
+        return p.dateRelance === tomorrowIso;
+      }
       if (filterRelance === "j3") {
         if (["CONVERTI","PERDU"].includes(p.statut)) return false;
-        return !!(p.dateRelance && p.dateRelance > todayIso && p.dateRelance <= in3Iso);
+        return !!(p.dateRelance && p.dateRelance > tomorrowIso && p.dateRelance <= in3Iso);
       }
       if (filterRelance === "j7") {
         if (["CONVERTI","PERDU"].includes(p.statut)) return false;
@@ -1327,7 +1333,7 @@ export default function ProspectsPage() {
       if (!b.dateRelance) return -1;
       return a.dateRelance.localeCompare(b.dateRelance);
     });
-  }, [prospects, filterRelance, filterStatut, search, todayIso, in3Iso, in7Iso]);
+  }, [prospects, filterRelance, filterStatut, search, todayIso, tomorrowIso, in3Iso, in7Iso]);
 
   // ── Mutations ──
   function handleUpdated(update: Partial<Prospect> & { id: string }) {
@@ -1356,6 +1362,7 @@ export default function ProspectsPage() {
 
   const RELANCE_FILTERS = [
     { key: "urgent", label: "🔴 Aujourd'hui",    count: counts.urgent,   activeClass: "bg-red-500 text-white",    inactiveClass: "bg-red-50 text-red-600 border-red-200"    },
+    { key: "demain", label: "🔵 Demain",         count: counts.demain,   activeClass: "bg-blue-500 text-white",   inactiveClass: "bg-blue-50 text-blue-600 border-blue-200"  },
     { key: "j3",     label: "🟠 Dans 3 jours",   count: counts.j3,       activeClass: "bg-orange-500 text-white", inactiveClass: "bg-orange-50 text-orange-600 border-orange-200" },
     { key: "j7",     label: "🟡 Cette semaine",  count: counts.j7,       activeClass: "bg-amber-500 text-white",  inactiveClass: "bg-amber-50 text-amber-600 border-amber-200"  },
     { key: "ACTIFS", label: "📋 Tous les actifs",count: counts.actifs,   activeClass: "bg-blue-600 text-white",   inactiveClass: "bg-gray-100 text-gray-600 border-gray-200"    },
