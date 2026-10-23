@@ -458,6 +458,9 @@ export default function ClientFiche({
 }
 
 // ─── Variante : charge la fiche par clientId (ouvrable depuis n'importe où) ────
+// Cache mémoire des fiches déjà ouvertes → ré-affichage INSTANTANÉ (puis MAJ en fond).
+const ficheCache = new Map<string, ClientFicheData>();
+
 export function ClientFicheById({
   clientId, onClose, onChanged,
 }: {
@@ -465,16 +468,18 @@ export function ClientFicheById({
   onClose: () => void;
   onChanged?: () => void;
 }) {
-  const [data, setData] = useState<ClientFicheData | null>(null);
+  const [data, setData] = useState<ClientFicheData | null>(() => ficheCache.get(clientId) ?? null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     let actif = true;
-    setData(null); setError(false);
+    const cached = ficheCache.get(clientId);
+    setData(cached ?? null); // affiche tout de suite la version en cache si dispo
+    setError(false);
     fetch(`/api/clients/${clientId}`)
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then(d => { if (actif) setData(d); })
-      .catch(() => { if (actif) setError(true); });
+      .then(d => { if (actif) { ficheCache.set(clientId, d); setData(d); } })
+      .catch(() => { if (actif && !cached) setError(true); });
     return () => { actif = false; };
   }, [clientId]);
 

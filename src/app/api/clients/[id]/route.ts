@@ -21,19 +21,19 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (unauth) return unauth;
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
 
-  const { data: client, error } = await supabase
-    .from("clients")
-    .select("id, nom, prenom, tel, email, adresse, tags, notes, created_at")
-    .eq("id", params.id)
-    .single();
-
-  if (error || !client) return NextResponse.json({ error: "Client introuvable" }, { status: 404 });
-
-  const { data: prestas } = await supabase
-    .from("prestations")
-    .select("id, type_prestation, date_intervention, heure_intervention, prix, mode_paiement, statut, archive, archive_reason, photos, satisfaction, prestataires(nom)")
-    .eq("client_id", params.id)
-    .order("date_intervention", { ascending: false });
+  // Les 3 lectures sont indépendantes → en parallèle (fiche plus rapide à l'ouverture).
+  const [clientRes, prestasRes, inscritsList] = await Promise.all([
+    supabase.from("clients")
+      .select("id, nom, prenom, tel, email, adresse, tags, notes, created_at")
+      .eq("id", params.id).single(),
+    supabase.from("prestations")
+      .select("id, type_prestation, date_intervention, heure_intervention, prix, mode_paiement, statut, archive, archive_reason, photos, satisfaction, prestataires(nom)")
+      .eq("client_id", params.id).order("date_intervention", { ascending: false }),
+    getInscrits(),
+  ]);
+  const client = clientRes.data;
+  if (clientRes.error || !client) return NextResponse.json({ error: "Client introuvable" }, { status: 404 });
+  const { data: prestas } = prestasRes;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows: any[] = prestas || [];
@@ -59,7 +59,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const derniere = dates.sort((a, b) => (a < b ? 1 : -1))[0] || "";
 
   // Inscription à l'Avance Immédiate (détectée via les emails d'AIS) → badge vert.
-  const insc = estInscrit(await getInscrits(), client.tel, client.email);
+  const insc = estInscrit(inscritsList, client.tel, client.email);
 
   return NextResponse.json({
     clientId   : client.id,
