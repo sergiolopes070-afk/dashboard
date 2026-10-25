@@ -74,11 +74,15 @@ function rowToPrestation(row: Record<string, any>): Prestation {
 
 // ─── READ ────────────────────────────────────────────────────────────────────
 
+// Jointures limitées aux champs lus par rowToPrestation : la fiche client complète
+// et la fiche prestataire (congés, code d'accès…) alourdissaient chaque ligne.
+const SELECT_PRESTATION = "*, clients(id, nom, prenom, tel, email, tags, notes), prestataires(nom, email)";
+
 export async function getPrestations(): Promise<Prestation[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("prestations")
-    .select("*, clients(*), prestataires(*)")
+    .select(SELECT_PRESTATION)
     .eq("archive", false)
     .order("created_at", { ascending: true });
 
@@ -105,7 +109,7 @@ export async function getClientsAvecPrestations(): Promise<ClientAvecPrestations
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("clients")
-    .select("*, prestations(*, prestataires(*))")
+    .select("*, prestations(*, prestataires(nom, email))")
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -195,15 +199,16 @@ export async function setPrestataireIndispoPlage(pid: string, du: string, au: st
 
 export async function getArchive(): Promise<Prestation[]> {
   if (!supabase) return [];
+  const avisLaisse = getSettingJSON<Record<string, boolean>>("avis_laisse", {}); // en parallèle de la requête
   const { data, error } = await supabase
     .from("prestations")
-    .select("*, clients(*), prestataires(*)")
+    .select(SELECT_PRESTATION)
     .eq("archive", true)
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
   // Fusionne le flag « a laissé un avis » (réglage avis_laisse) → champ avis = "OUI".
-  const avisMap = await getSettingJSON<Record<string, boolean>>("avis_laisse", {});
+  const avisMap = await avisLaisse;
   return (data || []).map(r => { const p = rowToPrestation(r); if (avisMap[p.row]) p.avis = "OUI"; return p; });
 }
 

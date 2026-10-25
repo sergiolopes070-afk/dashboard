@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Search, Filter, Download, Trash2, Loader2, Inbox } from "lucide-react";
+import { Search, Filter, Download, Trash2, Loader2, Inbox, Plus, ArrowUpDown } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
@@ -9,9 +9,20 @@ import PrestationTable from "@/components/PrestationTable";
 import { ClientFicheById } from "@/components/ClientFiche";
 import EditPrestationModal from "@/components/EditPrestationModal";
 import ClotureModal from "@/components/ClotureModal";
+import NewClientModal from "@/components/NewClientModal";
 import { Prestation, Prestataire } from "@/lib/constants";
+import { frDateToIso } from "@/lib/finance";
 
-const STATUTS = ["Tous", "À affecter", "EMAIL ENVOYÉ", "CONFIRMÉ", "EN ATTENTE PRESTA", "PRESTATAIRE REFUSÉ – À RÉAFFECTER", "TERMINÉ", "ANNULÉ"];
+// « TERMINÉ » retiré : une prestation terminée passe par la clôture et part dans l'Historique.
+const STATUTS = ["Tous", "À affecter", "EMAIL ENVOYÉ", "CONFIRMÉ", "EN ATTENTE PRESTA", "PRESTATAIRE REFUSÉ – À RÉAFFECTER", "ANNULÉ"];
+
+// Tris proposés
+const TRIS = [
+  { value: "date_asc",  label: "Intervention ↑ (plus proche)" },
+  { value: "date_desc", label: "Intervention ↓ (plus lointaine)" },
+  { value: "creation",  label: "Création récente" },
+] as const;
+type Tri = typeof TRIS[number]["value"];
 
 export default function PrestationsPage() {
   const [data, setData]                   = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.prestations) ?? []);
@@ -26,6 +37,8 @@ export default function PrestationsPage() {
   const [deleteModal, setDeleteModal]     = useState<{ id: string; label: string } | null>(null);
   const [deleting, setDeleting]           = useState(false);
   const [importing, setImporting]         = useState(false);
+  const [tri, setTri]                     = useState<Tri>("date_asc");
+  const [showNew, setShowNew]             = useState(false);
   const toast = useToast();
 
   const load = useCallback(async () => {
@@ -126,8 +139,22 @@ export default function PrestationsPage() {
           .join(" ").toLowerCase().includes(q)
       );
     }
-    return list;
-  }, [data, search, statut]);
+    // Tri (les prestations sans date restent en fin de liste pour les tris par date)
+    const sorted = [...list];
+    if (tri === "creation") {
+      sorted.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+    } else {
+      const sens = tri === "date_asc" ? 1 : -1;
+      sorted.sort((a, b) => {
+        const da = frDateToIso(a.date), db = frDateToIso(b.date);
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return sens * ((da + (a.heure || "")).localeCompare(db + (b.heure || "")));
+      });
+    }
+    return sorted;
+  }, [data, search, statut, tri]);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -137,34 +164,47 @@ export default function PrestationsPage() {
         onRefresh={load}
         loading={loading}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Mobile : icônes seules (texte à partir de sm) */}
+            <button
+              onClick={() => setShowNew(true)}
+              title="Nouvelle prestation (nouveau client)"
+              aria-label="Nouvelle prestation"
+              className="flex items-center gap-2 p-2 sm:px-3 sm:py-2 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors"
+            >
+              <Plus size={16} />
+              <span className="hidden sm:inline">Nouveau</span>
+            </button>
             <button
               onClick={importDemandes}
               disabled={importing}
               title="Importer les demandes de devis reçues par email (formulaire du site)"
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-60"
+              aria-label="Importer les demandes"
+              className="flex items-center gap-2 p-2 sm:px-3 sm:py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-60"
             >
-              {importing ? <Loader2 size={14} className="animate-spin" /> : <Inbox size={14} />}
-              Importer les demandes
+              {importing ? <Loader2 size={16} className="animate-spin" /> : <Inbox size={16} />}
+              <span className="hidden sm:inline">Importer les demandes</span>
             </button>
             <button
               onClick={exportCSV}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+              title="Export CSV"
+              aria-label="Export CSV"
+              className="flex items-center gap-2 p-2 sm:px-3 sm:py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
             >
-              <Download size={14} />
-              Export CSV
+              <Download size={16} />
+              <span className="hidden sm:inline">Export CSV</span>
             </button>
           </div>
         }
       />
-      <div className="flex-1 p-6 space-y-4">
+      <div className="flex-1 p-3 sm:p-6 space-y-3 sm:space-y-4">
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">{error}</div>
         )}
 
         {/* Filtres */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-3 items-center">
-          <div className="relative flex-1 min-w-[200px]">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 sm:p-4 flex flex-wrap gap-2 sm:gap-3 items-center">
+          <div className="relative flex-1 min-w-full sm:min-w-[200px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
@@ -174,21 +214,35 @@ export default function PrestationsPage() {
               className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <Filter size={15} className="text-gray-400" />
+          <div className="flex items-center gap-2 flex-1 sm:flex-none min-w-0">
+            <Filter size={15} className="text-gray-400 flex-shrink-0" />
             <select
               value={statut}
               onChange={(e) => setStatut(e.target.value)}
-              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              aria-label="Filtrer par statut"
+              className="w-full sm:w-auto min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
             >
               {STATUTS.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
           </div>
+          <div className="flex items-center gap-2 flex-1 sm:flex-none min-w-0">
+            <ArrowUpDown size={15} className="text-gray-400 flex-shrink-0" />
+            <select
+              value={tri}
+              onChange={(e) => setTri(e.target.value as Tri)}
+              aria-label="Trier"
+              className="w-full sm:w-auto min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+            >
+              {TRIS.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <div className="md:bg-white md:rounded-2xl md:border md:border-gray-100 md:shadow-sm md:p-5">
           {loading && data.length === 0 ? (
             <div className="space-y-3" aria-busy="true" aria-label="Chargement en cours">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -206,6 +260,14 @@ export default function PrestationsPage() {
           )}
         </div>
       </div>
+
+      {showNew && (
+        <NewClientModal
+          prestataires={prestataires}
+          onClose={() => setShowNew(false)}
+          onSaved={() => { setShowNew(false); load(); }}
+        />
+      )}
 
       {ficheClientId && (
         <ClientFicheById clientId={ficheClientId} onClose={() => setFicheClientId(null)} onChanged={load} />

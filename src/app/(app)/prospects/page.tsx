@@ -679,7 +679,7 @@ function ProspectModal({
                   <h2 className="font-bold text-gray-900">{p.prenom} {p.nom}</h2>
                   <button
                     onClick={() => { setNameForm({ prenom: p.prenom, nom: p.nom }); setEditingName(true); }}
-                    className="text-gray-300 hover:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
+                    className="text-gray-300 hover:text-gray-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity p-0.5"
                     title="Modifier le nom"
                   >
                     <Pencil size={12} />
@@ -694,6 +694,40 @@ function ProspectModal({
             <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-full"><X size={18} className="text-gray-400" /></button>
           </div>
         </div>
+
+        {/* ── Actions rapides (fixes en haut de la fiche, hors zone scrollable) ── */}
+        {(p.tel || p.email) && (
+          <div className="flex gap-2 px-5 py-2 border-b border-gray-100 bg-white shrink-0">
+            {p.tel && (
+              <a
+                href={`tel:${p.tel}`}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-blue-50 text-blue-700 text-sm font-semibold hover:bg-blue-100 active:bg-blue-100 transition-colors"
+              >
+                <Phone size={15} />
+                Appeler
+              </a>
+            )}
+            {p.tel && (
+              <a
+                href={`https://wa.me/${p.tel.replace(/\D/g, "").replace(/^0/, "33")}`}
+                target="_blank" rel="noopener noreferrer"
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-green-500 text-white text-sm font-semibold hover:bg-green-600 active:bg-green-600 transition-colors"
+              >
+                <MessageSquare size={15} />
+                WhatsApp
+              </a>
+            )}
+            {p.email && (
+              <a
+                href={`mailto:${p.email}`}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 active:bg-gray-100 transition-colors"
+              >
+                <Mail size={15} />
+                Mail
+              </a>
+            )}
+          </div>
+        )}
 
         {/* ── Body scrollable ── */}
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
@@ -1094,6 +1128,19 @@ function ProspectModal({
             }] : []}
             onAdded={journaliserDevis}
             onListChange={setDevisExt}
+            // Après un envoi par mail : on reprend la ligne 📧 écrite côté serveur (sinon
+            // le prochain ajout renverrait l'ancienne liste et l'effacerait), la relance
+            // reprogrammée à demain et le passage Nouveau → Contacté.
+            onSent={(_d, info) => {
+              const next = {
+                ...p,
+                commentaires: info.journal ? [...p.commentaires, info.journal] : p.commentaires,
+                dateRelance : info.dateRelance ?? p.dateRelance,
+                statut      : p.statut === "NOUVEAU" ? "CONTACTÉ" as Prospect["statut"] : p.statut,
+              };
+              setP(next);
+              onUpdated({ id: p.id, commentaires: next.commentaires, dateRelance: next.dateRelance, statut: next.statut });
+            }}
           />
 
           {/* Journal des échanges */}
@@ -1171,39 +1218,6 @@ function ProspectModal({
               <div ref={commentsEndRef} />
             </div>
           </div>
-
-          {/* ── Actions rapides ── */}
-          {isActive && (p.tel || p.email) && (
-            <div className="flex gap-2 flex-wrap">
-              {p.tel && (
-                <a
-                  href={`https://wa.me/${p.tel.replace(/\s/g,"").replace(/^0/,"33")}`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-500 text-white text-sm font-semibold hover:bg-green-600 transition-colors"
-                >
-                  <Phone size={15} />
-                  WhatsApp
-                </a>
-              )}
-              {p.tel && (
-                <a
-                  href={`tel:${p.tel}`}
-                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
-                >
-                  <Phone size={15} />
-                  Appeler
-                </a>
-              )}
-              {p.email && (
-                <a
-                  href={`mailto:${p.email}`}
-                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
-                >
-                  <Mail size={15} />
-                </a>
-              )}
-            </div>
-          )}
 
           {/* ── Convertir en client (formulaire intelligent complet) ── */}
           {isActive && (

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
+import { rowToItem } from "@/lib/stockItem";
 
 export const dynamic = "force-dynamic";
 
@@ -24,23 +25,6 @@ export const dynamic = "force-dynamic";
   -- conso = dose consommée par type de prestation, ex. {"Lavage véhicule": 0.15}
   -- → à la clôture d'un RDV, le produit se décrémente automatiquement.
 */
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function rowToItem(r: Record<string, any>) {
-  return {
-    id           : r.id            as string,
-    createdAt    : r.created_at    as string,
-    nom          : r.nom           || "",
-    categorie    : r.categorie     || "Matériel",
-    unite        : r.unite         || "unité",
-    quantite     : Number(r.quantite ?? 0),
-    seuil        : Number(r.seuil ?? 0),
-    prixUnitaire : r.prix_unitaire != null ? Number(r.prix_unitaire) : null,
-    notes        : r.notes         || "",
-    historique   : Array.isArray(r.historique) ? r.historique : [],
-    conso        : (r.conso && typeof r.conso === "object" && !Array.isArray(r.conso)) ? r.conso as Record<string, number> : {},
-  };
-}
 
 export async function GET() {
   const unauth = await requireAuth();

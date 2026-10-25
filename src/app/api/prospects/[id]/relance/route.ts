@@ -17,7 +17,20 @@ const SUIVI_KEY = "prospects_suivi";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Suivi = { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string; relanceDates?: string[]; devisNum?: string; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number; infoRelanceDates?: string[] } & Record<string, any>;
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+// Filet de sécurité : un refus de Gmail (mot de passe d'application révoqué, quota
+// d'envoi atteint, coupure SMTP…) lève une exception. Sans ce filet, le client
+// recevait une page d'erreur illisible et le bouton semblait « ne rien faire ».
+export async function POST(req: Request, ctx: { params: { id: string } }) {
+  try {
+    return await traiter(req, ctx);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[prospects/relance] échec :", msg);
+    return NextResponse.json({ error: `Gmail a refusé l'envoi : ${msg}` }, { status: 502 });
+  }
+}
+
+async function traiter(req: Request, { params }: { params: { id: string } }) {
   const unauth = await requireAuth();
   if (unauth) return unauth;
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
@@ -164,20 +177,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const demain = new Date(); demain.setDate(demain.getDate() + 1);
     const demainIso = demain.toISOString().split("T")[0];
 
-    let ok = false; let suiviNext: Suivi;
+    let ok = false; let suiviNext: Suivi; let libelle: string;
     if (cur.devisEnvoye) {
       const niveau = Math.min((cur.relanceNiveau || 0) + 1, 3);
       ok = await sendProspectRelanceEmail(p.email as string, niveau, { prenom, nom, genre, prestation: typePresta, devisDate: cur.devisDate, prix });
       const relanceDates = [...(cur.relanceDates || [])]; relanceDates[niveau - 1] = todayFr;
       suiviNext = { ...cur, relanceNiveau: niveau, relanceDate: new Date().toISOString(), relanceDates };
+      libelle = `Relance devis R${niveau}`;
     } else if (cur.infosEnvoye) {
       const niveau = Math.min((cur.infoRelanceNiveau || 0) + 1, 3);
       ok = await sendProspectInfosEmail(p.email as string, niveau, { prenom, nom, genre, typePresta });
       const infoRelanceDates = [...(cur.infoRelanceDates || [])]; infoRelanceDates[niveau - 1] = todayFr;
       suiviNext = { ...cur, infoRelanceNiveau: niveau, relanceDate: new Date().toISOString(), infoRelanceDates };
+      libelle = `Relance infos R${niveau}`;
     } else {
       ok = await sendProspectInfosEmail(p.email as string, 0, { prenom, nom, genre, typePresta });
       suiviNext = { ...cur, infosEnvoye: true, infosDate: todayFr, infoRelanceNiveau: 0 };
+      libelle = "Demande d'infos";
     }
     if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
 
@@ -186,7 +202,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (errSet) return NextResponse.json({ error: `Email envoyé mais suivi non enregistré : ${errSet}` }, { status: 500 });
     // Reprogramme la prochaine relance à demain (quitte « en retard ») + statut Relancé.
     await supabase.from("prospects").update({ statut: "RELANCÉ", date_relance: demainIso, updated_at: new Date().toISOString() }).eq("id", id);
-    return NextResponse.json({ suivi: all[id], dateRelance: demainIso });
+    return NextResponse.json({ suivi: all[id], dateRelance: demainIso, libelle, email: p.email });
   }
 
   return NextResponse.json({ error: "action invalide" }, { status: 400 });

@@ -223,6 +223,8 @@ function MvtModal({ item, type, onClose, onDone }: { item: StockItem; type: "ent
   );
 }
 
+interface DemandeMateriel { id: string; at: string; prestataireNom: string; categorie: string; quantite: string; details: string; statut: string }
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function StockPage() {
   const toast = useToast();
@@ -233,22 +235,38 @@ export default function StockPage() {
   const [modal, setModal]     = useState<"new" | StockItem | null>(null);
   const [mvt, setMvt]         = useState<{ item: StockItem; type: "entree" | "sortie" } | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // Demandes de matériel envoyées par les prestataires depuis leur espace.
+  const [demandes, setDemandes] = useState<DemandeMateriel[]>([]);
 
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch("/api/stock");
+      const [res, resDem] = await Promise.all([fetch("/api/stock"), fetch("/api/stock/demandes")]);
       const d = await res.json();
+      if (resDem.ok) { const dd = await resDem.json(); setDemandes(Array.isArray(dd.demandes) ? dd.demandes.filter((x: DemandeMateriel) => x.statut !== "TRAITEE") : []); }
       if (d && d.needsSetup) { setNeedsSetup(true); setItems([]); return; }
       if (Array.isArray(d)) { setNeedsSetup(false); setItems(d); cacheSet(CACHE_KEYS.stock, d); }
     } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, []);
 
+  async function majDemande(id: string, action: "fait" | "supprimer") {
+    setDemandes(ds => ds.filter(x => x.id !== id));
+    const res = await fetch("/api/stock/demandes", {
+      method: action === "fait" ? "PATCH" : "DELETE", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(action === "fait" ? { id, statut: "TRAITEE" } : { id }),
+    }).catch(() => null);
+    if (res?.ok) toast.success(action === "fait" ? "Demande traitée" : "Demande supprimée");
+    else { toast.error("Échec — la demande est remise dans la liste"); load(); }
+  }
+
   async function remove(id: string) {
+    const it = items.find(i => i.id === id);
+    if (!confirm(`Supprimer l'article « ${it?.nom ?? ""} » et son historique ?`)) return;
     setDeleting(id);
     try {
-      await fetch(`/api/stock/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/stock/${id}`, { method: "DELETE" });
+      if (!res.ok) { toast.error("Suppression impossible"); return; }
       setItems(prev => prev.filter(i => i.id !== id));
       toast.success("Article supprimé");
     } finally { setDeleting(null); }
@@ -310,6 +328,26 @@ export default function StockPage() {
       />
 
       <div className="flex-1 p-3 sm:p-6 space-y-4">
+        {/* Demandes de matériel des prestataires */}
+        {demandes.length > 0 && (
+          <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4">
+            <p className="text-sm font-semibold text-sky-800 flex items-center gap-2 mb-2"><Package size={16} /> {demandes.length} demande{demandes.length > 1 ? "s" : ""} de matériel</p>
+            <div className="space-y-2">
+              {demandes.map(d => (
+                <div key={d.id} className="flex items-start gap-3 bg-white rounded-xl border border-sky-100 p-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{d.categorie}{d.quantite ? ` · ${d.quantite}` : ""}</p>
+                    {d.details && <p className="text-xs text-gray-500 whitespace-pre-line">{d.details}</p>}
+                    <p className="text-[11px] text-gray-400 mt-0.5">{d.prestataireNom || "Prestataire"} · {new Date(d.at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</p>
+                  </div>
+                  <button onClick={() => majDemande(d.id, "fait")} className="text-xs px-2.5 py-1.5 rounded-lg bg-green-500 text-white font-medium hover:bg-green-600 flex-shrink-0">Fait</button>
+                  <button onClick={() => majDemande(d.id, "supprimer")} className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 flex-shrink-0" title="Supprimer"><X size={13} /></button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* KPIs */}
         <div className="grid grid-cols-3 gap-3">
           {[

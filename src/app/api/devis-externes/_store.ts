@@ -31,6 +31,10 @@ export interface DevisExterne {
   fichier? : DevisFichier;
   createdAt: string;          // ISO
   origine? : "prospect";      // copié depuis la fiche prospect à la conversion
+  // Envoi par email depuis le dashboard (POST /api/devis-externes/send)
+  envoyeLe?   : string;       // ISO du dernier envoi
+  envoyeA?    : string;       // adresse du dernier envoi
+  envoisCount?: number;       // nombre d'envois
 }
 
 const STATUTS: DevisStatut[] = ["envoye", "accepte", "refuse"];
@@ -91,6 +95,10 @@ export function sanitize(input: Record<string, unknown>, base?: DevisExterne): D
     ...(fichier ? { fichier } : {}),
     createdAt: base?.createdAt ?? new Date().toISOString(),
     ...(base?.origine ? { origine: base.origine } : {}),
+    // Historique d'envoi : jamais modifiable par la saisie, seulement conservé.
+    ...(base?.envoyeLe ? { envoyeLe: base.envoyeLe } : {}),
+    ...(base?.envoyeA ? { envoyeA: base.envoyeA } : {}),
+    ...(base?.envoisCount ? { envoisCount: base.envoisCount } : {}),
   };
 }
 

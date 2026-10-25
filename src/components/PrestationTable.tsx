@@ -3,7 +3,7 @@ import { Prestation } from "@/lib/constants";
 import StatusBadge from "./StatusBadge";
 import {
   ExternalLink, MessageCircle, FileText, Pencil, Archive, Trash2,
-  CreditCard, Copy, Check, X, Loader2, Send, Download,
+  CreditCard, Copy, Check, X, Loader2, Send, Download, Phone, MoreHorizontal,
 } from "lucide-react";
 import { MODE_PAIEMENT_ICONS } from "@/lib/constants";
 import { Entite } from "@/lib/entite";
@@ -245,6 +245,42 @@ function PaymentButton({ p }: { p: Prestation }) {
   );
 }
 
+// ─── Helpers contact ─────────────────────────────────────────────────────────
+
+/** Lien WhatsApp direct vers le client (0X… → 33X…). */
+function waDirectHref(tel: string): string {
+  return `https://wa.me/${tel.replace(/\D/g, "").replace(/^0/, "33")}`;
+}
+
+/** mailto: de confirmation de rendez-vous (récapitulatif de la prestation). */
+function mailConfirmationHref(p: Prestation): string {
+  const details = [
+    p.typePresta ? `  • Prestation : ${p.typePresta}${p.quantite ? ` (x${p.quantite})` : ""}` : "",
+    p.adresse    ? `  • Adresse    : ${p.adresse}` : "",
+    p.date       ? `  • Date       : ${p.date}${p.heure ? ` à ${p.heure}` : ""}` : "",
+    p.prix       ? `  • Montant    : ${p.prix} €` : "",
+  ].filter(Boolean).join("\n");
+  const body = [
+    `Bonjour ${p.prenom},`,
+    ``,
+    `Nous avons bien enregistré votre demande et vous remercions de votre confiance.`,
+    ``,
+    `Voici le récapitulatif de votre rendez-vous :`,
+    ``,
+    details,
+    ``,
+    `Pour toute question ou modification, n'hésitez pas à nous contacter — nous sommes à votre entière disposition.`,
+    ``,
+    `Nous nous réjouissons de vous accueillir prochainement et vous souhaitons une excellente journée.`,
+    ``,
+    `À très bientôt,`,
+    ``,
+    `L'équipe KinouClean`,
+  ].join("\n");
+  const subject = encodeURIComponent("Confirmation de votre rendez-vous – KinouClean");
+  return `mailto:${p.email}?subject=${subject}&body=${encodeURIComponent(body)}`;
+}
+
 // ─── Table ────────────────────────────────────────────────────────────────────
 
 interface PrestationTableProps {
@@ -265,6 +301,8 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
 
   // Niveaux de relance (settings/emails_auto_etat) pour badge en ligne.
   const [relanceNiveaux, setRelanceNiveaux] = useState<Record<string, number>>({});
+  // Menu « ⋯ » ouvert sur une carte mobile (id de prestation)
+  const [menuOuvert, setMenuOuvert] = useState<string | null>(null);
   useEffect(() => {
     fetch("/api/emails/action").then(r => r.json()).then(d => setRelanceNiveaux(d.niveaux || {})).catch(() => {});
   }, []);
@@ -294,8 +332,145 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
     );
   }
 
+  const relanceBadge = (p: Prestation) => relanceNiveaux[p.row] ? (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded-full border font-medium bg-orange-100 text-orange-700 border-orange-200"
+      title={`Séquence de relance démarrée — niveau ${relanceNiveaux[p.row]}/3`}
+    >
+      🔔 Relance {relanceNiveaux[p.row]}/3
+    </span>
+  ) : null;
+
   return (
-    <div className="overflow-x-auto">
+    <>
+    {/* ── Mobile (< md) : cartes ── */}
+    <div className="md:hidden space-y-2.5">
+      {prestations.map((p) => {
+        const label = `${p.prenom} ${p.nom} – ${p.typePresta}`;
+        const aMenu = !!(onEdit || p.devisPDF || (showActions && p.email) || onArchive || onDelete);
+        return (
+          <div
+            key={p.row}
+            className={`relative rounded-xl border border-gray-100 bg-white p-3 shadow-sm ${onEdit ? "cursor-pointer active:bg-gray-50" : ""}`}
+            onClick={() => onEdit?.(p)}
+          >
+            {/* Client + prix */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
+                {onClientClick && p.clientId ? (
+                  <button onClick={(e) => { e.stopPropagation(); onClientClick(p.clientId); }} className="font-semibold text-gray-900 text-[15px] underline decoration-gray-300 underline-offset-2 text-left truncate max-w-full" title="Ouvrir la fiche client">
+                    {p.prenom} {p.nom}
+                  </button>
+                ) : (
+                  <span className="font-semibold text-gray-900 text-[15px] truncate">{p.prenom} {p.nom}</span>
+                )}
+                <AvanceBadge tel={p.tel} email={p.email} prenom={p.prenom} nom={p.nom} />
+              </div>
+              <div className="text-right flex-shrink-0">
+                {p.prix
+                  ? <span className="font-bold text-green-700">{p.prix} €</span>
+                  : <span className="text-gray-300">—</span>}
+                {p.modePaiement && (
+                  <div className="text-[11px] text-gray-500">{MODE_PAIEMENT_ICONS[p.modePaiement]} {p.modePaiement}</div>
+                )}
+              </div>
+            </div>
+
+            {/* Type + entité + relance */}
+            <div className="mt-1 flex items-center gap-1.5 flex-wrap text-sm" onClick={(e) => e.stopPropagation()}>
+              <span className="font-medium text-gray-700">{p.typePresta}{p.quantite ? <span className="text-gray-400 font-normal"> · {p.quantite}</span> : null}</span>
+              <EntiteBadge prestationId={p.row} typePresta={p.typePresta} overrides={entiteOverrides} onSet={setEntite} />
+              {relanceBadge(p)}
+            </div>
+
+            {/* Date / statut / prestataire */}
+            <div className="mt-2 flex items-center gap-1.5 flex-wrap text-xs">
+              <span className="text-gray-600 font-medium">📅 {p.date || "Sans date"}{p.heure ? ` · ${p.heure}` : ""}</span>
+              <StatusBadge statut={p.statut} small />
+              {p.statutPresta && (p.statutPresta as string) !== (p.statut as string) && (
+                <StatusBadge statut={p.statutPresta} small />
+              )}
+              {p.prestataire
+                ? <span className="text-gray-600">👤 <span className="font-medium text-gray-800">{p.prestataire}</span></span>
+                : <span className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                    À affecter
+                  </span>}
+            </div>
+
+            {/* Actions rapides */}
+            <div className="mt-2.5 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              {p.tel ? (
+                <>
+                  <a href={`tel:${p.tel}`} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold active:bg-blue-100">
+                    <Phone size={14} /> Appeler
+                  </a>
+                  <a href={waDirectHref(p.tel)} target="_blank" rel="noopener noreferrer" className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-green-50 text-green-700 text-xs font-semibold active:bg-green-100">
+                    <MessageCircle size={14} /> WhatsApp
+                  </a>
+                </>
+              ) : (
+                <span className="flex-1 text-xs text-gray-400 italic">Pas de téléphone</span>
+              )}
+              {showActions && <PaymentButton p={p} />}
+              {aMenu && (
+                <div className="relative">
+                  <button
+                    onClick={() => setMenuOuvert(menuOuvert === p.row ? null : p.row)}
+                    title="Plus d'actions"
+                    aria-label="Plus d'actions"
+                    className="p-2 rounded-lg bg-gray-100 text-gray-600 active:bg-gray-200"
+                  >
+                    <MoreHorizontal size={16} />
+                  </button>
+                  {menuOuvert === p.row && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setMenuOuvert(null)} />
+                      <div className="absolute right-0 bottom-full mb-1 z-40 w-56 bg-white rounded-xl shadow-xl border border-gray-100 py-1 text-sm" onClick={() => setMenuOuvert(null)}>
+                        {onEdit && (
+                          <button onClick={() => onEdit(p)} className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-gray-700 active:bg-gray-50">
+                            <Pencil size={15} className="text-blue-600" /> Modifier
+                          </button>
+                        )}
+                        {showActions && p.email && (
+                          <a href={mailConfirmationHref(p)} className="w-full flex items-center gap-2 px-3 py-2.5 text-gray-700 active:bg-gray-50">
+                            <Send size={15} className="text-blue-600" /> Mail de confirmation
+                          </a>
+                        )}
+                        {p.devisPDF && (
+                          <>
+                            <a href={p.devisPDF} target="_blank" rel="noopener noreferrer" className="w-full flex items-center gap-2 px-3 py-2.5 text-gray-700 active:bg-gray-50">
+                              <FileText size={15} className="text-blue-600" /> Voir le devis
+                            </a>
+                            <a href={`/api/devis/${p.row}?download=1`} className="w-full flex items-center gap-2 px-3 py-2.5 text-gray-700 active:bg-gray-50">
+                              <Download size={15} className="text-gray-500" /> Télécharger le devis
+                            </a>
+                          </>
+                        )}
+                        {(onArchive || onDelete) && <div className="my-1 border-t border-gray-100" />}
+                        {onArchive && (
+                          <button onClick={() => onArchive(p.row, label)} className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-amber-700 active:bg-amber-50">
+                            <Archive size={15} /> Clôturer / archiver
+                          </button>
+                        )}
+                        {onDelete && (
+                          <button onClick={() => onDelete(p.row, label)} className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-red-600 active:bg-red-50">
+                            <Trash2 size={15} /> Supprimer
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    {/* ── Desktop (md+) : table ── */}
+    <div className="hidden md:block overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-100">
@@ -335,14 +510,7 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                 <div className="flex items-center gap-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
                   <span className="font-medium text-gray-800">{p.typePresta}</span>
                   <EntiteBadge prestationId={p.row} typePresta={p.typePresta} overrides={entiteOverrides} onSet={setEntite} />
-                  {relanceNiveaux[p.row] ? (
-                    <span
-                      className="text-[10px] px-1.5 py-0.5 rounded-full border font-medium bg-orange-100 text-orange-700 border-orange-200"
-                      title={`Séquence de relance démarrée — niveau ${relanceNiveaux[p.row]}/3`}
-                    >
-                      🔔 Relance {relanceNiveaux[p.row]}/3
-                    </span>
-                  ) : null}
+                  {relanceBadge(p)}
                 </div>
                 {p.quantite && <div className="text-xs text-gray-400">{p.quantite}</div>}
               </td>
@@ -444,43 +612,17 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                         </a>
                       </>
                     )}
-                    {p.email && (() => {
-                      const details = [
-                        p.typePresta ? `  • Prestation : ${p.typePresta}${p.quantite ? ` (x${p.quantite})` : ""}` : "",
-                        p.adresse    ? `  • Adresse    : ${p.adresse}` : "",
-                        p.date       ? `  • Date       : ${p.date}${p.heure ? ` à ${p.heure}` : ""}` : "",
-                        p.prix       ? `  • Montant    : ${p.prix} €` : "",
-                      ].filter(Boolean).join("\n");
-                      const body = [
-                        `Bonjour ${p.prenom},`,
-                        ``,
-                        `Nous avons bien enregistré votre demande et vous remercions de votre confiance.`,
-                        ``,
-                        `Voici le récapitulatif de votre rendez-vous :`,
-                        ``,
-                        details,
-                        ``,
-                        `Pour toute question ou modification, n'hésitez pas à nous contacter — nous sommes à votre entière disposition.`,
-                        ``,
-                        `Nous nous réjouissons de vous accueillir prochainement et vous souhaitons une excellente journée.`,
-                        ``,
-                        `À très bientôt,`,
-                        ``,
-                        `L'équipe KinouClean`,
-                      ].join("\n");
-                      const subject = encodeURIComponent("Confirmation de votre rendez-vous – KinouClean");
-                      return (
-                        <a
-                          href={`mailto:${p.email}?subject=${subject}&body=${encodeURIComponent(body)}`}
-                          title="Envoyer un mail de confirmation"
-                          onClick={e => e.stopPropagation()}
-                          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors text-xs font-medium whitespace-nowrap"
-                        >
-                          <Send size={12} />
-                          Mail
-                        </a>
-                      );
-                    })()}
+                    {p.email && (
+                      <a
+                        href={mailConfirmationHref(p)}
+                        title="Envoyer un mail de confirmation"
+                        onClick={e => e.stopPropagation()}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors text-xs font-medium whitespace-nowrap"
+                      >
+                        <Send size={12} />
+                        Mail
+                      </a>
+                    )}
                   </div>
                 </td>
               )}
@@ -513,5 +655,6 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
         </tbody>
       </table>
     </div>
+    </>
   );
 }

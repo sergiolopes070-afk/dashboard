@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
-import { rowToItem } from "../route";
+import { rowToItem } from "@/lib/stockItem";
 
 export const dynamic = "force-dynamic";
 

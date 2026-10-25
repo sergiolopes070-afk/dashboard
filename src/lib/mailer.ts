@@ -558,3 +558,41 @@ export async function sendDevisEmail(to: string, d: {
   });
   return true;
 }
+
+// ─── DEVIS EXTERNE (fait hors dashboard) — envoi avec la pièce jointe ───────────
+// Même ton / objet que le devis standard (sendDevisEmail). Contrairement aux autres
+// envois, lève une erreur explicite (Gmail non configuré / refus SMTP) pour que la
+// route renvoie un message clair au dashboard.
+export async function sendDevisExterneEmail(to: string, d: {
+  genre?: string; prenom?: string; nom?: string; intitule?: string; montantTTC?: string | number;
+  message?: string; attachment?: { filename: string; content: Buffer; contentType: string };
+}): Promise<void> {
+  const gmail = await getGmailTransporter();
+  if (!gmail) throw new Error("Gmail non connecté (Configuration → Connexion Gmail).");
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const P = (txt: string) => `<p style="font-size:15px;color:#374151;line-height:1.75;margin:0 0 16px;">${txt}</p>`;
+  const intitule = (d.intitule || "").trim();
+  const n = typeof d.montantTTC === "number" ? d.montantTTC : parseFloat(String(d.montantTTC ?? "").replace(",", "."));
+  const montant = !isNaN(n) && n > 0 ? eurNombre(n) : "";
+  const message = (d.message || "").trim();
+
+  const html = shell(`
+    <p style="font-size:16px;color:#1F2937;margin:0 0 16px;">${salutation(d.genre, d.nom)}</p>
+    ${P(`Merci pour votre demande. Vous trouverez ci-joint votre devis${intitule ? ` : <strong>${esc(intitule)}</strong>` : ""}.`)}
+    ${message ? P(esc(message).replace(/\n/g, "<br/>")) : ""}
+    ${montant ? P(`Le montant total de la prestation est de <strong>${montant} € TTC</strong>. Le paiement se fait à la fin de l'intervention, jamais en avance.`) : ""}
+    ${P("Indiquez-moi votre adresse et le créneau qui vous conviendrait le mieux, et je vous réserve le rendez-vous.")}
+    <p style="font-size:14px;color:#6B7280;line-height:1.6;margin:0 0 18px;">Une question ? Répondez simplement à cet email ou appelez-nous au <a href="${TEL_LINK}" style="color:#1C3557;"><strong>${TEL}</strong></a>.</p>
+    <p style="font-size:15px;color:#374151;line-height:1.75;margin:20px 0 0;">Cordialement,<br/><strong>L'équipe KinouClean</strong></p>`);
+
+  try {
+    await gmail.transporter.sendMail({
+      from: `"KinouClean" <${gmail.user}>`, to,
+      subject: "Votre devis KinouClean",
+      html,
+      ...(d.attachment ? { attachments: [d.attachment] } : {}),
+    });
+  } catch (e: unknown) {
+    throw new Error(`Gmail a refusé l'envoi : ${e instanceof Error ? e.message : String(e)}`);
+  }
+}

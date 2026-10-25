@@ -418,7 +418,8 @@ export default function ClientFiche({
 
           {/* Devis : standard (dashboard) + externes (faits ailleurs, envoyés à la main) */}
           {client.clientId && (
-            <DevisExternes kind="client" ownerId={client.clientId} standard={devisStandard} onAdded={journaliserDevis} />
+            <DevisExternes kind="client" ownerId={client.clientId} standard={devisStandard} onAdded={journaliserDevis}
+              onSent={() => onChanged?.()} /* recharge la fiche : le journal reçoit la ligne 📧 côté serveur */ />
           )}
 
           {/* Historique prestations */}

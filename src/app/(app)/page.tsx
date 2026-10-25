@@ -10,6 +10,7 @@ import StatusBadge from "@/components/StatusBadge";
 import NewClientModal from "@/components/NewClientModal";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import AvanceBadge from "@/components/AvanceBadge";
+import { cacheGet, cacheSet } from "@/lib/dataCache";
 import { bilanPeriode, caRealise, formatMontant, isoLocal, periodeMois } from "@/lib/finance";
 import { grouperIndispos, libellePlage } from "@/lib/indispos";
 import ClotureModal from "@/components/ClotureModal";
@@ -160,13 +161,19 @@ function QuickProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved
   );
 }
 
+const ACCUEIL_CACHE_KEY = "accueil";
+interface AccueilCache { stats: Stats; depenses: Depense[]; prospects: Prospect[]; stock: StockItem[]; demandes: Demande[] }
+
 export default function HomePage() {
-  const [stats, setStats]         = useState<Stats | null>(null);
-  const [depenses, setDepenses]   = useState<Depense[]>([]);
-  const [prospects, setProspects] = useState<Prospect[]>([]);
-  const [stock, setStock]         = useState<StockItem[]>([]);
-  const [demandes, setDemandes]   = useState<Demande[]>([]);
-  const [loading, setLoading]     = useState(true);
+  // Dernières données connues (cache mémoire) : affichage instantané au retour sur
+  // l'accueil, la mise à jour se fait en arrière-plan.
+  const cache = cacheGet<AccueilCache>(ACCUEIL_CACHE_KEY);
+  const [stats, setStats]         = useState<Stats | null>(cache?.stats ?? null);
+  const [depenses, setDepenses]   = useState<Depense[]>(cache?.depenses ?? []);
+  const [prospects, setProspects] = useState<Prospect[]>(cache?.prospects ?? []);
+  const [stock, setStock]         = useState<StockItem[]>(cache?.stock ?? []);
+  const [demandes, setDemandes]   = useState<Demande[]>(cache?.demandes ?? []);
+  const [loading, setLoading]     = useState(!cache);
   const [error, setError]         = useState<string | null>(null);
   const [showNewClient, setShowNewClient]     = useState(false);
   const [showNewProspect, setShowNewProspect] = useState(false);
@@ -177,6 +184,7 @@ export default function HomePage() {
   const [clotureOpen, setClotureOpen]         = useState(false); // modale « RDV à clôturer »
   const [relanceOpen, setRelanceOpen]         = useState(false); // modale « relances en retard »
   const [busyId, setBusyId]                   = useState("");    // action en cours sur une ligne
+  const [relanceRes, setRelanceRes]           = useState<Record<string, { ok: boolean; msg: string }>>({}); // résultat d'envoi par prospect
   const [clotPay, setClotPay]                 = useState<Record<string, string>>({}); // mode de paiement choisi par RDV
   const [clotDetail, setClotDetail]           = useState<Prestation | null>(null); // clôture complète (motif, satisfaction…)
   const [rentaPeriod, setRentaPeriod]         = useState<"semaine" | "mois">("mois");
@@ -241,11 +249,16 @@ export default function HomePage() {
         fetch("/api/dashboard"), fetch("/api/depenses"), fetch("/api/prospects"), fetch("/api/stock"), fetch("/api/stock/demandes"),
       ]);
       if (!dashRes.ok) throw new Error((await dashRes.json()).error || "Erreur serveur");
-      setStats(await dashRes.json());
-      if (depRes.ok) setDepenses(await depRes.json());
-      if (proRes.ok) { const p = await proRes.json(); setProspects(Array.isArray(p) ? p : []); }
-      if (stkRes.ok) { const s = await stkRes.json(); setStock(Array.isArray(s) ? s : []); }
-      if (demRes.ok) { const d = await demRes.json(); setDemandes(Array.isArray(d.demandes) ? d.demandes : []); }
+      const prev = cacheGet<AccueilCache>(ACCUEIL_CACHE_KEY);
+      const next: AccueilCache = {
+        stats    : await dashRes.json(),
+        depenses : depRes.ok ? await depRes.json() : prev?.depenses ?? [],
+        prospects: proRes.ok ? await proRes.json().then(p => Array.isArray(p) ? p : []) : prev?.prospects ?? [],
+        stock    : stkRes.ok ? await stkRes.json().then(x => Array.isArray(x) ? x : []) : prev?.stock ?? [],
+        demandes : demRes.ok ? await demRes.json().then(d => Array.isArray(d.demandes) ? d.demandes : []) : prev?.demandes ?? [],
+      };
+      cacheSet(ACCUEIL_CACHE_KEY, next);
+      setStats(next.stats); setDepenses(next.depenses); setProspects(next.prospects); setStock(next.stock); setDemandes(next.demandes);
     } catch (e: unknown) { setError(e instanceof Error ? e.message : "Erreur inconnue"); }
     finally { setLoading(false); }
   }, []);
@@ -299,6 +312,8 @@ export default function HomePage() {
   }
   // Envoie le mail de relance adapté (devis / infos / demande initiale) et
   // reprogramme à demain — directement depuis le tableau de bord.
+  // Le résultat reste affiché sur la ligne (succès ou erreur exacte) : avant, une
+  // erreur était avalée et le bouton semblait ne rien faire.
   async function relancerMail(id: string) {
     setBusyId(id);
     try {
@@ -306,9 +321,16 @@ export default function HomePage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "relance_auto" }),
       });
-      const d = await res.json();
-      if (res.ok) setProspects(ps => ps.map(p => p.id === id ? { ...p, dateRelance: d.dateRelance ?? p.dateRelance, statut: "RELANCÉ" } : p));
-    } catch { /* non bloquant */ }
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setProspects(ps => ps.map(p => p.id === id ? { ...p, dateRelance: d.dateRelance ?? p.dateRelance, statut: "RELANCÉ" } : p));
+        setRelanceRes(r => ({ ...r, [id]: { ok: true, msg: `${d.libelle || "Relance"} envoyée${d.email ? ` à ${d.email}` : ""}` } }));
+      } else {
+        setRelanceRes(r => ({ ...r, [id]: { ok: false, msg: d.error || `Erreur serveur (${res.status})` } }));
+      }
+    } catch {
+      setRelanceRes(r => ({ ...r, [id]: { ok: false, msg: "Pas de connexion au serveur — réessaie." } }));
+    }
     finally { setBusyId(""); }
   }
 
@@ -709,7 +731,8 @@ export default function HomePage() {
             <div className="overflow-y-auto flex-1 p-4 space-y-2.5">
               {relanceEnRetard.length === 0 ? (
                 <div className="text-center py-10 text-gray-400"><CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Aucune relance en retard 🎉</p></div>
-              ) : relanceEnRetard.map(p => {
+              ) : [...relanceEnRetard, ...prospects.filter(p => relanceRes[p.id] && !relanceEnRetard.includes(p))].map(p => {
+                const res = relanceRes[p.id];
                 const wa = p.tel ? `https://wa.me/${p.tel.replace(/\s/g, "").replace(/^0/, "33")}` : null;
                 const demain = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; })();
                 return (
@@ -739,6 +762,11 @@ export default function HomePage() {
                         {busyId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />} Reporter
                       </button>
                     </div>
+                    {res && (
+                      <p className={`mt-2 text-xs font-medium rounded-lg px-2.5 py-1.5 ${res.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                        {res.ok ? "✓ " : "⚠️ "}{res.msg}{res.ok ? " · reprogrammé à demain" : ""}
+                      </p>
+                    )}
                   </div>
                 );
               })}

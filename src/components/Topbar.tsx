@@ -201,7 +201,8 @@ export default function Topbar({ title, subtitle, onRefresh, loading, alerts, ac
             </span>
           </div>
         ) : null}
-        <DarkModeToggle />
+        {/* Masqué sur téléphone : place réservée aux actions de la page (Dark Reader suffit) */}
+        <div className="hidden sm:block"><DarkModeToggle /></div>
         {onRefresh && (
           <button
             onClick={handleRefresh}
