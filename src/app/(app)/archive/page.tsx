@@ -10,6 +10,7 @@ import { SkeletonCards } from "@/components/Skeleton";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import NewClientModal from "@/components/NewClientModal";
 import { Prestation, Prestataire } from "@/lib/constants";
+import { caRealise, estRealisee, prixPresta, formatMontant } from "@/lib/finance";
 
 // ─── Étoiles ────────────────────────────────────────────────────────────────
 
@@ -531,10 +532,9 @@ export default function ArchivePage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const totalCA = useMemo(
-    () => data.reduce((sum, p) => sum + (parseFloat(p.prix) || 0), 0),
-    [data]
-  );
+  // CA = prestations réalisées uniquement (les annulations restent listées mais ne comptent pas) — lib/finance.ts
+  const totalCA = useMemo(() => caRealise(data), [data]);
+  const nbRealisees = useMemo(() => data.filter(estRealisee).length, [data]);
 
   // Périodes disponibles (ex: "04/2026")
   const periodes = useMemo(() => {
@@ -550,9 +550,9 @@ export default function ArchivePage() {
   // CA par mode de paiement
   const caParPaiement = useMemo(() => {
     const map: Record<string, number> = {};
-    data.forEach(p => {
+    data.filter(estRealisee).forEach(p => {
       const mode = p.modePaiement || "Non renseigné";
-      map[mode] = (map[mode] || 0) + (parseFloat(p.prix) || 0);
+      map[mode] = (map[mode] || 0) + prixPresta(p);
     });
     return map;
   }, [data]);
@@ -578,12 +578,13 @@ export default function ArchivePage() {
     }
     return list;
   }, [data, search, filterPaiement, filterPeriode]);
+  const nbAnnulFiltre = useMemo(() => filtered.filter(p => !estRealisee(p)).length, [filtered]);
 
   return (
     <div className="flex flex-col min-h-screen">
       <Topbar
         title="Historique"
-        subtitle={`${data.length} prestation${data.length > 1 ? "s" : ""} terminée${data.length > 1 ? "s" : ""} · CA : ${totalCA.toFixed(0)} €`}
+        subtitle={`${nbRealisees} prestation${nbRealisees > 1 ? "s" : ""} terminée${nbRealisees > 1 ? "s" : ""}${data.length > nbRealisees ? ` (+ ${data.length - nbRealisees} annulée${data.length - nbRealisees > 1 ? "s" : ""})` : ""} · CA : ${formatMontant(totalCA)}`}
         onRefresh={load}
         loading={loading}
       />
@@ -647,12 +648,12 @@ export default function ArchivePage() {
           <>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
-                <p className="text-2xl font-bold text-emerald-700">{filtered.length}</p>
-                <p className="text-xs text-gray-400 mt-1">Prestations</p>
+                <p className="text-2xl font-bold text-emerald-700">{filtered.length - nbAnnulFiltre}</p>
+                <p className="text-xs text-gray-400 mt-1">Prestations réalisées{nbAnnulFiltre > 0 ? ` (+ ${nbAnnulFiltre} annulée${nbAnnulFiltre > 1 ? "s" : ""})` : ""}</p>
               </div>
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
                 <p className="text-2xl font-bold text-emerald-700">
-                  {filtered.reduce((s, p) => s + (parseFloat(p.prix) || 0), 0).toFixed(0)} €
+                  {formatMontant(caRealise(filtered))}
                 </p>
                 <p className="text-xs text-gray-400 mt-1">CA {filterPeriode ? filterPeriode.replace("/", " / ") : "total"}</p>
               </div>
@@ -681,7 +682,7 @@ export default function ArchivePage() {
                   >
                     <span className="font-medium">{mode}</span>
                     <span className={`font-bold ${filterPaiement === mode ? "text-white" : "text-emerald-700"}`}>
-                      {ca.toFixed(0)} €
+                      {formatMontant(ca)}
                     </span>
                   </button>
                 ))}
@@ -701,7 +702,7 @@ export default function ArchivePage() {
             </p>
             <p className="text-sm mt-1">
               {data.length === 0
-                ? "Quand une prestation est marquée « TERMINÉ », elle apparaît automatiquement ici."
+                ? "Quand tu clôtures un RDV (terminé ou annulé), il apparaît ici."
                 : "Essayez un autre terme de recherche."}
             </p>
           </div>

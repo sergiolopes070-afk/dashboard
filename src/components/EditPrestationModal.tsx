@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { X, Save, Loader2, MessageCircle, Archive, User, FileText, Download, Camera } from "lucide-react";
 import EmailActions from "@/components/EmailActions";
 import PhotoLightbox from "@/components/PhotoLightbox";
+import ClotureModal from "@/components/ClotureModal";
 import { Prestation, Prestataire, StatutClient, StatutPresta, MODES_PAIEMENT, MODE_PAIEMENT_ICONS } from "@/lib/constants";
 
 interface EditPrestationModalProps {
@@ -12,6 +13,8 @@ interface EditPrestationModalProps {
   onSaved: (row: string, updates: Record<string, string>) => void;
   onArchive?: (id: string, label: string) => void;
   onViewClient?: (clientId: string) => void;
+  /** Appelé après une clôture faite depuis cette modale (statut « TERMINÉ »). */
+  onClotured?: (ids: string[]) => void;
 }
 
 const STATUTS_CLIENT: StatutClient[] = [
@@ -32,6 +35,7 @@ export default function EditPrestationModal({
   onSaved,
   onArchive,
   onViewClient,
+  onClotured,
 }: EditPrestationModalProps) {
   const [form, setForm] = useState({
     statut        : prestation.statut       as string,
@@ -51,6 +55,10 @@ export default function EditPrestationModal({
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<number | null>(null); // index photo ouverte
+  // Passage à « TERMINÉ » : on enregistre puis on ouvre la clôture (paiement obligatoire)
+  // au lieu d'archiver silencieusement.
+  const [cloture, setCloture] = useState(false);
+  const passeTermine = form.statut === "TERMINÉ" && prestation.statut !== "TERMINÉ";
 
   // Quantité : prix unitaire × nombre d'unités → écrit le TOTAL dans form.prix
   // (ex. fauteuil 90 € × 3 = 270 €). Permet d'ajouter une unité à la dernière minute.
@@ -135,7 +143,8 @@ export default function EditPrestationModal({
       }
 
       onSaved(prestation.row, updates);
-      onClose();
+      if (passeTermine) setCloture(true); // → ClotureModal (mode de paiement)
+      else onClose();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur");
     } finally {
@@ -144,6 +153,7 @@ export default function EditPrestationModal({
   };
 
   return (
+    <>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -270,6 +280,9 @@ export default function EditPrestationModal({
                     <option key={s} value={s}>{s || "(vide)"}</option>
                   ))}
                 </select>
+                {passeTermine && (
+                  <p className="text-[11px] text-green-700 mt-1">✅ La clôture (mode de paiement) sera demandée à l&apos;enregistrement.</p>
+                )}
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Statut prestataire</label>
@@ -583,7 +596,7 @@ export default function EditPrestationModal({
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
               {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-              {saving ? "Enregistrement..." : "Enregistrer"}
+              {saving ? "Enregistrement..." : passeTermine ? "Enregistrer et clôturer" : "Enregistrer"}
             </button>
           </div>
         </div>
@@ -592,5 +605,13 @@ export default function EditPrestationModal({
         <PhotoLightbox photos={prestation.photos} startIndex={lightbox} onClose={() => setLightbox(null)} />
       )}
     </div>
+    {cloture && (
+      <ClotureModal
+        prestation={{ ...prestation, prix: form.prix, date: form.date, heure: form.heure }}
+        onClose={onClose}
+        onDone={(ids) => onClotured?.(ids)}
+      />
+    )}
+    </>
   );
 }

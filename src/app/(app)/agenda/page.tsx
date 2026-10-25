@@ -7,6 +7,7 @@ import { ClientFicheById } from "@/components/ClientFiche";
 import EmailActions from "@/components/EmailActions";
 import PhotoLightbox, { LightboxPhoto } from "@/components/PhotoLightbox";
 import NewClientModal from "@/components/NewClientModal";
+import ClotureModal from "@/components/ClotureModal";
 import Topbar from "@/components/Topbar";
 import { useAvanceInscrits } from "@/components/AvanceBadge";
 import { matchInscrit } from "@/lib/avanceMatch";
@@ -79,10 +80,6 @@ function firstMondayOfMonthGrid(d: Date): Date {
   const first = new Date(d.getFullYear(), d.getMonth(), 1);
   return getMondayOfWeek(first);
 }
-
-// ─── Raisons d'archivage sans paiement (annulations) ────────────────────────
-const CANCELLATION_REASONS = ["Annulation client", "Client injoignable", "Doublon"];
-const isCancellationReason = (r: string) => CANCELLATION_REASONS.some(cr => r.startsWith(cr));
 
 // ─── Icônes & abbréviations mode de paiement ─────────────────────────────────
 const PAYMENT_ICONS: Record<string, string> = {
@@ -471,25 +468,8 @@ export default function AgendaPage() {
     }
   }
 
-  // ── Archive depuis l'agenda ────────────────────────────────────────────────
-  const [archiveEv,      setArchiveEv]      = useState<Prestation | null>(null);
-  const [archiveReason,  setArchiveReason]  = useState("");
-  const [archivePayment, setArchivePayment] = useState("");
-  const [archiveComment, setArchiveComment] = useState("");
-  const [archiveSendAvis, setArchiveSendAvis] = useState(true); // demander un avis au client à l'archivage
-  const [archiveSatisf,  setArchiveSatisf]  = useState(0);     // satisfaction 1-5 (0 = non noté)
-  const [archiveAvisLaisse, setArchiveAvisLaisse] = useState(false); // le client a laissé un avis Google
-  const [archiving,      setArchiving]      = useState(false);
-  const [avisGlobalActif, setAvisGlobalActif] = useState(true); // interrupteur global (Configuration)
-
-  // Charge l'état global des demandes d'avis (Configuration → Automatisations).
-  useEffect(() => {
-    fetch("/api/settings").then(r => r.ok ? r.json() : null).then(s => {
-      const actif = s ? s.avis_actif !== "false" : true;
-      setAvisGlobalActif(actif);
-      setArchiveSendAvis(actif); // par défaut aligné sur l'interrupteur global
-    }).catch(() => {});
-  }, []);
+  // ── Clôture (archive) depuis l'agenda → ClotureModal partagée ─────────────
+  const [archiveEv, setArchiveEv] = useState<Prestation | null>(null);
 
   // ── Édition inline depuis le modal ────────────────────────────────────────
   const [editMode,   setEditMode]   = useState(false);
@@ -663,51 +643,6 @@ export default function AgendaPage() {
     toast.success("RDV déplacé — ⌘/Ctrl+Z pour annuler");
   }
 
-  // ── Archive depuis l'agenda ────────────────────────────────────────────────
-  async function handleArchiveConfirm() {
-    if (!archiveEv) return;
-    setArchiving(true);
-    const fullReason = archiveReason + (archiveComment.trim() ? ` — ${archiveComment.trim()}` : "");
-    const prestationId = archiveEv.row;
-    const envoyerAvis  = archiveSendAvis && !isCancellationReason(archiveReason);
-    try {
-      await fetch("/api/archive", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: prestationId, reason: fullReason, modePaiement: archivePayment, satisfaction: archiveSatisf || "", avisLaisse: archiveAvisLaisse }),
-      });
-      setArchiveEv(null);
-      setArchiveReason("");
-      setArchivePayment("");
-      setArchiveComment("");
-      setArchiveSendAvis(true);
-      setArchiveSatisf(0);
-      setArchiveAvisLaisse(false);
-      loadData();
-      toast.success("Prestation archivée");
-
-      // Envoi de la demande d'avis (si coché et prestation réalisée)
-      if (envoyerAvis) {
-        try {
-          const res = await fetch("/api/emails/send-avis", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prestationId }),
-          });
-          const d = await res.json().catch(() => ({}));
-          if (res.ok) toast.success("Demande d'avis envoyée au client ⭐");
-          else toast.error(d.error || "Avis non envoyé");
-        } catch {
-          toast.error("Avis non envoyé (réseau)");
-        }
-      }
-    } catch {
-      toast.error("Erreur lors de l'archivage. Réessayez.");
-    } finally {
-      setArchiving(false);
-    }
-  }
-
   // ── Sauvegarde édition inline ─────────────────────────────────────────────
   async function saveEdit() {
     if (!selectedEvent) return;
@@ -732,10 +667,16 @@ export default function AgendaPage() {
       // Recharger les vraies données depuis la base
       loadData();
       const updated = { ...selectedEvent, ...editForm, adresse: fullAdresse || editForm.adresse || selectedEvent.adresse } as Prestation;
-      setSelectedEvent(updated);
       setEditMode(false);
       setEditCp(""); setEditVille("");
       toast.success("Modifications enregistrées");
+      // Passage à « TERMINÉ » → clôture avec mode de paiement (plus d'auto-archivage silencieux).
+      if (editForm.statut === "TERMINÉ" && selectedEvent.statut !== "TERMINÉ" && !(selectedEvent as Prestation & { _archived?: boolean })._archived) {
+        setSelectedEvent(null);
+        setArchiveEv(updated);
+      } else {
+        setSelectedEvent(updated);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erreur inconnue";
       toast.error(`Erreur lors de la sauvegarde : ${msg}`);
@@ -1686,9 +1627,6 @@ export default function AgendaPage() {
                       <button
                         onClick={() => {
                           setArchiveEv(ev);
-                          setArchiveReason("");
-                          setArchivePayment("");
-                          setArchiveComment("");
                           setSelectedEvent(null);
                         }}
                         className="w-full py-2 rounded-xl border border-orange-200 text-orange-600 text-sm font-medium hover:bg-orange-50 transition-colors flex items-center justify-center gap-1.5"
@@ -1933,149 +1871,9 @@ export default function AgendaPage() {
         />
       )}
 
-      {/* ── Modal archiver RDV ───────────────────────────────────────────────── */}
+      {/* ── Clôture / archivage RDV — modale unique partagée ─────────────────── */}
       {archiveEv && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={() => setArchiveEv(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-5 max-h-[90vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}>
-
-            {/* Header */}
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-gray-900">📦 Archiver le RDV</h3>
-              <button onClick={() => setArchiveEv(null)}
-                className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
-            </div>
-            <p className="text-sm text-gray-500 mb-4">
-              <span className="font-medium text-gray-700">{archiveEv.prenom} {archiveEv.nom}</span>
-              {archiveEv.typePresta ? ` — ${archiveEv.typePresta}` : ""}
-              {archiveEv.date ? ` (${archiveEv.date})` : ""}
-            </p>
-
-            {/* Raison */}
-            <label className="text-xs font-medium text-gray-600 mb-2 block">Raison de l&apos;archivage</label>
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              {["Annulation client", "Prestation terminée", "Client injoignable", "Doublon"].map(r => (
-                <button key={r} type="button"
-                  onClick={() => setArchiveReason(r)}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors text-left ${
-                    archiveReason === r
-                      ? "bg-orange-500 text-white border-orange-500"
-                      : "bg-white text-gray-700 border-gray-200 hover:border-orange-300"
-                  }`}>
-                  {r}
-                </button>
-              ))}
-            </div>
-            <input
-              type="text"
-              placeholder="Autre raison…"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-orange-400"
-              value={["Annulation client","Prestation terminée","Client injoignable","Doublon"].includes(archiveReason) ? "" : archiveReason}
-              onChange={e => setArchiveReason(e.target.value)}
-            />
-
-            {/* Mode de paiement — masqué pour les annulations */}
-            {isCancellationReason(archiveReason) ? (
-              <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 mb-3 flex items-center gap-2">
-                <span className="text-lg">🚫</span>
-                <p className="text-xs text-gray-500">Pas de paiement pour une annulation — non comptabilisé dans le CA</p>
-              </div>
-            ) : (
-              <>
-                <label className="text-xs font-medium text-gray-600 mb-2 block">
-                  Mode de paiement <span className="text-orange-500">*</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  {[
-                    { label: "Espèces", icon: "💵" },
-                    { label: "Virement bancaire", icon: "🏦" },
-                    { label: "Lien de paiement", icon: "🔗" },
-                    { label: "Chèque", icon: "📄" },
-                    { label: "Carte sur place", icon: "💳" },
-                    { label: "Avance immédiate", icon: "⚡" },
-                  ].map(({ label, icon }) => (
-                    <button key={label} type="button"
-                      onClick={() => setArchivePayment(label)}
-                      className={`px-3 py-2 rounded-lg text-xs font-medium border transition-colors text-left flex items-center gap-1.5 ${
-                        archivePayment === label
-                          ? "bg-blue-600 text-white border-blue-600"
-                          : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
-                      }`}>
-                      <span>{icon}</span>{label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {/* Commentaire optionnel */}
-            <label className="text-xs font-medium text-gray-600 mb-1.5 block">Commentaire (optionnel)</label>
-            <textarea
-              rows={2}
-              placeholder="Note interne…"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none mb-3 focus:outline-none focus:ring-2 focus:ring-orange-400"
-              value={archiveComment}
-              onChange={e => setArchiveComment(e.target.value)}
-            />
-
-            {/* Satisfaction client + avis laissé — seulement si prestation réalisée */}
-            {!isCancellationReason(archiveReason) && (
-              <div className="mb-3 rounded-xl border border-gray-100 p-3">
-                <p className="text-xs font-medium text-gray-600 mb-2">Satisfaction du client <span className="text-gray-400 font-normal">(optionnel)</span></p>
-                <div className="flex items-center justify-between gap-1">
-                  {[{ e: "😠", n: 1 }, { e: "🙁", n: 2 }, { e: "😐", n: 3 }, { e: "🙂", n: 4 }, { e: "😄", n: 5 }].map(({ e, n }) => (
-                    <button key={n} type="button" onClick={() => setArchiveSatisf(archiveSatisf === n ? 0 : n)}
-                      title={["Très mécontent", "Mécontent", "Neutre", "Content", "Très content"][n - 1]}
-                      className={`flex-1 py-1.5 rounded-lg text-2xl transition-all ${archiveSatisf === n ? "bg-emerald-50 scale-110" : "grayscale opacity-50 hover:opacity-80"}`}>
-                      {e}
-                    </button>
-                  ))}
-                </div>
-                <label className="flex items-center gap-2.5 mt-3 pt-3 border-t border-gray-100 cursor-pointer">
-                  <input type="checkbox" checked={archiveAvisLaisse} onChange={e => setArchiveAvisLaisse(e.target.checked)} className="w-4 h-4 accent-yellow-500" />
-                  <span className="text-sm text-gray-700">⭐ Le client a laissé un avis (Google)</span>
-                </label>
-              </div>
-            )}
-
-            {/* Demande d'avis — proposée seulement si prestation réalisée (pas une annulation) */}
-            {!isCancellationReason(archiveReason) && (
-              avisGlobalActif ? (
-                <label className="flex items-start gap-2.5 p-3 mb-4 rounded-xl border border-amber-200 bg-amber-50 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={archiveSendAvis}
-                    onChange={e => setArchiveSendAvis(e.target.checked)}
-                    className="w-4 h-4 accent-amber-500 mt-0.5"
-                  />
-                  <span className="text-xs text-amber-800 leading-snug">
-                    <strong>⭐ Envoyer la demande d&apos;avis à ce client</strong><br/>
-                    <span className="text-amber-600">Décoche si le client n&apos;était pas satisfait (aucun email ne partira).</span>
-                  </span>
-                </label>
-              ) : (
-                <div className="p-3 mb-4 rounded-xl border border-gray-200 bg-gray-50 text-xs text-gray-500">
-                  ⏸️ Demandes d&apos;avis <strong>en pause</strong> — aucun email d&apos;avis ne sera envoyé. Réactive-les dans Configuration → Automatisations.
-                </div>
-              )
-            )}
-
-            {/* Actions */}
-            <div className="flex gap-2">
-              <button onClick={() => setArchiveEv(null)}
-                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
-                Annuler
-              </button>
-              <button
-                onClick={handleArchiveConfirm}
-                disabled={!archiveReason.trim() || (!archivePayment && !isCancellationReason(archiveReason)) || archiving}
-                className="flex-1 py-2 rounded-xl bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-40 transition-colors">
-                {archiving ? "Archivage…" : "Archiver"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ClotureModal prestation={archiveEv} onClose={() => setArchiveEv(null)} onDone={() => loadData()} />
       )}
 
       {/* ── Modal déplacer RDV ────────────────────────────────────────────── */}

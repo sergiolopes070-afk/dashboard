@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { TrendingUp, TrendingDown, BadgeEuro, Users, Package, Target, Crown, Boxes } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { Prestation, Depense } from "@/lib/constants";
+import { bilanPeriode, caRealise, estRealisee, prixPresta, isoLocal, formatMontant } from "@/lib/finance";
 
 const RevenueChart = dynamic(() => import("@/components/RevenueChart"), { ssr: false });
 const TypeChart    = dynamic(() => import("@/components/TypeChart"),    { ssr: false });
@@ -12,10 +13,6 @@ interface Stats { prestations: Prestation[]; archive: Prestation[]; }
 interface Prospect { statut: string; source: string; }
 interface StockItem { id: string; nom: string; unite: string; quantite: number; seuil: number; prixUnitaire: number | null; conso: Record<string, number>; historique: { date: string; type: string; quantite: number }[]; }
 
-const CANCEL = ["Annulation client", "Client injoignable", "Doublon"];
-const notCancelled = (p: Prestation) => !CANCEL.some(r => (p.archiveReason || "").startsWith(r));
-const prixNet = (p: Prestation) => { const prix = parseFloat(p.prix) || 0; const v = parseFloat(p.commission) || 0; return prix - ((p.commissionType || "%") === "%" ? prix * v / 100 : v); };
-const year = (p: Prestation) => p.date?.split("/")[2];
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <div className={`bg-white rounded-2xl shadow-sm border border-gray-100 p-5 ${className}`}>{children}</div>;
@@ -41,23 +38,18 @@ export default function PilotagePage() {
   useEffect(() => { load(); }, [load]);
 
   const Y = String(new Date().getFullYear());
-  const archive = useMemo(() => (stats?.archive ?? []).filter(notCancelled), [stats]);
+  const archiveBrut = useMemo(() => stats?.archive ?? [], [stats]);
+  const archive = useMemo(() => archiveBrut.filter(estRealisee), [archiveBrut]); // hors annulations
 
-  // ── Argent année ──
-  const caAnnee   = archive.filter(p => year(p) === Y).reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
-  const caTotal   = archive.reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
-  const depAnnee  = useMemo(() => {
-    const mois = new Date().getMonth() + 1;
-    const ponc = depenses.filter(d => d.type === "ponctuel" && d.date?.startsWith(Y)).reduce((s, d) => s + d.montant, 0);
-    const fixe = depenses.filter(d => d.type === "mensuel").reduce((s, d) => s + d.montant, 0) * mois;
-    return ponc + fixe;
-  }, [depenses, Y]);
-  const beneficeAnnee = caAnnee - depAnnee;
+  // ── Argent année (1er janvier → aujourd'hui), règles communes : lib/finance.ts ──
+  const bilan   = useMemo(() => bilanPeriode({ archive: archiveBrut, depenses, debut: `${Y}-01-01`, fin: isoLocal() }), [archiveBrut, depenses, Y]);
+  const caTotal = useMemo(() => caRealise(archiveBrut), [archiveBrut]);
+  const sorties = bilan.commissions + bilan.charges;
 
   // ── Top clients (CA réalisé) ──
   const topClients = useMemo(() => {
     const m: Record<string, { ca: number; n: number }> = {};
-    for (const p of archive) { const k = `${p.prenom || ""} ${p.nom || ""}`.trim() || "—"; m[k] = m[k] || { ca: 0, n: 0 }; m[k].ca += parseFloat(p.prix) || 0; m[k].n++; }
+    for (const p of archive) { const k = `${p.prenom || ""} ${p.nom || ""}`.trim() || "—"; m[k] = m[k] || { ca: 0, n: 0 }; m[k].ca += prixPresta(p); m[k].n++; }
     return Object.entries(m).sort((a, b) => b[1].ca - a[1].ca).slice(0, 6);
   }, [archive]);
 
@@ -91,10 +83,10 @@ export default function PilotagePage() {
         {/* KPIs année */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            { label: `CA réalisé ${Y}`, val: `${caAnnee.toFixed(0)} €`, icon: TrendingUp, c: "text-green-600", bg: "bg-green-50" },
-            { label: "Dépenses année", val: `${depAnnee.toFixed(0)} €`, icon: TrendingDown, c: "text-red-600", bg: "bg-red-50" },
-            { label: "Bénéfice année", val: `${beneficeAnnee >= 0 ? "+" : ""}${beneficeAnnee.toFixed(0)} €`, icon: BadgeEuro, c: beneficeAnnee >= 0 ? "text-emerald-600" : "text-orange-600", bg: beneficeAnnee >= 0 ? "bg-emerald-50" : "bg-orange-50" },
-            { label: "CA depuis le début", val: `${caTotal.toFixed(0)} €`, icon: Crown, c: "text-blue-600", bg: "bg-blue-50" },
+            { label: `CA réalisé ${Y} · ${bilan.nb} presta`, val: formatMontant(bilan.ca), icon: TrendingUp, c: "text-green-600", bg: "bg-green-50" },
+            { label: `Commissions ${formatMontant(bilan.commissions)} + charges ${formatMontant(bilan.charges)}`, val: formatMontant(sorties), icon: TrendingDown, c: "text-red-600", bg: "bg-red-50" },
+            { label: `Bénéfice net ${Y}${bilan.marge != null ? ` · marge ${bilan.marge.toFixed(0)} %` : ""}`, val: formatMontant(bilan.benefice, { signe: true }), icon: BadgeEuro, c: bilan.benefice >= 0 ? "text-emerald-600" : "text-orange-600", bg: bilan.benefice >= 0 ? "bg-emerald-50" : "bg-orange-50" },
+            { label: "CA réalisé depuis le début", val: formatMontant(caTotal), icon: Crown, c: "text-blue-600", bg: "bg-blue-50" },
           ].map(({ label, val, icon: Icon, c, bg }) => (
             <Card key={label} className="!p-4 flex items-center gap-3">
               <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center flex-shrink-0`}><Icon size={18} className={c} /></div>
@@ -106,7 +98,7 @@ export default function PilotagePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <Card className="lg:col-span-2">
             <h2 className="font-bold text-gray-900 mb-4">Bénéfice net par mois — {Y}</h2>
-            {stats ? <RevenueChart prestations={archive} /> : <div className="h-[220px]" />}
+            {stats ? <RevenueChart archive={archiveBrut} depenses={depenses} /> : <div className="h-[220px]" />}
           </Card>
           <Card>
             <h2 className="font-bold text-gray-900 mb-4">Types de prestations</h2>
@@ -125,7 +117,7 @@ export default function PilotagePage() {
                     <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"}`}>{i + 1}</span>
                     <span className="flex-1 text-sm text-gray-800 truncate">{nom}</span>
                     <span className="text-xs text-gray-400">{d.n} presta</span>
-                    <span className="text-sm font-semibold text-green-700 w-20 text-right">{d.ca.toFixed(0)} €</span>
+                    <span className="text-sm font-semibold text-green-700 w-20 text-right">{formatMontant(d.ca)}</span>
                   </div>
                 ))}
               </div>

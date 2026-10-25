@@ -12,8 +12,9 @@ import ClientModal from "@/components/ClientModal";
 import { ClientFicheById } from "@/components/ClientFiche";
 import { useToast } from "@/components/Toast";
 import NewClientModal from "@/components/NewClientModal";
+import ClotureModal from "@/components/ClotureModal";
 import AvanceBadge from "@/components/AvanceBadge";
-import { Prestation, Prestataire, ClientNote, STATUT_COLORS } from "@/lib/constants";
+import { Prestation, Prestataire, ClientNote, STATUT_COLORS, estAnnulation } from "@/lib/constants";
 
 const TAGS_PRESET = ["Régulier", "VIP", "Difficile", "Sensible", "Pro", "Fidèle"];
 const TAG_COLORS: Record<string, string> = {
@@ -62,7 +63,6 @@ interface Client {
 
 // Cache local (format différent de CACHE_KEYS.prestations, partagé par d'autres pages).
 const CLIENTS_CACHE_KEY = "clients-full";
-const CANCELLATION_REASONS = ["Annulation client", "Client injoignable", "Doublon"];
 
 // "dd/mm/yyyy" (+ "HH:MM") → timestamp, pour comparer chronologiquement (0 si vide).
 function frTs(date: string, heure?: string): number {
@@ -469,11 +469,8 @@ export default function ClientsPage() {
   }, []);
   const [expanded, setExpanded]       = useState<Set<string>>(new Set());
   const [confirmClientDel, setConfirmClientDel] = useState<string | null>(null);
-  const [archiveModal, setArchiveModal] = useState<{ ids: string[]; label: string } | null>(null);
-  const [archiveReason, setArchiveReason]   = useState("");
-  const [archivePayment, setArchivePayment] = useState("");
-  const [archiveComment, setArchiveComment] = useState("");
-  const [archiving, setArchiving]     = useState(false);
+  // Clôture (archivage) d'une prestation ou de toutes celles d'un client → ClotureModal
+  const [archiveModal, setArchiveModal] = useState<{ prestations: PrestaC[]; label: string } | null>(null);
   const [tagEditKey, setTagEditKey]   = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -499,7 +496,7 @@ export default function ClientsPage() {
       const ps = c.prestations ?? [];
       // CA : tout l'historique, sauf les archivages pour annulation (même règle que la fiche)
       const totalCA = ps
-        .filter(p => !(p.archived && CANCELLATION_REASONS.some(r => (p.archiveReason || "").startsWith(r))))
+        .filter(p => !(p.archived && estAnnulation(p.archiveReason)))
         .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
       // Dernière prestation effectuée = date passée la plus récente (comparaison chronologique)
       const passees = ps.filter(p => { const t = frTs(p.date, p.heure); return t > 0 && t <= now; });
@@ -685,29 +682,6 @@ export default function ClientsPage() {
     persistNotes(c, (c.notes ?? []).filter(n => n.id !== noteId));
   };
 
-  const handleArchiveConfirm = async () => {
-    if (!archiveModal) return;
-    setArchiving(true);
-    try {
-      await Promise.all(
-        archiveModal.ids.map((id) =>
-          fetch("/api/archive", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id, reason: archiveReason + (archiveComment.trim() ? ` — ${archiveComment.trim()}` : ""), modePaiement: archivePayment }),
-          })
-        )
-      );
-      setArchiveModal(null);
-      setArchiveReason("");
-      setArchivePayment("");
-      setArchiveComment("");
-      load();
-    } finally {
-      setArchiving(false);
-    }
-  };
-
   return (
     <div className="flex flex-col min-h-screen">
       <Topbar
@@ -888,8 +862,7 @@ export default function ClientsPage() {
                         {actives.length > 0 && (
                           <button
                             onClick={() => {
-                              setArchiveModal({ ids: actives.map((p) => p.row), label: `${c.prenom} ${c.nom}` });
-                              setArchiveReason(""); setArchivePayment("");
+                              setArchiveModal({ prestations: actives, label: `${c.prenom} ${c.nom}` });
                             }}
                             className="p-1.5 rounded-lg hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-colors"
                             title="Archiver ce client"
@@ -1076,7 +1049,7 @@ export default function ClientsPage() {
                             p={p}
                             onDelete={handleDeletePrestation}
                             onDevisGenerated={load}
-                            onArchive={(ids, label) => { setArchiveModal({ ids, label }); setArchiveReason(""); setArchivePayment(""); }}
+                            onArchive={(ids) => setArchiveModal({ prestations: c.prestations.filter(x => ids.includes(x.row)), label: `${c.prenom} ${c.nom}` })}
                           />
                         ))
                       )}
@@ -1130,106 +1103,14 @@ export default function ClientsPage() {
         />
       )}
 
-      {/* Modal archivage */}
+      {/* Clôture / archivage — modale unique partagée */}
       {archiveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Archive size={18} className="text-amber-500" />
-                <h2 className="font-semibold text-gray-900">Archiver la prestation</h2>
-              </div>
-              <button onClick={() => setArchiveModal(null)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
-                <X size={16} />
-              </button>
-            </div>
-            <p className="text-sm text-gray-500">
-              <span className="font-medium text-gray-700">{archiveModal.label}</span>{" "}
-              {archiveModal.ids.length > 1
-                ? `et ses ${archiveModal.ids.length} prestations seront déplacées dans l'historique.`
-                : "sera déplacée dans l'historique."}
-            </p>
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-600">Raison de l&apos;archivage</label>
-              <div className="grid grid-cols-2 gap-2">
-                {["Annulation client", "Prestation terminée", "Client injoignable", "Doublon"].map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setArchiveReason(r)}
-                    className={`text-xs px-3 py-2 rounded-xl border transition-colors text-left ${
-                      archiveReason === r
-                        ? "border-amber-400 bg-amber-50 text-amber-700 font-medium"
-                        : "border-gray-200 hover:border-gray-300 text-gray-600"
-                    }`}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-              <input
-                type="text"
-                placeholder="Autre raison…"
-                value={["Annulation client", "Prestation terminée", "Client injoignable", "Doublon"].includes(archiveReason) ? "" : archiveReason}
-                onChange={(e) => setArchiveReason(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
-              />
-            </div>
-            {/* Mode de paiement — masqué pour les annulations (archivage simple) */}
-            {["Annulation client", "Client injoignable", "Doublon"].some(r => archiveReason.startsWith(r)) ? (
-              <div className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 flex items-center gap-2">
-                <span className="text-lg">🚫</span>
-                <p className="text-xs text-gray-500">Pas de paiement pour une annulation — non comptabilisé dans le CA</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-gray-600">
-                  Mode de paiement <span className="text-red-400">*</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {["Espèces", "Virement bancaire", "Lien de paiement", "Chèque", "Carte sur place", "Avance immédiate"].map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setArchivePayment(m)}
-                      className={`text-xs px-3 py-2 rounded-xl border transition-colors text-left ${
-                        archivePayment === m
-                          ? "border-blue-400 bg-blue-50 text-blue-700 font-medium"
-                          : "border-gray-200 hover:border-gray-300 text-gray-600"
-                      }`}
-                    >
-                      {m === "Espèces" ? "💵 " : m === "Virement bancaire" ? "🏦 " : m === "Lien de paiement" ? "🔗 " : m === "Chèque" ? "📄 " : m === "Avance immédiate" ? "⚡ " : "💳 "}
-                      {m}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600">Commentaire <span className="text-gray-400 font-normal">(optionnel)</span></label>
-              <textarea
-                rows={2}
-                placeholder="Détails supplémentaires sur la situation…"
-                value={archiveComment}
-                onChange={(e) => setArchiveComment(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300 resize-none"
-              />
-            </div>
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={() => setArchiveModal(null)}
-                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleArchiveConfirm}
-                disabled={!archiveReason.trim() || (!archivePayment && !["Annulation client", "Client injoignable", "Doublon"].some(r => archiveReason.startsWith(r))) || archiving}
-                className="flex-1 py-2 rounded-xl bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors disabled:opacity-50"
-              >
-                {archiving ? "Archivage…" : "Archiver"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ClotureModal
+          prestations={archiveModal.prestations}
+          label={archiveModal.label}
+          onClose={() => setArchiveModal(null)}
+          onDone={() => load()}
+        />
       )}
     </div>
   );

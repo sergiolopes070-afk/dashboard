@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { appendPrestation } from "@/lib/sheets";
+import { transferDevisExternes, findClientForProspect } from "@/app/api/devis-externes/_store";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +69,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const { error } = await supabase.from("prospects").update(patch).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true });
+
+  // Conversion via le formulaire « Nouveau client » : on retrouve le client créé et
+  // on y copie les devis externes du prospect (best effort, ne bloque jamais).
+  let devisTransferes = 0;
+  if (body.statut === "CONVERTI") {
+    try {
+      const { data: pr } = await supabase.from("prospects").select("prenom, nom, email, tel").eq("id", id).limit(1);
+      const clientId = pr?.[0] ? await findClientForProspect(pr[0]) : null;
+      if (clientId) devisTransferes = await transferDevisExternes(id, clientId);
+    } catch (e) { console.error("[prospects] transfert devis externes :", e); }
+  }
+  return NextResponse.json({ success: true, devisTransferes });
 }
 
 // ─── DELETE — supprimer un prospect ───────────────────────────────────────────
@@ -114,6 +126,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     statut     : body.prestataire ? "EMAIL ENVOYÉ" : "",
     commentaire: `Converti depuis prospect. ${prospect.notes || ""}`.trim(),
   });
+
+  // Copie les devis externes du prospect sur la fiche du client (best effort).
+  try {
+    const { data: pre } = await supabase.from("prestations").select("client_id").eq("id", prestationId).limit(1);
+    const clientId = pre?.[0]?.client_id as string | undefined;
+    if (clientId) await transferDevisExternes(id, clientId);
+  } catch (e) { console.error("[prospects] transfert devis externes :", e); }
 
   // Marque le prospect comme CONVERTI
   await supabase

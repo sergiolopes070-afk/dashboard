@@ -14,6 +14,7 @@ import NewClientModal from "@/components/NewClientModal";
 import PrestationFields from "@/components/PrestationFields";
 import { getSchema } from "@/lib/prestationSchema";
 import { Prestataire } from "@/lib/constants";
+import DevisExternes, { DevisExterne, fmtDevisDate } from "@/components/DevisExternes";
 
 // Formatage FR compact pour le pense-bête d'import.
 function fmtImportDateTime(iso: string): string {
@@ -103,6 +104,41 @@ function relanceLabel(dateRelance: string) {
   if (isOverdue(dateRelance)) return { text: "En retard", cls: "text-red-600 font-semibold" };
   if (isDueToday(dateRelance)) return { text: "Aujourd'hui", cls: "text-orange-600 font-semibold" };
   return { text: formatDate(dateRelance), cls: "text-gray-500" };
+}
+
+// Dernier email envoyé au prospect (devis, relances R1-R3, demande d'infos et ses
+// relances, devis externe). Les dates du suivi sont en "dd/mm/yyyy" (relanceDate en ISO).
+function parseAnyDate(s?: string): Date | null {
+  if (!s) return null;
+  const fr = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  const d = fr ? new Date(+fr[3], +fr[2] - 1, +fr[1]) : new Date(s.length === 10 ? `${s}T00:00:00` : s);
+  return isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function dernierEmail(suivi: Suivi | undefined, externes: DevisExterne[]): { label: string; date: Date } | null {
+  const c: { label: string; date: Date | null; seq: number }[] = [];
+  const s = suivi || {};
+  if (s.devisEnvoye || s.devisDate) c.push({ label: "Devis", date: parseAnyDate(s.devisDate), seq: 1 });
+  const niv = s.relanceNiveau || 0;
+  for (let i = 0; i < Math.min(niv, 3); i++) {
+    // relanceDate (ISO) est partagée entre les 2 parcours → repli seulement s'il n'y a qu'un parcours.
+    const fallback = i === niv - 1 && !s.infoRelanceNiveau ? s.relanceDate : undefined;
+    c.push({ label: `Relance R${i + 1} (devis)`, date: parseAnyDate(s.relanceDates?.[i] || fallback), seq: 2 + i });
+  }
+  if (s.infosEnvoye || s.infosDate) c.push({ label: "Demande d'infos", date: parseAnyDate(s.infosDate), seq: 5 });
+  const nivI = s.infoRelanceNiveau || 0;
+  for (let i = 0; i < Math.min(nivI, 3); i++) {
+    const fallback = i === nivI - 1 && !niv ? s.relanceDate : undefined;
+    c.push({ label: `Relance R${i + 1} (demande d'infos)`, date: parseAnyDate(s.infoRelanceDates?.[i] || fallback), seq: 6 + i });
+  }
+  for (const d of externes) c.push({ label: `Devis externe${d.intitule ? ` · ${d.intitule}` : ""}`, date: parseAnyDate(d.date), seq: 0 });
+  const dated = c.filter((x): x is { label: string; date: Date; seq: number } => !!x.date)
+    .sort((a, b) => b.date.getTime() - a.date.getTime() || b.seq - a.seq);
+  return dated[0] ?? null;
+}
+function ilYA(d: Date): string {
+  const t = new Date(); const t0 = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  const n = Math.round((t0.getTime() - d.getTime()) / 86400000);
+  return n <= 0 ? "aujourd'hui" : n === 1 ? "hier" : `il y a ${n} jours`;
 }
 
 // ─── Composant : Badge statut ─────────────────────────────────────────────────
@@ -346,6 +382,7 @@ function ProspectModal({
   const [actionBusy, setActionBusy] = useState<"" | "devis" | "relance" | "avance" | "infos" | "relance_infos">("");
   const toast = useToast();
   const commentsEndRef = useRef<HTMLDivElement>(null);
+  const [devisExt, setDevisExt] = useState<DevisExterne[]>([]); // devis externes (pour « dernier email »)
 
   // Scroll to bottom of comments when added
   useEffect(() => { commentsEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [p.commentaires]);
@@ -534,6 +571,25 @@ function ProspectModal({
     } finally { setAddingComment(false); }
   }
 
+  // Devis externe ajouté → trace dans le journal des échanges (sans toucher statut/relance).
+  async function journaliserDevis(d: DevisExterne) {
+    const montant = d.montant ? ` · ${d.montant} € TTC` : "";
+    const c: Commentaire = {
+      id: crypto.randomUUID(), date: new Date().toISOString(),
+      texte: `📄 Devis externe envoyé le ${fmtDevisDate(d.date)} : ${d.intitule || d.fichier?.nom || "devis"}${montant}`,
+    };
+    const updated = [...p.commentaires, c];
+    try {
+      const res = await fetch(`/api/prospects/${p.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commentaires: updated }),
+      });
+      if (!res.ok) throw new Error();
+      setP(prev => ({ ...prev, commentaires: updated }));
+      onUpdated({ id: p.id, commentaires: updated });
+    } catch { toast.error("Devis enregistré, mais pas la ligne du journal"); }
+  }
+
   async function handleDelete() {
     await fetch(`/api/prospects/${p.id}`, { method: "DELETE" });
     onDeleted(p.id);
@@ -543,10 +599,13 @@ function ProspectModal({
   // Après création du client via NewClientModal : on marque le prospect converti.
   async function handleConvertedSaved() {
     try {
-      await fetch(`/api/prospects/${p.id}`, {
+      const res = await fetch(`/api/prospects/${p.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ statut: "CONVERTI" }),
       });
+      // Les devis externes du prospect sont copiés sur la fiche du nouveau client (côté serveur).
+      const d = await res.json().catch(() => ({}));
+      if (d.devisTransferes > 0) toast.success(`${d.devisTransferes} devis externe${d.devisTransferes > 1 ? "s" : ""} repris sur la fiche client`);
     } catch { /* le client est créé ; le statut prospect suivra au prochain refresh */ }
     setP(prev => ({ ...prev, statut: "CONVERTI" }));
     onConverted(p.id);
@@ -638,6 +697,28 @@ function ProspectModal({
 
         {/* ── Body scrollable ── */}
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+
+          {/* Dernier email envoyé (devis / relance / demande d'infos / devis externe) */}
+          {(() => {
+            const last = dernierEmail(p.suivi, devisExt);
+            return last ? (
+              <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-blue-50 border border-blue-200">
+                <Mail size={16} className="text-blue-600 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-semibold text-blue-500 uppercase tracking-wide">Dernier email envoyé</p>
+                  <p className="text-sm text-blue-900 truncate"><strong>{last.label}</strong></p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-semibold text-blue-900">{last.date.toLocaleDateString("fr-FR")}</p>
+                  <p className="text-[11px] text-blue-500">{ilYA(last.date)}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 text-xs text-gray-500">
+                <Mail size={14} className="text-gray-400 shrink-0" /> Aucun email envoyé pour l&apos;instant
+              </div>
+            );
+          })()}
 
           {/* Genre */}
           <div className="flex gap-2">
@@ -1001,6 +1082,19 @@ function ProspectModal({
               );
             })()}
           </div>
+
+          {/* Devis : devis du dashboard + devis externes (faits ailleurs, envoyés à la main).
+              Copiés automatiquement sur la fiche client à la conversion. */}
+          <DevisExternes
+            kind="prospect" ownerId={p.id}
+            standard={p.suivi?.devisEnvoye ? [{
+              key: "kinou", label: "Devis KinouClean (dashboard)",
+              sub: p.suivi?.devisDate ? `Envoyé le ${p.suivi.devisDate}` : undefined,
+              href: `/api/prospects/${p.id}/devis?pdf=1`,
+            }] : []}
+            onAdded={journaliserDevis}
+            onListChange={setDevisExt}
+          />
 
           {/* Journal des échanges */}
           <div>

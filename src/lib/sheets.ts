@@ -2,6 +2,8 @@ import { supabase } from "./supabase";
 import { Prestation, Prestataire, Depense, ModePaiement } from "./constants";
 import { getEntite, resolveEntite, Entite, ENTITE_OVERRIDE_KEY } from "./entite";
 import { getSettingJSON } from "./settings";
+import { caRealise, caPrevu, estRealisee, prixPresta } from "./finance";
+import { joursEntre } from "./indispos";
 
 // Lit la table de corrections manuelles d'entité (settings/entite_override).
 async function getEntiteOverrides(): Promise<Record<string, Entite>> {
@@ -177,6 +179,20 @@ export async function setPrestataireIndispo(pid: string, entry: Indispo, bloquer
   return next;
 }
 
+// Pose ou retire des congés « journée entière » sur une période (du → au inclus),
+// en une seule écriture. Les créneaux partiels de ces jours-là sont remplacés.
+export async function setPrestataireIndispoPlage(pid: string, du: string, au: string, bloquer: boolean): Promise<Indispo[]> {
+  if (!supabase) throw new Error("Supabase non configuré");
+  const jours = new Set(joursEntre(du, au));
+  const cur = await getPrestataireIndispos(pid);
+  const autres = cur.filter(x => !jours.has(x.date));
+  const next = bloquer ? [...autres, ...Array.from(jours).map(date => ({ date, debut: "", fin: "" }))] : autres;
+  next.sort((a, b) => (a.date + a.debut).localeCompare(b.date + b.debut));
+  const { error } = await supabase.from("prestataires").update({ indispos: next }).eq("id", pid);
+  if (error) throw new Error(error.message);
+  return next;
+}
+
 export async function getArchive(): Promise<Prestation[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
@@ -207,9 +223,9 @@ export async function updatePrestation(
       case "typePresta":   prestaPatch.type_prestation = value;                           break;
       case "message":      prestaPatch.message         = value;                           break;
       case "statut":
+        // Plus d'auto-archivage sur TERMINÉ : la clôture passe par ClotureModal
+        // (PATCH /api/archive) pour enregistrer le mode de paiement (CA / stock).
         prestaPatch.statut = value;
-        // Auto-archive dès que la prestation est marquée TERMINÉ
-        if (value === "TERMINÉ") prestaPatch.archive = true;
         break;
       case "statutPresta": prestaPatch.statut_presta = value;                           break;
       case "prix":         prestaPatch.prix           = value ? parseFloat(value) : null; break;
@@ -676,18 +692,18 @@ export async function getDashboardStats() {
   const toReassign   = prestations.filter((p) => p.statut === "PRESTATAIRE REFUSÉ – À RÉAFFECTER");
   const waitingPresta = prestations.filter((p) => p.statutPresta === "EN ATTENTE PRESTA");
 
-  // Les annulations ne comptent pas dans le CA
-  const CANCELLATION_REASONS = ["Annulation client", "Client injoignable", "Doublon"];
-  const isCancelled = (p: Prestation) => CANCELLATION_REASONS.some(r => (p.archiveReason || "").startsWith(r));
-  const archivePaid = archive.filter(p => !isCancelled(p));
-  const totalCA  = [...prestations, ...archivePaid].map((p) => parseFloat(p.prix) || 0).reduce((a, b) => a + b, 0);
-  const archiveCA = archivePaid.map((p) => parseFloat(p.prix) || 0).reduce((a, b) => a + b, 0);
+  // Règles CA communes (lib/finance.ts) : les annulations ne comptent pas dans le CA
+  const archivePaid = archive.filter(estRealisee);
+  const enCours     = prestations.filter((p) => p.statut !== "ANNULÉ");
+  const archiveCA   = caRealise(archive);                                      // CA réalisé (tout l'historique)
+  const totalCA     = archiveCA + enCours.reduce((s, p) => s + prixPresta(p), 0); // réalisé + en cours (non archivées)
+  const prevu       = caPrevu(prestations);                                    // non archivées à date ≥ aujourd'hui
   const devisGeneres = [...prestations, ...archive].filter((p) => p.genDevis === "FAIT" || p.devisPDF).length;
 
   // CA dissocié par entité juridique (Kinouclean SAS / Kinourent)
   const caParEntite: Record<string, number> = { "Kinouclean SAS": 0, "Kinourent": 0 };
-  for (const p of [...prestations, ...archivePaid]) {
-    caParEntite[resolveEntite(p.row, p.typePresta, entiteOverrides)] += parseFloat(p.prix) || 0;
+  for (const p of [...enCours, ...archivePaid]) {
+    caParEntite[resolveEntite(p.row, p.typePresta, entiteOverrides)] += prixPresta(p);
   }
 
   return {
@@ -696,6 +712,7 @@ export async function getDashboardStats() {
     totalPrestataires: prestataires.length,
     totalCA,
     archiveCA,
+    caPrevu          : prevu.ca,
     caParEntite,
     entiteOverrides,
     nouveauxClients,

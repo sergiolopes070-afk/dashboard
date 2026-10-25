@@ -11,6 +11,10 @@ import { useToast } from "@/components/Toast";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import { Depense, Prestation, CATEGORIES_DEPENSES } from "@/lib/constants";
 import BankImportModal from "@/components/BankImportModal";
+import {
+  bilanPeriode, depensesDansPeriode, chargesPeriode, chargesParCategorie,
+  countMonthlyOccurrences, isoLocal, periodeMois, nbJours, formatMontant,
+} from "@/lib/finance";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -21,21 +25,13 @@ function frDate(iso: string) {
 }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return isoLocal(); // date locale (toISOString décalait d'un jour avant 2h du matin)
 }
 
 function monthLabel(iso: string) {
   if (!iso) return "";
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
-}
-
-/** Convertit "dd/mm/yyyy" → "yyyy-mm-dd" pour comparaison */
-function frToIso(fr: string): string {
-  if (!fr) return "";
-  const parts = fr.split("/");
-  if (parts.length !== 3) return "";
-  return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
 }
 
 /** Premier jour du mois courant en ISO */
@@ -49,7 +45,7 @@ function firstDayOfWeek(): string {
   const n = new Date();
   const day = n.getDay() === 0 ? 6 : n.getDay() - 1; // lundi = 0
   n.setDate(n.getDate() - day);
-  return n.toISOString().slice(0, 10);
+  return isoLocal(n);
 }
 
 /** Premier jour du trimestre courant */
@@ -65,27 +61,7 @@ function firstDayOfYear(): string {
   return `${new Date().getFullYear()}-01-01`;
 }
 
-/**
- * Pour une dépense mensuelle, calcule combien de fois elle tombe dans [debut, fin].
- * Ex: dépense créée le 15 jan, période fév→mars → 2 occurrences (15 fév + 15 mar).
- */
-function countMonthlyOccurrences(expenseIso: string, debut: string, fin: string): number {
-  if (!expenseIso) return 0;
-  const expDay = parseInt(expenseIso.slice(8, 10), 10);
-  const start  = new Date(debut + "T00:00:00");
-  const end    = new Date(fin   + "T00:00:00");
-  let count = 0;
-  const cur = new Date(start.getFullYear(), start.getMonth(), 1);
-  const endM = new Date(end.getFullYear(), end.getMonth(), 1);
-  while (cur <= endM) {
-    const lastDay = new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate();
-    const day     = Math.min(expDay, lastDay);
-    const occIso  = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    if (occIso >= debut && occIso <= fin) count++;
-    cur.setMonth(cur.getMonth() + 1);
-  }
-  return count;
-}
+// countMonthlyOccurrences / calculs de charges : voir lib/finance.ts (règles communes à tout le dashboard)
 
 const TYPE_COLORS = {
   ponctuel: "bg-blue-100 text-blue-700",
@@ -296,7 +272,8 @@ type Preset = "semaine" | "mois" | "trimestre" | "annee" | "tout" | "custom";
 export default function DepensesPage() {
   const toast = useToast();
   const [depenses,    setDepenses]    = useState<Depense[]>(() => cacheGet<Depense[]>(CACHE_KEYS.depenses) ?? []);
-  const [prestations, setPrestations] = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.prestations) ?? []);
+  // CA réalisé = prestations ARCHIVÉES hors annulations (et non les prestations en cours)
+  const [archive,     setArchive]     = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.archive) ?? []);
   const [loading,     setLoading]     = useState(() => !cacheHas(CACHE_KEYS.depenses));
   const [error,       setError]       = useState<string | null>(null);
   const [modal,       setModal]       = useState<"new" | Depense | null>(null);
@@ -326,12 +303,12 @@ export default function DepensesPage() {
     try {
       const [resD, resP] = await Promise.all([
         fetch("/api/depenses"),
-        fetch("/api/prestations"),
+        fetch("/api/archive"),
       ]);
       if (!resD.ok) throw new Error((await resD.json()).error);
       if (!resP.ok) throw new Error((await resP.json()).error);
       { const d = await resD.json(); setDepenses(d); cacheSet(CACHE_KEYS.depenses, d); }
-      { const d = await resP.json(); setPrestations(d); cacheSet(CACHE_KEYS.prestations, d); }
+      { const d = await resP.json(); setArchive(d); if (!cacheHas(CACHE_KEYS.archive)) cacheSet(CACHE_KEYS.archive, [...d].reverse()); }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur inconnue");
     } finally {
@@ -361,45 +338,42 @@ export default function DepensesPage() {
     return true;
   }), [depenses, filterType, filterCat]);
 
-  // ── Calculs période ──
-  // Les dépenses mensuelles se répètent chaque mois → on multiplie par le nb d'occurrences
-  const depensesPeriode = useMemo(() =>
-    depenses.filter(d => {
-      if (d.type === "mensuel") return countMonthlyOccurrences(d.date, periodeDebut, periodeFin) > 0;
-      return d.date >= periodeDebut && d.date <= periodeFin;
-    }),
-    [depenses, periodeDebut, periodeFin]
+  // ── Calculs période (lib/finance.ts) ──
+  // Vue semaine : charges mensuelles au prorata des jours ; mois/trimestre/année/tout :
+  // une fois par occurrence mensuelle depuis leur date de début ; personnalisé : auto (< 28 j → prorata).
+  const prorata = preset === "semaine" ? true : preset === "custom" ? undefined : false;
+
+  const bilan = useMemo(
+    () => bilanPeriode({ archive, depenses, debut: periodeDebut, fin: periodeFin, prorata }),
+    [archive, depenses, periodeDebut, periodeFin, prorata]
   );
 
-  const totalDepensesPeriode = useMemo(() =>
-    depenses.reduce((s, d) => {
-      if (d.type === "mensuel") {
-        return s + d.montant * countMonthlyOccurrences(d.date, periodeDebut, periodeFin);
-      }
-      return d.date >= periodeDebut && d.date <= periodeFin ? s + d.montant : s;
-    }, 0),
-    [depenses, periodeDebut, periodeFin]
+  const depensesPeriode = useMemo(
+    () => depensesDansPeriode(depenses, periodeDebut, periodeFin, { prorata }),
+    [depenses, periodeDebut, periodeFin, prorata]
   );
 
-  // Détail pour l'affichage : nb d'occurrences mensuel dans la période
+  const totalDepensesPeriode = bilan.charges;
+
+  // Détail pour l'affichage : nb d'occurrences mensuelles dans la période
   const mensuelOccurrences = useMemo(() =>
     depenses
       .filter(d => d.type === "mensuel")
       .reduce((s, d) => s + countMonthlyOccurrences(d.date, periodeDebut, periodeFin), 0),
     [depenses, periodeDebut, periodeFin]
   );
+  const prorataEffectif    = prorata ?? nbJours(periodeDebut, periodeFin) < 28;
+  const mensuellesProrata  = depensesPeriode.filter(d => d.type === "mensuel").length;
 
-  const revenusPeriode = useMemo(() =>
-    prestations
-      .filter(p => {
-        const iso = frToIso(p.date);
-        return iso >= periodeDebut && iso <= periodeFin;
-      })
-      .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0),
-    [prestations, periodeDebut, periodeFin]
+  const revenusPeriode = bilan.ca;
+  const beneficeNet    = bilan.benefice;
+
+  // ── Répartition par catégorie (période sélectionnée, mêmes règles) ──
+  const parCategorie = useMemo(
+    () => chargesParCategorie(depenses, periodeDebut, periodeFin, { prorata }),
+    [depenses, periodeDebut, periodeFin, prorata]
   );
-
-  const beneficeNet = revenusPeriode - totalDepensesPeriode;
+  const totalCategories = Object.values(parCategorie).reduce((a, b) => a + b, 0);
 
   // ── Répartition par semaine (12 dernières semaines) ──
   const parSemaine = useMemo(() => {
@@ -412,11 +386,10 @@ export default function DepensesPage() {
       lundi.setHours(0, 0, 0, 0);
       const dimanche = new Date(lundi);
       dimanche.setDate(lundi.getDate() + 6);
-      const debut = lundi.toISOString().slice(0, 10);
-      const fin   = dimanche.toISOString().slice(0, 10);
-      const total = depenses
-        .filter(d => d.date >= debut && d.date <= fin)
-        .reduce((s, d) => s + d.montant, 0);
+      const debut = isoLocal(lundi);
+      const fin   = isoLocal(dimanche);
+      // Mensuelles au prorata (7/jours du mois) dès qu'elles ont commencé
+      const total = chargesPeriode(depenses, debut, fin, { prorata: true });
       const label = lundi.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
       semaines.push({ label, debut, fin, total });
     }
@@ -432,14 +405,15 @@ export default function DepensesPage() {
     if (preset === "mois") return `Mois en cours (${monthLabel(periodeDebut)})`;
     if (preset === "trimestre") return "Trimestre en cours";
     if (preset === "annee") return `Année ${new Date().getFullYear()}`;
-    return `${frDate(periodeDebut.split("-").reverse().join("/"))} → ${frDate(periodeFin.split("-").reverse().join("/"))}`;
+    return `${frDate(periodeDebut)} → ${frDate(periodeFin)}`;
   }, [preset, periodeDebut, periodeFin]);
 
   // ── Totaux globaux (hors période) ──
   const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const totalMensuel = depenses.filter(d => d.type === "mensuel").reduce((s, d) => s + d.montant, 0);
-  const totalMois    = depenses.filter(d => d.date?.startsWith(currentMonth)).reduce((s, d) => s + d.montant, 0);
+  // Mois calendaire complet : ponctuelles du mois + chaque mensuelle déjà commencée (une fois)
+  const moisCourant  = periodeMois(now.getFullYear(), now.getMonth());
+  const totalMois    = chargesPeriode(depenses, moisCourant.debut, moisCourant.fin, { prorata: false });
 
   function handleDelete(id: string) {
     const item = depenses.find(d => d.id === id);
@@ -572,10 +546,12 @@ export default function DepensesPage() {
             </div>
             <div>
               <p className="text-xs text-gray-500 font-medium">Dépenses (période)</p>
-              <p className="text-2xl font-bold text-red-700">{totalDepensesPeriode.toFixed(2)} €</p>
+              <p className="text-2xl font-bold text-red-700">{formatMontant(totalDepensesPeriode)}</p>
               <p className="text-xs text-gray-400 mt-0.5">
                 {depensesPeriode.length} charge{depensesPeriode.length > 1 ? "s" : ""}
-                {mensuelOccurrences > 0 && (
+                {prorataEffectif ? mensuellesProrata > 0 && (
+                  <span className="text-purple-500 ml-1">· dont {mensuellesProrata} récurrente{mensuellesProrata > 1 ? "s" : ""} au prorata</span>
+                ) : mensuelOccurrences > 0 && (
                   <span className="text-purple-500 ml-1">· dont {mensuelOccurrences} récurrente{mensuelOccurrences > 1 ? "s" : ""}</span>
                 )}
               </p>
@@ -587,10 +563,11 @@ export default function DepensesPage() {
               <TrendingUp size={20} />
             </div>
             <div>
-              <p className="text-xs text-gray-500 font-medium">Revenus (période)</p>
-              <p className="text-2xl font-bold text-emerald-700">{revenusPeriode.toFixed(2)} €</p>
+              <p className="text-xs text-gray-500 font-medium">CA réalisé (période)</p>
+              <p className="text-2xl font-bold text-emerald-700">{formatMontant(revenusPeriode)}</p>
               <p className="text-xs text-gray-400 mt-0.5">
-                {prestations.filter(p => { const iso = frToIso(p.date); return iso >= periodeDebut && iso <= periodeFin; }).length} prestation{prestations.filter(p => { const iso = frToIso(p.date); return iso >= periodeDebut && iso <= periodeFin; }).length > 1 ? "s" : ""}
+                {bilan.nb} prestation{bilan.nb > 1 ? "s" : ""} terminée{bilan.nb > 1 ? "s" : ""}
+                {bilan.commissions > 0 && <span className="ml-1">· commissions {formatMontant(bilan.commissions)}</span>}
               </p>
             </div>
           </div>
@@ -602,10 +579,10 @@ export default function DepensesPage() {
             <div>
               <p className="text-xs text-gray-500 font-medium">Bénéfice net (période)</p>
               <p className={`text-2xl font-bold ${beneficeNet >= 0 ? "text-blue-700" : "text-orange-700"}`}>
-                {beneficeNet >= 0 ? "+" : ""}{beneficeNet.toFixed(2)} €
+                {formatMontant(beneficeNet, { signe: true })}
               </p>
               <p className="text-xs text-gray-400 mt-0.5">
-                {revenusPeriode > 0 ? `Marge : ${((beneficeNet / revenusPeriode) * 100).toFixed(0)}%` : "Pas de revenus"}
+                {bilan.marge != null ? `Marge : ${bilan.marge.toFixed(0)} % · CA − commissions − charges` : "Pas de CA réalisé"}
               </p>
             </div>
           </div>
@@ -618,8 +595,8 @@ export default function DepensesPage() {
               <Calendar size={16} />
             </div>
             <div>
-              <p className="text-xs text-gray-400">Charges ce mois ({monthLabel(currentMonth + "-01")})</p>
-              <p className="text-lg font-bold text-orange-700">{totalMois.toFixed(2)} €</p>
+              <p className="text-xs text-gray-400">Charges ce mois ({monthLabel(moisCourant.debut)})</p>
+              <p className="text-lg font-bold text-orange-700">{formatMontant(totalMois)}</p>
             </div>
           </div>
           <div className="rounded-xl p-4 flex items-center gap-3 border border-gray-100 bg-white shadow-sm">
@@ -628,7 +605,7 @@ export default function DepensesPage() {
             </div>
             <div>
               <p className="text-xs text-gray-400">Charges mensuelles fixes</p>
-              <p className="text-lg font-bold text-purple-700">{totalMensuel.toFixed(2)} €</p>
+              <p className="text-lg font-bold text-purple-700">{formatMontant(totalMensuel)}</p>
             </div>
           </div>
         </div>
@@ -830,14 +807,14 @@ export default function DepensesPage() {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
             <h2 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
               <Euro size={16} className="text-gray-400" />
-              Répartition par catégorie
+              Répartition par catégorie <span className="text-xs font-normal text-gray-400 ml-1">({periodeLabel})</span>
             </h2>
             <div className="space-y-2">
-              {CATEGORIES_DEPENSES.map(cat => {
-                const total = depenses.filter(d => d.categorie === cat).reduce((s, d) => s + d.montant, 0);
+              {totalCategories === 0 && <p className="text-sm text-gray-400">Aucune charge sur la période.</p>}
+              {[...CATEGORIES_DEPENSES, ...Object.keys(parCategorie).filter(c => !(CATEGORIES_DEPENSES as readonly string[]).includes(c))].map(cat => {
+                const total = parCategorie[cat] || 0;
                 if (total === 0) return null;
-                const totalAll = depenses.reduce((s, d) => s + d.montant, 0);
-                const pct = totalAll > 0 ? (total / totalAll) * 100 : 0;
+                const pct = totalCategories > 0 ? (total / totalCategories) * 100 : 0;
                 return (
                   <div key={cat}>
                     <div className="flex justify-between text-sm mb-1">

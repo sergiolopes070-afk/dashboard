@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo, useRef } from "react";
+import { grouperIndispos, libellePlage } from "@/lib/indispos";
 import { MapPin, Phone, Clock, LogOut, RefreshCw, Loader2, Lock, X, ChevronLeft, ChevronRight, Camera, Moon, Sun, Package, Send, CheckCircle2 } from "lucide-react";
 
 interface Photo { url: string; path: string; article: string; phase: string; at: string }
@@ -225,6 +226,16 @@ export default function EspaceProPage() {
     } finally { setDispoBusy(false); }
   }
   const libIndispo = (x: Indispo) => (!x.debut && !x.fin) ? "Journée entière" : `${x.debut || "début"} – ${x.fin || "fin"}`;
+  // Congés sur une période : « du … au … » en une fois (un seul email au patron).
+  const [plage, setPlage] = useState({ du: "", au: "" });
+  async function setConges(du: string, au: string, bloquer: boolean) {
+    setDispoBusy(true);
+    try {
+      const r = await fetch("/api/espace-pro/dispo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: du, au, bloquer }) });
+      const j = await r.json(); if (r.ok) setIndispos(Array.isArray(j.indispos) ? j.indispos : []);
+    } finally { setDispoBusy(false); }
+  }
+  const congesAvenir = useMemo(() => grouperIndispos(indispos.filter(x => x.date >= isoOf(today))), [indispos, today]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function addUploaded(photo: Photo) {
     const add = (m: Mission) => ({ ...m, photos: [...(m.photos || []), photo] });
@@ -317,6 +328,30 @@ export default function EspaceProPage() {
         /* ══ VUE JOUR ══ */
         <div className="flex-1 p-3 space-y-2">
           <p className="text-sm font-semibold text-gray-800">{JOURS_FULL[cursor.getDay()]} {cursor.getDate()} {MOIS[cursor.getMonth()]}</p>
+
+          {/* Mes congés : poser une période et voir les plages à venir */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-3 space-y-2">
+            <p className="text-xs font-semibold text-gray-600 flex items-center gap-1">🏖️ Mes congés {dispoBusy && <Loader2 size={11} className="animate-spin text-amber-500" />}</p>
+            {congesAvenir.length > 0 && (
+              <div className="space-y-1">
+                {congesAvenir.map((c, i) => (
+                  <div key={i} className="flex items-center justify-between bg-amber-50 rounded-lg px-2.5 py-1.5">
+                    <span className="text-sm text-amber-800 font-medium">{libellePlage(c)}{!c.partiel && c.jours.length > 1 ? ` · ${c.jours.length} j` : ""}</span>
+                    <button onClick={() => c.partiel ? setDispo({ date: c.start, debut: c.debut || "", fin: c.fin || "" }, false) : setConges(c.start, c.end, false)}
+                      disabled={dispoBusy} className="text-xs text-amber-600 hover:text-amber-800 font-medium disabled:opacity-50">Retirer</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-gray-500">Du</span>
+              <input type="date" value={plage.du} min={isoOf(today)} onChange={e => setPlage(p => ({ du: e.target.value, au: p.au && p.au >= e.target.value ? p.au : e.target.value }))} className="border border-gray-200 rounded-lg px-1.5 py-1 text-xs" />
+              <span className="text-xs text-gray-500">au</span>
+              <input type="date" value={plage.au} min={plage.du || isoOf(today)} onChange={e => setPlage(p => ({ ...p, au: e.target.value }))} className="border border-gray-200 rounded-lg px-1.5 py-1 text-xs" />
+              <button onClick={() => { setConges(plage.du, plage.au, true); setPlage({ du: "", au: "" }); }} disabled={dispoBusy || !plage.du || !plage.au || plage.au < plage.du}
+                className="px-2.5 py-1 rounded-lg bg-amber-500 text-white text-xs font-medium disabled:opacity-40">Poser mes congés</button>
+            </div>
+          </div>
 
           {/* Indisponibilités du jour */}
           <div className="bg-white rounded-2xl border border-gray-100 p-3 space-y-2">

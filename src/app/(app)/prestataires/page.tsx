@@ -6,6 +6,7 @@ import { SkeletonCards } from "@/components/Skeleton";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import NewPrestataireModal from "@/components/NewPrestataireModal";
 import { Prestataire, Prestation } from "@/lib/constants";
+import { grouperIndispos, libellePlage } from "@/lib/indispos";
 
 const JOURS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
@@ -366,7 +367,8 @@ export default function PrestatairesPage() {
                     {/* Indisponibilités déclarées par le prestataire (dans son espace) */}
                     {(() => {
                       const todayIso = new Date().toISOString().slice(0, 10);
-                      const futs = (p.indispos || []).filter(x => x.date >= todayIso).sort((a, b) => (a.date + a.debut).localeCompare(b.date + b.debut));
+                      // Jours consécutifs regroupés : « du 9 au 14 déc. » au lieu d'une ligne par jour.
+                      const futs = grouperIndispos((p.indispos || []).filter(x => x.date >= todayIso));
                       if (!futs.length) return null;
                       return (
                         <div className="pt-2 border-t border-gray-50">
@@ -374,7 +376,7 @@ export default function PrestatairesPage() {
                           <div className="flex flex-wrap gap-1">
                             {futs.slice(0, 8).map((x, i) => (
                               <span key={i} className="text-[11px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-md">
-                                {x.date.split("-").reverse().join("/")}{(x.debut || x.fin) ? ` (${x.debut || "…"}–${x.fin || "…"})` : ""}
+                                {libellePlage(x)}
                               </span>
                             ))}
                           </div>

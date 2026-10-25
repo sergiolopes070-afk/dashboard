@@ -36,6 +36,18 @@ export const MODES_PAIEMENT: ModePaiement[] = [
   "Avance immédiate",
 ];
 
+// Modes proposés à la clôture d'un RDV (avance immédiate en 1er, ~90 % des cas).
+export const PAIEMENTS_CLOTURE: ModePaiement[] = [
+  "Avance immédiate", "Espèces", "Virement bancaire", "Carte sur place", "Chèque", "Lien de paiement",
+];
+
+// Motifs d'archivage d'une prestation. Les annulations ne comptent ni dans le CA
+// ni dans le stock consommé, et ne demandent pas de mode de paiement.
+export const MOTIF_TERMINEE = "Prestation terminée";
+export const MOTIFS_ANNULATION = ["Annulation client", "Client injoignable", "Doublon"];
+export const MOTIFS_ARCHIVAGE = ["Annulation client", MOTIF_TERMINEE, "Client injoignable", "Doublon"];
+export const estAnnulation = (motif?: string | null) => MOTIFS_ANNULATION.some(m => (motif || "").startsWith(m));
+
 export const MODE_PAIEMENT_ICONS: Record<string, string> = {
   "Espèces"          : "💵",
   "Lien de paiement" : "🔗",

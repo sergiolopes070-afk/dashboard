@@ -15,7 +15,7 @@ const PREFETCH: Record<string, { key: string; url: string; transform?: (d: unkno
   "/stock":        { key: CACHE_KEYS.stock,        url: "/api/stock" },
   "/prestataires": { key: CACHE_KEYS.prestataires, url: "/api/prestataires" },
   "/prestations":  { key: CACHE_KEYS.prestations,  url: "/api/prestations" },
-  "/clients":      { key: CACHE_KEYS.prestations,  url: "/api/prestations" },
+  "/clients":      { key: "clients-full",          url: "/api/clients" }, // même clé que la page Clients
   "/archive":      { key: CACHE_KEYS.archive,      url: "/api/archive", transform: (d) => (Array.isArray(d) ? [...d].reverse() : d) },
 };
 
@@ -24,20 +24,30 @@ function prefetchRoute(href: string) {
   if (p) cachePrefetch(p.key, p.url, p.transform);
 }
 
-const nav = [
-  { href: "/",              label: "Tableau de bord",  icon: LayoutDashboard },
-  { href: "/prestations",   label: "Prestations",       icon: Briefcase },
-  { href: "/prestataires",  label: "Prestataires",      icon: Wrench },
-  { href: "/clients",       label: "Clients",           icon: Users },
-  { href: "/prospects",     label: "Prospects",         icon: UserSearch },
-  { href: "/agenda",        label: "Agenda",            icon: CalendarDays },
-  { href: "/devis",         label: "Devis",             icon: FileText },
-  { href: "/depenses",      label: "Dépenses",          icon: TrendingDown },
-  { href: "/stock",         label: "Stock",             icon: Package },
-  { href: "/pilotage",      label: "Pilotage",          icon: BarChart3 },
-  { href: "/archive",       label: "Historique",        icon: Archive },
-  { href: "/configuration", label: "Configuration",     icon: Settings },
+// Menu par usage : le quotidien en haut, les finances ensemble, les réglages en bas.
+const sections = [
+  { titre: "Quotidien", items: [
+    { href: "/",              label: "Tableau de bord",  icon: LayoutDashboard },
+    { href: "/agenda",        label: "Agenda",           icon: CalendarDays },
+    { href: "/prospects",     label: "Prospects",        icon: UserSearch },
+    { href: "/clients",       label: "Clients",          icon: Users },
+    { href: "/prestations",   label: "Prestations",      icon: Briefcase },
+  ]},
+  { titre: "Gestion", items: [
+    { href: "/devis",         label: "Devis",            icon: FileText },
+    { href: "/prestataires",  label: "Prestataires",     icon: Wrench },
+    { href: "/stock",         label: "Stock",            icon: Package },
+    { href: "/archive",       label: "Historique",       icon: Archive },
+  ]},
+  { titre: "Finances", items: [
+    { href: "/depenses",      label: "Dépenses",         icon: TrendingDown },
+    { href: "/pilotage",      label: "Pilotage",         icon: BarChart3 },
+  ]},
 ];
+
+// Actif aussi sur une sous-page (ex. /prospects?fiche=… ou /clients/…).
+const estActif = (pathname: string, href: string) =>
+  pathname === href || (href !== "/" && pathname.startsWith(href + "/"));
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -91,32 +101,48 @@ export default function Sidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {nav.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href;
-            return (
-              <Link
-                key={href}
-                href={href}
-                onClick={close}
-                onMouseEnter={() => prefetchRoute(href)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all group
-                  ${active
-                    ? "bg-blue-600 text-white shadow-md"
-                    : "text-gray-300 hover:bg-white/10 hover:text-white"
-                  }`}
-              >
-                <Icon size={18} className="flex-shrink-0" />
-                <span className="flex-1">{label}</span>
-                {active && <ChevronRight size={14} className="opacity-60" />}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 px-3 py-3 overflow-y-auto space-y-4">
+          {sections.map(({ titre, items }) => (
+            <div key={titre}>
+              <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">{titre}</p>
+              <div className="space-y-0.5">
+                {items.map(({ href, label, icon: Icon }) => {
+                  const active = estActif(pathname, href);
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      onClick={close}
+                      onMouseEnter={() => prefetchRoute(href)}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all group
+                        ${active
+                          ? "bg-blue-600 text-white shadow-md"
+                          : "text-gray-300 hover:bg-white/10 hover:text-white"
+                        }`}
+                    >
+                      <Icon size={18} className="flex-shrink-0" />
+                      <span className="flex-1">{label}</span>
+                      {active && <ChevronRight size={14} className="opacity-60" />}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
-        {/* Footer */}
-        <div className="px-4 py-4 border-t border-white/10 space-y-3">
-          <div>
+        {/* Footer : réglages + déconnexion */}
+        <div className="px-4 py-4 border-t border-white/10 space-y-2">
+          <Link
+            href="/configuration"
+            onClick={close}
+            className={`flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm transition-all
+              ${estActif(pathname, "/configuration") ? "bg-blue-600 text-white" : "text-gray-400 hover:bg-white/10 hover:text-white"}`}
+          >
+            <Settings size={16} />
+            <span>Configuration</span>
+          </Link>
+          <div className="px-3 pt-1">
             <p className="text-xs text-gray-500">Gomes Lopes Sergio</p>
             <p className="text-xs text-gray-500">kinouclean@gmail.com</p>
           </div>

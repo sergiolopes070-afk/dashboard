@@ -4,12 +4,11 @@ import { getArchive, archivePrestation, deletePrestation } from "@/lib/sheets";
 import { getSettingJSON, setSettingRaw } from "@/lib/settings";
 import { supabase } from "@/lib/supabase";
 import { consommerStockPourPrestation } from "@/lib/stockConso";
+import { estAnnulation } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
-// Raisons d'annulation : la prestation n'a PAS eu lieu → aucune consommation de stock.
-const RAISONS_ANNULATION = ["Annulation client", "Client injoignable", "Doublon"];
-const estAnnulation = (r: string) => RAISONS_ANNULATION.some(x => (r || "").startsWith(x));
+// Annulation (estAnnulation, constants) : la prestation n'a PAS eu lieu → aucune consommation de stock.
 
 // Retire une prestation du suivi des relances (settings/emails_auto_etat) : une
 // prestation archivée ou supprimée ne doit plus figer un badge « Relance x/3 ».

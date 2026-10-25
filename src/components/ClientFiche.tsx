@@ -17,6 +17,7 @@ import { useToast } from "@/components/Toast";
 import { Entite } from "@/lib/entite";
 import EntiteBadge from "@/components/EntiteBadge";
 import PhotoLightbox, { LightboxPhoto } from "@/components/PhotoLightbox";
+import DevisExternes, { DevisExterne, fmtDevisDate } from "@/components/DevisExternes";
 
 // Forme minimale d'une prestation affichée dans la fiche (compatible avec le type
 // Prestation complet ET avec les données renvoyées par /api/clients/[id]).
@@ -242,6 +243,22 @@ export default function ClientFiche({
     setTimeout(() => onChanged?.(), 1500);
   }
 
+  // Devis externe ajouté → trace automatique dans le journal de suivi (même API que les notes).
+  function journaliserDevis(d: DevisExterne) {
+    const montant = d.montant ? ` · ${d.montant} € TTC` : "";
+    const texte = `Devis externe envoyé le ${fmtDevisDate(d.date)} : ${d.intitule || d.fichier?.nom || "devis"}${montant}`;
+    persistNotes([{ id: crypto.randomUUID(), date: new Date().toISOString(), texte, type: "📄" }, ...notes]);
+  }
+  // Devis standard (générés par le dashboard), rattachés à chaque prestation.
+  const devisStandard = client.prestations
+    .filter(p => p.devisUrl || p.devisGenere)
+    .map(p => ({
+      key  : p.row,
+      label: `${p.typePresta || "Prestation"}${p.prix ? ` · ${p.prix} €` : ""}`,
+      sub  : p.date ? `Prestation du ${p.date}` : undefined,
+      href : p.devisUrl || `/api/devis/${p.row}`,
+    }));
+
   const [showEdit, setShowEdit] = useState(false);
 
   return (
@@ -398,6 +415,11 @@ export default function ClientFiche({
               </div>
             )}
           </div>
+
+          {/* Devis : standard (dashboard) + externes (faits ailleurs, envoyés à la main) */}
+          {client.clientId && (
+            <DevisExternes kind="client" ownerId={client.clientId} standard={devisStandard} onAdded={journaliserDevis} />
+          )}
 
           {/* Historique prestations */}
           <div>

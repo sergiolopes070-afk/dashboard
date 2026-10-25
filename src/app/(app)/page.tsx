@@ -10,13 +10,14 @@ import StatusBadge from "@/components/StatusBadge";
 import NewClientModal from "@/components/NewClientModal";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import AvanceBadge from "@/components/AvanceBadge";
-import { Prestation, Prestataire, Depense } from "@/lib/constants";
+import { bilanPeriode, caRealise, formatMontant, isoLocal, periodeMois } from "@/lib/finance";
+import { grouperIndispos, libellePlage } from "@/lib/indispos";
+import ClotureModal from "@/components/ClotureModal";
+import { Prestation, Prestataire, Depense, PAIEMENTS_CLOTURE, MOTIF_TERMINEE } from "@/lib/constants";
 
 // ── Mini agenda helpers ──────────────────────────────────────────────────────
 const PALETTE_MINI = ["#4285F4","#EA4335","#34A853","#FBBC04","#8B5CF6","#F97316","#06B6D4","#EC4899","#10B981","#6366F1"];
 const JOURS_MINI = ["L","M","M","J","V","S","D"];
-// Modes de paiement pour la clôture rapide depuis le tableau de bord (avance en 1er, ~90% des cas).
-const PAIEMENTS_CLOTURE = ["Avance immédiate", "Espèces", "Virement bancaire", "Carte sur place", "Chèque", "Lien de paiement"];
 
 // ── Export CSV (ouvre dans Excel/Sheets) ──────────────────────────────────────
 // BOM UTF-8 + séparateur « ; » pour un affichage correct des accents dans Excel FR.
@@ -53,7 +54,29 @@ interface Stats {
   prestations: Prestation[]; prestataires: Prestataire[]; archive: Prestation[];
   upcomingList: Prestation[]; upcomingCA: number; toReassignList: Prestation[];
 }
-interface Prospect { id: string; prenom: string; nom: string; tel: string; statut: string; dateRelance: string; typePresta: string; createdAt: string; }
+interface SuiviProspect {
+  devisEnvoye?: boolean; devisDate?: string; devisNum?: string; relanceNiveau?: number; relanceDates?: string[];
+  infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number; infoRelanceDates?: string[];
+}
+interface Prospect { id: string; prenom: string; nom: string; tel: string; statut: string; dateRelance: string; typePresta: string; createdAt: string; suivi?: SuiviProspect; }
+
+// Dernier mail envoyé à un prospect (devis, relance devis, demande d'infos, relance infos).
+// Les dates du suivi sont au format JJ/MM/AAAA.
+function dernierMail(s?: SuiviProspect): { label: string; date: string; jours: number } | null {
+  if (!s) return null;
+  const derniere = (arr?: string[]) => (arr && arr.length ? arr[arr.length - 1] : "");
+  const envois = [
+    { label: s.devisNum ? `Devis ${s.devisNum}` : "Devis", date: s.devisEnvoye ? s.devisDate || "" : "" },
+    { label: `Relance devis R${s.relanceNiveau || s.relanceDates?.length || 1}`, date: derniere(s.relanceDates) },
+    { label: "Demande d'infos", date: s.infosEnvoye ? s.infosDate || "" : "" },
+    { label: `Relance infos R${s.infoRelanceNiveau || s.infoRelanceDates?.length || 1}`, date: derniere(s.infoRelanceDates) },
+  ].map(e => ({ ...e, d: frToDateMini(e.date) })).filter(e => e.d) as { label: string; date: string; d: Date }[];
+  if (!envois.length) return null;
+  const last = envois.sort((a, b) => b.d.getTime() - a.d.getTime())[0];
+  const auj = new Date(); auj.setHours(0, 0, 0, 0); // jours de calendrier, pas de 24 h glissantes
+  const jours = Math.max(0, Math.round((auj.getTime() - last.d.getTime()) / 86_400_000));
+  return { label: last.label, date: last.date.slice(0, 5), jours };
+}
 interface Demande { id: string; at: string; prestataireNom: string; categorie: string; quantite: string; details: string; statut: string; }
 interface StockItem { id: string; nom: string; unite: string; quantite: number; seuil: number; prixUnitaire: number | null; conso: Record<string, number>; historique: { date: string; type: string; quantite: number }[]; }
 
@@ -155,6 +178,7 @@ export default function HomePage() {
   const [relanceOpen, setRelanceOpen]         = useState(false); // modale « relances en retard »
   const [busyId, setBusyId]                   = useState("");    // action en cours sur une ligne
   const [clotPay, setClotPay]                 = useState<Record<string, string>>({}); // mode de paiement choisi par RDV
+  const [clotDetail, setClotDetail]           = useState<Prestation | null>(null); // clôture complète (motif, satisfaction…)
   const [rentaPeriod, setRentaPeriod]         = useState<"semaine" | "mois">("mois");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -249,13 +273,17 @@ export default function HomePage() {
   async function cloturerRdv(id: string, modePaiement: string) {
     setBusyId(id);
     try {
-      await fetch("/api/archive", {
+      const res = await fetch("/api/archive", {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, reason: "Prestation terminée", modePaiement }),
+        body: JSON.stringify({ id, reason: MOTIF_TERMINEE, modePaiement }),
       });
-      setStats(s => s ? { ...s, prestations: s.prestations.filter(p => p.row !== id) } : s);
+      if (res.ok) retirerRdvClotures([id]);
     } catch { /* non bloquant */ }
     finally { setBusyId(""); }
+  }
+  // Retire les RDV clôturés de la liste locale (pop-up + compteur).
+  function retirerRdvClotures(ids: string[]) {
+    setStats(s => s ? { ...s, prestations: s.prestations.filter(p => !ids.includes(p.row)) } : s);
   }
   // Reporte la relance d'un prospect à demain (reste géré depuis le tableau de bord).
   async function reporterRelance(id: string, isoDate: string) {
@@ -305,35 +333,14 @@ export default function HomePage() {
     .flatMap(p => (p.indispos ?? []).filter(x => x.date >= todayIso).map(x => ({ nom: p.nom, ...x })))
     .sort((a, b) => (a.date + a.debut).localeCompare(b.date + b.debut));
 
-  // Congés groupés : on fusionne les jours ENTIERS consécutifs d'un même prestataire
-  // en une seule plage (« du 10 au 14 déc. »). Les créneaux partiels restent à part.
+  // Congés groupés par prestataire : jours entiers consécutifs → une plage (« du 10 au 14 déc. »).
   const congesGroupes = useMemo(() => {
-    const nextDay = (iso: string) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; };
-    const full = congesAvenir.filter(x => !x.debut && !x.fin);
-    const partials = congesAvenir.filter(x => x.debut || x.fin);
-    const byNom: Record<string, string[]> = {};
-    full.forEach(x => { (byNom[x.nom] ||= []).push(x.date); });
-    type Groupe = { nom: string; start: string; end: string; debut?: string; fin?: string; partial?: boolean };
-    const ranges: Groupe[] = [];
-    for (const nom of Object.keys(byNom)) {
-      const dates = Array.from(new Set(byNom[nom])).sort();
-      let start = dates[0], prev = dates[0];
-      for (let i = 1; i < dates.length; i++) {
-        if (dates[i] === nextDay(prev)) { prev = dates[i]; }
-        else { ranges.push({ nom, start, end: prev }); start = dates[i]; prev = dates[i]; }
-      }
-      if (start) ranges.push({ nom, start, end: prev });
-    }
-    const parts: Groupe[] = partials.map(p => ({ nom: p.nom, start: p.date, end: p.date, debut: p.debut, fin: p.fin, partial: true }));
-    return [...ranges, ...parts].sort((a, b) => a.start.localeCompare(b.start));
+    const parNom: Record<string, typeof congesAvenir> = {};
+    congesAvenir.forEach(x => { (parNom[x.nom] ||= []).push(x); });
+    return Object.entries(parNom)
+      .flatMap(([nom, liste]) => grouperIndispos(liste).map(g => ({ nom, ...g })))
+      .sort((a, b) => a.start.localeCompare(b.start));
   }, [congesAvenir]);
-  // Libellé d'une plage : « le 10 déc. » / « du 10 au 14 déc. » / « du 30 nov. au 2 déc. ».
-  const fmtPlage = (start: string, end: string) => {
-    const j = (iso: string, withMonth: boolean) => { const d = new Date(iso + "T00:00:00"); return d.toLocaleDateString("fr-FR", withMonth ? { day: "numeric", month: "short" } : { day: "numeric" }); };
-    if (start === end) return `le ${j(start, true)}`;
-    const sameMonth = start.slice(0, 7) === end.slice(0, 7);
-    return `du ${j(start, !sameMonth)} au ${j(end, true)}`;
-  };
 
   const greeting = (() => { const h = new Date().getHours(); return h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; })();
   const dateLabel = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
@@ -492,38 +499,26 @@ export default function HomePage() {
 
         {/* ── L'argent (CA réalisé = archivé, honnête) ────────────────────── */}
         {stats && (() => {
+          // Mêmes règles que Pilotage, Dépenses et Historique (src/lib/finance.ts).
           const now = new Date();
-          const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-          const daysInMonth  = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-          const inMonth = (fr: string) => { const p = fr.split("/"); return p.length === 3 && `${p[2]}-${p[1]}` === currentMonth; };
-
           const dow = now.getDay(); const diffMon = dow === 0 ? -6 : 1 - dow;
-          const wStart = new Date(now); wStart.setDate(now.getDate() + diffMon); wStart.setHours(0,0,0,0);
-          const wEnd = new Date(wStart); wEnd.setDate(wStart.getDate() + 6); wEnd.setHours(23,59,59,999);
-          const inWeek = (fr: string) => { const p = fr.split("/"); if (p.length !== 3) return false; const d = new Date(+p[2], +p[1]-1, +p[0]); return d >= wStart && d <= wEnd; };
+          const wStart = new Date(now); wStart.setDate(now.getDate() + diffMon);
+          const wEnd = new Date(wStart); wEnd.setDate(wStart.getDate() + 6);
+          const decale = (d: Date, jours: number) => { const r = new Date(d); r.setDate(r.getDate() + jours); return r; };
+          const periode = rentaPeriod === "semaine"
+            ? { debut: isoLocal(wStart), fin: isoLocal(wEnd) }
+            : periodeMois(now.getFullYear(), now.getMonth());
+          const precedente = rentaPeriod === "semaine"
+            ? { debut: isoLocal(decale(wStart, -7)), fin: isoLocal(decale(wEnd, -7)) }
+            : periodeMois(now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear(), (now.getMonth() + 11) % 12);
 
-          const CANCEL = ["Annulation client", "Client injoignable", "Doublon"];
-          const notCancelled = (p: Prestation) => !CANCEL.some(r => (p.archiveReason || "").startsWith(r));
-          const filt = rentaPeriod === "semaine" ? inWeek : inMonth;
-          const arch = stats.archive.filter(p => p.date && filt(p.date) && notCancelled(p));
-          const ca = arch.reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
-          // Références cumulées (le « depuis le début » que montrait l'ancien dashboard).
-          const caTotal = stats.archive.filter(notCancelled).reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
-          const caAnnee = stats.archive.filter(p => notCancelled(p) && p.date && p.date.split("/")[2] === String(now.getFullYear())).reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
-          // Période précédente (semaine/mois d'avant) → tendance.
-          const prevFilt = (fr: string) => {
-            const p = fr.split("/"); if (p.length !== 3) return false;
-            const d = new Date(+p[2], +p[1]-1, +p[0]);
-            if (rentaPeriod === "semaine") { const ps = new Date(wStart); ps.setDate(ps.getDate()-7); const pe = new Date(wEnd); pe.setDate(pe.getDate()-7); return d >= ps && d <= pe; }
-            const pm = new Date(now.getFullYear(), now.getMonth()-1, 1); const pmE = new Date(now.getFullYear(), now.getMonth(), 0); pmE.setHours(23,59,59,999); return d >= pm && d <= pmE;
-          };
-          const caPrev = stats.archive.filter(p => p.date && prevFilt(p.date)).reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+          const bilan = bilanPeriode({ archive: stats.archive, depenses, ...periode, prorata: rentaPeriod === "semaine" });
+          const { ca, charges: dep, benefice, marge } = bilan;
+          const caPrev = caRealise(stats.archive, precedente.debut, precedente.fin);
           const trend = caPrev > 0 ? Math.round((ca - caPrev) / caPrev * 100) : null;
-          const comm = arch.reduce((s, p) => { const prix = parseFloat(p.prix) || 0; const v = parseFloat(p.commission) || 0; return s + ((p.commissionType || "%") === "%" ? prix * v / 100 : v); }, 0);
-          const depPonc = depenses.filter(d => d.type === "ponctuel" && (rentaPeriod === "semaine" ? (() => { const d2 = new Date(d.date + "T00:00:00"); return d2 >= wStart && d2 <= wEnd; })() : d.date?.startsWith(currentMonth))).reduce((s, d) => s + d.montant, 0);
-          const depFixe = depenses.filter(d => d.type === "mensuel").reduce((s, d) => s + d.montant, 0);
-          const dep = depPonc + (rentaPeriod === "semaine" ? (depFixe / daysInMonth) * 7 : depFixe);
-          const benefice = ca - dep - comm;
+          // Références cumulées.
+          const caTotal = caRealise(stats.archive);
+          const caAnnee = caRealise(stats.archive, `${now.getFullYear()}-01-01`, `${now.getFullYear()}-12-31`);
           // CA planifié = prestations à venir (potentiel, pas encore réalisé)
           const caAvenir = stats.upcomingCA;
 
@@ -543,21 +538,21 @@ export default function HomePage() {
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl bg-green-50 p-4">
                   <p className="text-xs text-gray-500">CA réalisé</p>
-                  <p className="text-xl font-bold text-green-700">{ca.toFixed(0)} €</p>
+                  <p className="text-xl font-bold text-green-700">{formatMontant(ca)}</p>
                   <p className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1.5">
-                    {arch.length} presta terminée{arch.length > 1 ? "s" : ""}
+                    {bilan.nb} presta terminée{bilan.nb > 1 ? "s" : ""}
                     {trend != null && (
                       <span className={`font-semibold ${trend >= 0 ? "text-emerald-600" : "text-red-500"}`}>{trend >= 0 ? "▲" : "▼"} {Math.abs(trend)}%</span>
                     )}
                   </p>
                 </div>
-                <div className="rounded-xl bg-red-50 p-4"><p className="text-xs text-gray-500">Dépenses</p><p className="text-xl font-bold text-red-700">{dep.toFixed(0)} €</p><p className="text-[11px] text-gray-400 mt-0.5">charges incluses</p></div>
-                <div className={`rounded-xl p-4 ${benefice >= 0 ? "bg-emerald-50" : "bg-orange-50"}`}><p className="text-xs text-gray-500">Bénéfice net</p><p className={`text-xl font-bold ${benefice >= 0 ? "text-emerald-700" : "text-orange-700"}`}>{benefice >= 0 ? "+" : ""}{benefice.toFixed(0)} €</p><p className="text-[11px] text-gray-400 mt-0.5">{ca > 0 ? `marge ${((benefice / ca) * 100).toFixed(0)}%` : "—"}</p></div>
+                <div className="rounded-xl bg-red-50 p-4"><p className="text-xs text-gray-500">Dépenses</p><p className="text-xl font-bold text-red-700">{formatMontant(dep)}</p><p className="text-[11px] text-gray-400 mt-0.5">{bilan.commissions > 0 ? `+ ${formatMontant(bilan.commissions)} de commissions` : "charges incluses"}</p></div>
+                <div className={`rounded-xl p-4 ${benefice >= 0 ? "bg-emerald-50" : "bg-orange-50"}`}><p className="text-xs text-gray-500">Bénéfice net</p><p className={`text-xl font-bold ${benefice >= 0 ? "text-emerald-700" : "text-orange-700"}`}>{formatMontant(benefice, { signe: true })}</p><p className="text-[11px] text-gray-400 mt-0.5">{marge != null ? `marge ${Math.round(marge)}%` : "—"}</p></div>
               </div>
               <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-3 pt-3 border-t border-gray-50 text-xs text-gray-400">
-                <span>CA réalisé <strong className="text-gray-700">cette année {caAnnee.toFixed(0)} €</strong></span>
-                <span>· depuis le début <strong className="text-gray-700">{caTotal.toFixed(0)} €</strong></span>
-                {caAvenir > 0 && <span className="flex items-center gap-1"><CalendarCheck size={12} /> <strong className="text-gray-600">{caAvenir.toFixed(0)} €</strong> de RDV à venir</span>}
+                <span>CA réalisé <strong className="text-gray-700">cette année {formatMontant(caAnnee)}</strong></span>
+                <span>· depuis le début <strong className="text-gray-700">{formatMontant(caTotal)}</strong></span>
+                {caAvenir > 0 && <span className="flex items-center gap-1"><CalendarCheck size={12} /> <strong className="text-gray-600">{formatMontant(caAvenir)}</strong> de RDV à venir</span>}
               </div>
             </div>
           );
@@ -575,7 +570,7 @@ export default function HomePage() {
                 <div key={i} className="flex items-center justify-between text-sm gap-2">
                   <span className="text-gray-700 font-medium">{c.nom}</span>
                   <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md text-right">
-                    {c.partial ? `${fmtPlage(c.start, c.end)} · ${c.debut || "…"}–${c.fin || "…"}` : fmtPlage(c.start, c.end)}
+                    {libellePlage(c)}
                   </span>
                 </div>
               ))}
@@ -685,6 +680,9 @@ export default function HomePage() {
                         {busyId === p.row ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Clôturer
                       </button>
                     </div>
+                    <button onClick={() => setClotDetail(p)} className="mt-1.5 text-[11px] text-gray-400 hover:text-gray-600 underline-offset-2 hover:underline">
+                      Annulation, satisfaction, avis…
+                    </button>
                   </div>
                 );
               })}
@@ -694,6 +692,10 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+      )}
+      {/* Clôture complète d'un RDV de la liste — même modale que partout ailleurs */}
+      {clotDetail && (
+        <ClotureModal prestation={clotDetail} onClose={() => setClotDetail(null)} onDone={retirerRdvClotures} />
       )}
 
       {/* ── Pop-up « Relances en retard » — géré sur place ── */}
@@ -716,7 +718,14 @@ export default function HomePage() {
                       <div className="min-w-0">
                         <p className="font-semibold text-gray-900 truncate">{p.prenom} {p.nom}</p>
                         <p className="text-[11px] text-red-500">À relancer depuis le {p.dateRelance.slice(0, 10).split("-").reverse().join("/")}{p.typePresta ? ` · ${p.typePresta}` : ""}</p>
+                        {(() => {
+                          const m = dernierMail(p.suivi);
+                          return m
+                            ? <p className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1"><Mail size={11} /> Dernier mail : <strong className="text-gray-700">{m.label}</strong> · {m.date}{m.jours > 0 ? ` (il y a ${m.jours} j)` : " (aujourd'hui)"}</p>
+                            : <p className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1"><Mail size={11} /> Aucun mail envoyé depuis le dashboard</p>;
+                        })()}
                       </div>
+                      <a href={`/prospects?fiche=${p.id}`} className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline flex-shrink-0">Fiche <ChevronRight size={12} /></a>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-2.5">
                       <button onClick={() => relancerMail(p.id)} disabled={busyId === p.id}
