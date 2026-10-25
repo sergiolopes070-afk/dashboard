@@ -50,7 +50,7 @@ interface Stats {
   totalCA: number; caParEntite: Record<string, number>; upcoming: number;
   toReassign: number; waitingPresta: number; devisGeneres: number; nouveauxClients: number;
   prestations: Prestation[]; prestataires: Prestataire[]; archive: Prestation[];
-  upcomingList: Prestation[]; toReassignList: Prestation[];
+  upcomingList: Prestation[]; upcomingCA: number; toReassignList: Prestation[];
 }
 interface Prospect { id: string; prenom: string; nom: string; tel: string; statut: string; dateRelance: string; typePresta: string; createdAt: string; }
 interface Demande { id: string; at: string; prestataireNom: string; categorie: string; quantite: string; details: string; statut: string; }
@@ -555,7 +555,7 @@ export default function HomePage() {
           const dep = depPonc + (rentaPeriod === "semaine" ? (depFixe / daysInMonth) * 7 : depFixe);
           const benefice = ca - dep - comm;
           // CA planifié = prestations à venir (potentiel, pas encore réalisé)
-          const caAvenir = stats.upcomingList.reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+          const caAvenir = stats.upcomingCA;
 
           return (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">

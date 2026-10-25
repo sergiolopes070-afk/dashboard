@@ -661,7 +661,12 @@ export async function getDashboardStats() {
     prestations,
     prestataires,
     archive,
-    upcomingList     : upcoming.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5),
+    // CA de tous les RDV à venir (la liste affichée, elle, est limitée à 5)
+    upcomingCA       : upcoming.reduce((s, p) => s + (parseFloat(p.prix) || 0), 0),
+    // Tri chronologique : les dates sont au format DD/MM/YYYY, on compare en ISO + heure
+    upcomingList     : upcoming
+      .sort((a, b) => `${frToIso(a.date)} ${a.heure}`.localeCompare(`${frToIso(b.date)} ${b.heure}`))
+      .slice(0, 5),
     toReassignList   : toReassign,
   };
 }

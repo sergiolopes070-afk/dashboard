@@ -27,6 +27,11 @@ yarn-error.log*
 
 # local env files
 .env*.local
+# copies de sauvegarde des fichiers env (contiennent les clés)
+.env*.save
+.env*.bak
+.env*.backup
+.env*.old
 
 # vercel
 .vercel
