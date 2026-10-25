@@ -75,7 +75,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const derniere = isoToFr(rows.find(p => p.date_intervention && p.date_intervention <= todayIso)?.date_intervention || null);
 
   // Inscription à l'Avance Immédiate (détectée via les emails d'AIS) → badge vert.
-  const insc = estInscrit(inscritsList, client.tel, client.email);
+  // Affichage du badge : on accepte aussi le rapprochement par prénom + nom.
+  const insc = estInscrit(inscritsList, client.tel, client.email, { prenom: client.prenom, nom: client.nom });
 
   return NextResponse.json({
     clientId   : client.id,

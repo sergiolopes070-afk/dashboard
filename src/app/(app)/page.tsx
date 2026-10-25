@@ -9,6 +9,7 @@ import Topbar from "@/components/Topbar";
 import StatusBadge from "@/components/StatusBadge";
 import NewClientModal from "@/components/NewClientModal";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
+import AvanceBadge from "@/components/AvanceBadge";
 import { Prestation, Prestataire, Depense } from "@/lib/constants";
 
 // ── Mini agenda helpers ──────────────────────────────────────────────────────
@@ -473,7 +474,7 @@ export default function HomePage() {
                       {p.heure && <p className="text-[11px] text-gray-400">{p.heure}</p>}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{p.prenom} {p.nom}</p>
+                      <p className="font-medium text-gray-900 flex items-center gap-1.5 min-w-0"><span className="truncate">{p.prenom} {p.nom}</span><AvanceBadge tel={p.tel} email={p.email} prenom={p.prenom} nom={p.nom} /></p>
                       <p className="text-xs text-gray-500 truncate">{p.typePresta}{p.adresse ? ` — ${p.adresse}` : ""}</p>
                       {p.prestataire
                         ? <p className="flex items-center gap-1 text-[11px] text-green-700 mt-0.5"><UserCheck size={11} />{p.prestataire}</p>

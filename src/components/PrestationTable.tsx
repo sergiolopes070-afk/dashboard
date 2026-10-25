@@ -8,6 +8,7 @@ import {
 import { MODE_PAIEMENT_ICONS } from "@/lib/constants";
 import { Entite } from "@/lib/entite";
 import EntiteBadge from "@/components/EntiteBadge";
+import AvanceBadge from "@/components/AvanceBadge";
 import { useState, useEffect } from "react";
 
 // ─── Bouton / Modal paiement Stripe ──────────────────────────────────────────
@@ -327,6 +328,7 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                 ) : (
                   <div className="font-medium text-gray-900">{p.prenom} {p.nom}</div>
                 )}
+                <AvanceBadge tel={p.tel} email={p.email} prenom={p.prenom} nom={p.nom} />
                 {p.tel && <a href={`tel:${p.tel}`} onClick={(e) => e.stopPropagation()} className="text-xs text-gray-400 hover:text-blue-600 hover:underline">{p.tel}</a>}
               </td>
               <td className="py-3 px-4">

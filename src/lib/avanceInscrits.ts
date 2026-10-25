@@ -11,6 +11,7 @@ import { simpleParser } from "mailparser";
 import { getSetting } from "./mailer";
 import { getSettingJSON, setSettingRaw } from "./settings";
 import { normEmail, normTel } from "./inbox";
+import { telCle, nomCle } from "./avanceMatch";
 
 const FROM_MATCH = "avanceimmediate.com";       // expéditeur : contact@avanceimmediate.com
 const SUBJECT_MATCH = "Avance Immédiate";       // + « inscrit » (voir filtre plus bas)
@@ -23,12 +24,20 @@ export async function getInscrits(): Promise<Inscrit[]> {
   return Array.isArray(arr) ? arr : [];
 }
 
-// Un client est-il inscrit ? Match par téléphone OU email (normalisés).
-export function estInscrit(inscrits: Inscrit[], tel?: string | null, email?: string | null): Inscrit | null {
-  const t = normTel(tel || "");
+// Un client est-il inscrit ? Match par téléphone (9 derniers chiffres) OU email.
+// `noms` (prénom + nom) n'est passé que pour l'AFFICHAGE du badge : jamais pour
+// décider d'un mail, un homonyme ne doit pas être considéré comme inscrit.
+export function estInscrit(
+  inscrits: Inscrit[], tel?: string | null, email?: string | null,
+  noms?: { prenom?: string | null; nom?: string | null },
+): Inscrit | null {
+  const t = telCle(tel);
   const e = normEmail(email || "");
-  if (!t && !e) return null;
-  return inscrits.find(i => (t && i.tel && i.tel === t) || (e && i.email && i.email === e)) || null;
+  const n = noms ? nomCle(noms.prenom, noms.nom) : "";
+  if (!t && !e && !n) return null;
+  return inscrits.find(i => (t && i.tel && telCle(i.tel) === t) || (e && i.email && i.email === e)) // identifiants d'abord
+    || (n ? inscrits.find(i => nomCle(i.nom) === n) : undefined)
+    || null;
 }
 
 // Retire la civilité en tête de nom (Mme, M., Monsieur, Madame, Mlle…).

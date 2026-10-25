@@ -8,6 +8,8 @@ import EmailActions from "@/components/EmailActions";
 import PhotoLightbox, { LightboxPhoto } from "@/components/PhotoLightbox";
 import NewClientModal from "@/components/NewClientModal";
 import Topbar from "@/components/Topbar";
+import { useAvanceInscrits } from "@/components/AvanceBadge";
+import { matchInscrit } from "@/lib/avanceMatch";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
@@ -356,8 +358,7 @@ export default function AgendaPage() {
   const [monthDate,    setMonthDate]    = useState<Date>(() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; });
   const [viewMode,     setViewMode]     = useState<"day"|"week"|"month">("week");
   const [lightbox,     setLightbox]     = useState<{ photos: LightboxPhoto[]; index: number } | null>(null);
-  const [avanceTels,   setAvanceTels]   = useState<Set<string>>(new Set()); // tél. des clients inscrits avance immédiate
-  const [avanceEmails, setAvanceEmails] = useState<Set<string>>(new Set()); // emails des clients inscrits avance immédiate
+  const avanceIdx = useAvanceInscrits(); // clients inscrits avance immédiate (tél, email ou prénom + nom)
   const [dayDate,      setDayDate]      = useState<Date>(() => { const d = new Date(); d.setHours(0,0,0,0); return d; });
   const [checked,      setChecked]      = useState<Record<string, boolean>>({});
   const [showSansPresta, setShowSansPresta] = useState(true);
@@ -557,19 +558,8 @@ export default function AgendaPage() {
   };
   useEffect(() => { loadData(); }, []);
 
-  // Clients inscrits à l'avance immédiate (pour afficher le statut dans le RDV).
-  useEffect(() => {
-    fetch("/api/avance/inscrits")
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) { setAvanceTels(new Set(d.tels || [])); setAvanceEmails(new Set(d.emails || [])); } })
-      .catch(() => {});
-  }, []);
-  // Vrai si le client de ce RDV s'est inscrit à l'avance immédiate (match tél OU email).
-  const estInscritAvance = (tel?: string, email?: string) => {
-    const t = (tel || "").replace(/\D/g, "");
-    const e = (email || "").trim().toLowerCase();
-    return (!!t && avanceTels.has(t)) || (!!e && avanceEmails.has(e));
-  };
+  // Vrai si le client de ce RDV s'est inscrit à l'avance immédiate (tél, email ou prénom + nom).
+  const estInscritAvance = (ev: { tel?: string; email?: string; prenom?: string; nom?: string }) => matchInscrit(avanceIdx, ev);
 
   // Auto-scroll vers 08h00
   useEffect(() => {
@@ -1491,7 +1481,7 @@ export default function AgendaPage() {
                           🎁 2ème passage gratuit
                         </div>
                       )}
-                      {estInscritAvance(ev.tel, ev.email) && (
+                      {estInscritAvance(ev) && (
                         <div className="mb-3 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
                           <CheckCircle2 size={13} /> Inscrit à l&apos;avance immédiate ⚡
                         </div>

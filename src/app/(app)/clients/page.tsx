@@ -12,6 +12,7 @@ import ClientModal from "@/components/ClientModal";
 import { ClientFicheById } from "@/components/ClientFiche";
 import { useToast } from "@/components/Toast";
 import NewClientModal from "@/components/NewClientModal";
+import AvanceBadge from "@/components/AvanceBadge";
 import { Prestation, Prestataire, ClientNote, STATUT_COLORS } from "@/lib/constants";
 
 const TAGS_PRESET = ["Régulier", "VIP", "Difficile", "Sensible", "Pro", "Fidèle"];
@@ -822,6 +823,7 @@ export default function ClientsPage() {
                         >
                           {c.prenom} {c.nom}
                         </button>
+                        <span className="ml-1.5 align-middle"><AvanceBadge tel={c.tel} email={c.email} prenom={c.prenom} nom={c.nom} /></span>
                         <p className="text-xs text-gray-400 mt-0.5">
                           {c.prestations.length} prestation{c.prestations.length > 1 ? "s" : ""}
                           {nbArchivees > 0 ? ` · dont ${nbArchivees} archivée${nbArchivees > 1 ? "s" : ""}` : ""}
