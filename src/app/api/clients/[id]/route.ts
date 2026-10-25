@@ -27,16 +27,22 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       .select("id, nom, prenom, tel, email, adresse, tags, notes, created_at")
       .eq("id", params.id).single(),
     supabase.from("prestations")
-      .select("id, type_prestation, date_intervention, heure_intervention, prix, mode_paiement, statut, archive, archive_reason, photos, satisfaction, prestataires(nom)")
-      .eq("client_id", params.id).order("date_intervention", { ascending: false }),
+      // `*` : certaines colonnes optionnelles (stripe_payment_url…) peuvent manquer selon
+      // le schéma — une liste explicite ferait échouer toute la requête (historique vide).
+      .select("*, prestataires(nom)")
+      .eq("client_id", params.id),
     getInscrits(),
   ]);
   const client = clientRes.data;
   if (clientRes.error || !client) return NextResponse.json({ error: "Client introuvable" }, { status: 404 });
   const { data: prestas } = prestasRes;
+  if (prestasRes.error) console.error("Fiche client — prestations :", prestasRes.error.message);
 
+  // Tri chronologique décroissant (plus récente d'abord), dates vides en dernier
+  // (un ORDER BY desc de Postgres mettrait les NULL en tête).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rows: any[] = prestas || [];
+  const rows: any[] = [...(prestas || [])].sort((a, b) =>
+    (b.date_intervention || "").localeCompare(a.date_intervention || "") || (b.created_at || "").localeCompare(a.created_at || ""));
   const prestations = rows.map(p => ({
     row         : p.id as string,
     typePresta  : p.type_prestation || "",
@@ -49,14 +55,24 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     archived    : !!p.archive,
     photos      : Array.isArray(p.photos) ? p.photos : [],
     satisfaction: p.satisfaction != null ? Number(p.satisfaction) : undefined,
+    statutPresta: p.statut_presta || "",
+    adresse     : p.adresse || "",
+    quantite    : p.quantite != null ? String(p.quantite) : "",
+    message     : p.message || "",
+    commentaire : p.commentaire || "",
+    devisUrl    : p.devis_url || "",
+    devisGenere : !!p.devis_genere,
+    stripePaymentUrl: p.stripe_payment_url || "",
   }));
 
   const totalCA = rows
     .filter(p => !(p.archive && isCancelled(p.archive_reason)))
     .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
 
-  const dates = prestations.map(p => p.date).filter(Boolean);
-  const derniere = dates.sort((a, b) => (a < b ? 1 : -1))[0] || "";
+  // Dernière intervention = date passée (ou du jour) la plus récente — comparée en
+  // ISO (chronologique), pas en dd/mm/yyyy. Les RDV futurs vont dans « Prochain RDV ».
+  const todayIso = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
+  const derniere = isoToFr(rows.find(p => p.date_intervention && p.date_intervention <= todayIso)?.date_intervention || null);
 
   // Inscription à l'Avance Immédiate (détectée via les emails d'AIS) → badge vert.
   const insc = estInscrit(inscritsList, client.tel, client.email);

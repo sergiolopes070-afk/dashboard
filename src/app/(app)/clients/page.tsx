@@ -9,7 +9,7 @@ import Topbar from "@/components/Topbar";
 import { SkeletonCards } from "@/components/Skeleton";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import ClientModal from "@/components/ClientModal";
-import ClientFiche, { ClientFicheById } from "@/components/ClientFiche";
+import { ClientFicheById } from "@/components/ClientFiche";
 import { useToast } from "@/components/Toast";
 import NewClientModal from "@/components/NewClientModal";
 import { Prestation, Prestataire, ClientNote, STATUT_COLORS } from "@/lib/constants";
@@ -24,20 +24,55 @@ const TAG_COLORS: Record<string, string> = {
   "Fidèle"  : "bg-green-100 text-green-700",
 };
 
+// Prestation telle que renvoyée par GET /api/clients (historique complet).
+type PrestaC = Prestation & { archived?: boolean };
+
+// Format brut de GET /api/clients (tous les clients de la table, archivés inclus).
+interface ApiClient {
+  clientId: string;
+  nom: string;
+  prenom: string;
+  tel: string;
+  email: string;
+  adresse: string;
+  creeLe: string;
+  tags: string[];
+  notes: ClientNote[];
+  prestations: PrestaC[];
+}
+
 interface Client {
   nom: string;
   prenom: string;
   tel: string;
   email: string;
   adresse: string;
-  prestations: Prestation[];
+  prestations: PrestaC[];   // ordre chronologique (plus ancienne → plus récente)
   totalCA: number;
-  derniere: string;
+  derniere: string;         // dernière intervention passée (dd/mm/yyyy)
   creeLe: string;
   tags: string[];
   clientId: string;
   notes: ClientNote[];
+  latest?: PrestaC;         // dernière prestation effectuée (date passée la plus récente)
+  prochain?: PrestaC;       // prochain RDV actif à venir
+  activiteTs: number;       // dernière activité (tri « Récents »)
 }
+
+// Cache local (format différent de CACHE_KEYS.prestations, partagé par d'autres pages).
+const CLIENTS_CACHE_KEY = "clients-full";
+const CANCELLATION_REASONS = ["Annulation client", "Client injoignable", "Doublon"];
+
+// "dd/mm/yyyy" (+ "HH:MM") → timestamp, pour comparer chronologiquement (0 si vide).
+function frTs(date: string, heure?: string): number {
+  const p = (date || "").split("/");
+  if (p.length !== 3) return 0;
+  const [h, m] = (heure || "00:00").split(":").map(n => parseInt(n) || 0);
+  const t = new Date(+p[2], +p[1] - 1, +p[0], h, m).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+type Tri = "prestations" | "recents" | "rdv" | "nouveaux";
 
 const NOTE_TYPES = [
   { icon: "📞", label: "Appel" },
@@ -166,7 +201,7 @@ function ClientJournal({
               ) : (
                 <button
                   onClick={() => setConfirmDel(n.id)}
-                  className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                  className="text-gray-300 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100 transition-all shrink-0"
                 >
                   <Trash2 size={12} />
                 </button>
@@ -234,7 +269,7 @@ function PrestationRow({
   onDevisGenerated,
   onArchive,
 }: {
-  p: Prestation;
+  p: PrestaC;
   onDelete: (id: string) => void;
   onDevisGenerated: () => void;
   onArchive: (ids: string[], label: string) => void;
@@ -272,6 +307,9 @@ function PrestationRow({
               {p.date}{p.heure ? ` à ${p.heure}` : ""}
             </span>
           )}
+          {p.archived && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">📦 Archivé</span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {p.prix && (
@@ -279,13 +317,15 @@ function PrestationRow({
               {parseFloat(p.prix).toFixed(0)} €
             </span>
           )}
-          <button
-            onClick={() => onArchive([p.row], `${p.typePresta} – ${p.date || "?"}`)}
-            className="p-1 rounded-lg hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-colors"
-            title="Archiver cette prestation"
-          >
-            <Archive size={13} />
-          </button>
+          {!p.archived && (
+            <button
+              onClick={() => onArchive([p.row], `${p.typePresta} – ${p.date || "?"}`)}
+              className="p-1 rounded-lg hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-colors"
+              title="Archiver cette prestation"
+            >
+              <Archive size={13} />
+            </button>
+          )}
           {!confirmDel ? (
             <button
               onClick={() => setConfirmDel(true)}
@@ -397,16 +437,18 @@ export default function ClientsPage() {
   const toggleMergeSel = (clientId: string) => setSelectedMerge(prev => {
     const n = new Set(prev); if (n.has(clientId)) n.delete(clientId); else n.add(clientId); return n;
   });
-  const [data, setData]               = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.prestations) ?? []);
+  // Source : GET /api/clients = TOUS les clients (archivés inclus) + historique complet.
+  const [data, setData]               = useState<ApiClient[]>(() => cacheGet<ApiClient[]>(CLIENTS_CACHE_KEY) ?? []);
   const [prestataires, setPrestataires] = useState<Prestataire[]>(() => cacheGet<Prestataire[]>(CACHE_KEYS.prestataires) ?? []);
-  const [loading, setLoading]         = useState(() => !cacheHas(CACHE_KEYS.prestations));
+  const [loading, setLoading]         = useState(() => !cacheHas(CLIENTS_CACHE_KEY));
+  const [tri, setTri]                 = useState<Tri>("prestations");
   // Pré-remplit la recherche depuis l'URL (?q=…) → arrivée directe sur une fiche
   // depuis la recherche globale. Lu côté client uniquement (pas de Suspense requis).
   const [search, setSearch]           = useState(() =>
     typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("q") || "") : ""
   );
   const [modal, setModal]             = useState<{ mode: "add" | "edit"; client?: Client } | null>(null);
-  const [ficheClient, setFicheClient] = useState<Client | null>(null);
+  // Fiche client : TOUJOURS la version complète (ClientFicheById), quelle que soit l'entrée.
   // Ouverture directe d'une fiche depuis la recherche globale (?fiche=<clientId>).
   // Lu dans un effet (côté client uniquement) — pas dans un initialiseur useState,
   // sinon la valeur serveur (null) fige l'état et la fiche ne s'ouvre jamais.
@@ -414,6 +456,15 @@ export default function ClientsPage() {
   useEffect(() => {
     const f = new URLSearchParams(window.location.search).get("fiche");
     if (f) setFicheById(f);
+  }, []);
+  // Fermeture : on retire ?fiche= de l'URL (sinon la fiche se rouvre au rechargement).
+  const closeFiche = useCallback(() => {
+    setFicheById(null);
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("fiche")) {
+      url.searchParams.delete("fiche");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
   }, []);
   const [expanded, setExpanded]       = useState<Set<string>>(new Set());
   const [confirmClientDel, setConfirmClientDel] = useState<string | null>(null);
@@ -427,11 +478,11 @@ export default function ClientsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [resPres, resPresta] = await Promise.all([
-        fetch(`/api/prestations?t=${Date.now()}`, { cache: "no-store" }),
+      const [resCli, resPresta] = await Promise.all([
+        fetch(`/api/clients?t=${Date.now()}`, { cache: "no-store" }),
         fetch("/api/prestataires"),
       ]);
-      if (resPres.ok) { const d = await resPres.json(); setData(d); cacheSet(CACHE_KEYS.prestations, d); }
+      if (resCli.ok) { const d = await resCli.json(); if (Array.isArray(d)) { setData(d); cacheSet(CLIENTS_CACHE_KEY, d); } }
       if (resPresta.ok) { const d = await resPresta.json(); setPrestataires(d); cacheSet(CACHE_KEYS.prestataires, d); }
     } finally {
       setLoading(false);
@@ -441,48 +492,61 @@ export default function ClientsPage() {
   useEffect(() => { load(); }, [load]);
 
   const clients = useMemo<Client[]>(() => {
-    const map = new Map<string, Client>();
-    for (const p of data) {
-      // Groupe par identifiant client réel en priorité → évite les doublons
-      // quand un RDV a été reprogrammé (ex. "Sakina").
-      const key = p.clientId || p.email || `${p.nom}-${p.prenom}-${p.tel}`;
-      if (!key) continue;
-      if (!map.has(key)) {
-        map.set(key, {
-          nom: p.nom, prenom: p.prenom, tel: p.tel,
-          email: p.email, adresse: p.adresse,
-          prestations: [], totalCA: 0, derniere: p.date, creeLe: p.timestamp || "",
-          tags: p.tags ?? [], clientId: p.clientId,
-          notes: p.clientNotes ?? [],
-        });
-      }
-      const c = map.get(key)!;
-      c.prestations.push(p);
-      c.totalCA += parseFloat(p.prix) || 0;
-      if (p.date > c.derniere) c.derniere = p.date;
-      // Date de création de la fiche = plus ancienne prestation
-      if (p.timestamp && (!c.creeLe || p.timestamp < c.creeLe)) c.creeLe = p.timestamp;
-      // Merge tags from any prestation (they're all the same client)
-      if (p.tags?.length && c.tags.length === 0) c.tags = p.tags;
-      // Merge notes from any prestation (they're all the same client)
-      if (p.clientNotes?.length && c.notes.length === 0) c.notes = p.clientNotes;
-    }
-    return Array.from(map.values()).sort((a, b) => b.prestations.length - a.prestations.length);
+    const now = Date.now();
+    const debutJour = new Date(); debutJour.setHours(0, 0, 0, 0);
+    return data.map(c => {
+      const ps = c.prestations ?? [];
+      // CA : tout l'historique, sauf les archivages pour annulation (même règle que la fiche)
+      const totalCA = ps
+        .filter(p => !(p.archived && CANCELLATION_REASONS.some(r => (p.archiveReason || "").startsWith(r))))
+        .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+      // Dernière prestation effectuée = date passée la plus récente (comparaison chronologique)
+      const passees = ps.filter(p => { const t = frTs(p.date, p.heure); return t > 0 && t <= now; });
+      const latest = passees.reduce<PrestaC | undefined>((acc, p) =>
+        !acc || frTs(p.date, p.heure) > frTs(acc.date, acc.heure) ? p : acc, undefined);
+      // Prochain RDV = prestation active (non archivée, non annulée) à venir la plus proche
+      const prochain = ps
+        .filter(p => !p.archived && p.statut !== "ANNULÉ" && frTs(p.date) >= debutJour.getTime())
+        .reduce<PrestaC | undefined>((acc, p) =>
+          !acc || frTs(p.date, p.heure) < frTs(acc.date, acc.heure) ? p : acc, undefined);
+      const activiteTs = Math.max(
+        0, ...ps.map(p => frTs(p.date, p.heure)), ...ps.map(p => Date.parse(p.timestamp) || 0), Date.parse(c.creeLe) || 0,
+      );
+      return {
+        ...c,
+        prestations: ps,
+        totalCA,
+        derniere: latest?.date || "",
+        tags: c.tags ?? [],
+        notes: c.notes ?? [],
+        latest, prochain, activiteTs,
+      };
+    }).sort((a, b) => b.prestations.length - a.prestations.length);
   }, [data]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return clients;
-    const q = search.toLowerCase();
-    return clients.filter((c) =>
-      [c.nom, c.prenom, c.email, c.tel, c.adresse].join(" ").toLowerCase().includes(q)
-    );
-  }, [clients, search]);
+    let list = clients;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((c) =>
+        [c.nom, c.prenom, c.email, c.tel, c.adresse].join(" ").toLowerCase().includes(q)
+      );
+    }
+    if (tri === "rdv") {
+      return list.filter(c => c.prochain)
+        .sort((a, b) => frTs(a.prochain!.date, a.prochain!.heure) - frTs(b.prochain!.date, b.prochain!.heure));
+    }
+    if (tri === "recents") return [...list].sort((a, b) => b.activiteTs - a.activiteTs);
+    if (tri === "nouveaux") return [...list].sort((a, b) => (Date.parse(b.creeLe) || 0) - (Date.parse(a.creeLe) || 0));
+    return list;
+  }, [clients, search, tri]);
 
   // Détecte les fiches en double de façon ROBUSTE et SÛRE. On ne se base JAMAIS
   // sur le nom (deux clients différents peuvent avoir le même nom). On relie deux
   // fiches uniquement si elles partagent un identifiant qui ne peut appartenir
   // qu'à une seule personne : même TÉLÉPHONE, OU même EMAIL, OU même ADRESSE
   // postale. Par chaînage (union-find), toutes les variantes se regroupent.
+  const [showDoublons, setShowDoublons] = useState(false);
   const doublons = useMemo(() => {
     const norm    = (s: string) => (s || "").toLowerCase().replace(/\s+/g, "").trim();
     // Téléphone : on ne garde que les chiffres (ignore +33/0, espaces, points…)
@@ -572,7 +636,7 @@ export default function ClientsPage() {
   };
 
   const handleDeleteClient = async (c: Client) => {
-    const clientId = c.prestations[0]?.clientId;
+    const clientId = c.clientId;
     if (!clientId) return;
     await fetch("/api/clients", {
       method: "DELETE",
@@ -587,11 +651,7 @@ export default function ClientsPage() {
     const current = c.tags ?? [];
     const next = current.includes(tag) ? current.filter(t => t !== tag) : [...current, tag];
     // Optimistic update
-    setData(prev => prev.map(p =>
-      (p.email === c.email || (!p.email && `${p.nom}-${p.prenom}-${p.tel}` === `${c.nom}-${c.prenom}-${c.tel}`))
-        ? { ...p, tags: next }
-        : p
-    ));
+    setData(prev => prev.map(x => x.clientId === c.clientId ? { ...x, tags: next } : x));
     await fetch("/api/clients", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -600,10 +660,8 @@ export default function ClientsPage() {
   };
 
   const persistNotes = async (c: Client, notes: ClientNote[]) => {
-    // Optimistic update sur toutes les prestations du client
-    setData(prev => prev.map(p =>
-      p.clientId === c.clientId ? { ...p, clientNotes: notes } : p
-    ));
+    // Optimistic update
+    setData(prev => prev.map(x => x.clientId === c.clientId ? { ...x, notes } : x));
     await fetch("/api/clients", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -657,10 +715,10 @@ export default function ClientsPage() {
         onRefresh={load}
         loading={loading}
       />
-      <div className="flex-1 p-6 space-y-4">
+      <div className="flex-1 p-3 sm:p-6 space-y-4">
         {/* Barre recherche + bouton Ajouter */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <div className="flex gap-3">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 sm:p-4 space-y-3">
+          <div className="flex gap-2 sm:gap-3">
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
@@ -676,20 +734,42 @@ export default function ClientsPage() {
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
             >
               <UserPlus size={15} />
-              Ajouter
+              <span className="hidden sm:inline">Ajouter</span>
             </button>
+          </div>
+          {/* Tri / filtre rapide */}
+          <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1 [scrollbar-width:none]">
+            {([
+              ["prestations", "Plus de prestations"],
+              ["rdv", "📅 RDV à venir"],
+              ["recents", "Activité récente"],
+              ["nouveaux", "Nouveaux clients"],
+            ] as [Tri, string][]).map(([val, label]) => (
+              <button
+                key={val}
+                onClick={() => setTri(val)}
+                className={`shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                  tri === val ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Bandeau doublons détectés */}
         {doublons.length > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
-            <div className="flex items-center gap-2">
+            {/* Replié par défaut : la liste peut être longue et repousser les clients */}
+            <button type="button" onClick={() => setShowDoublons(v => !v)} className="w-full flex items-center gap-2 text-left">
               <AlertTriangle size={16} className="text-amber-600" />
-              <p className="text-sm font-semibold text-amber-800">
+              <p className="flex-1 text-sm font-semibold text-amber-800">
                 {doublons.length} client{doublons.length > 1 ? "s" : ""} en double détecté{doublons.length > 1 ? "s" : ""}
               </p>
-            </div>
+              <span className="text-xs font-medium text-amber-700 underline">{showDoublons ? "Masquer" : "Voir"}</span>
+            </button>
+            {showDoublons && <>
             <p className="text-xs text-amber-700">
               Plusieurs fiches existent pour la même personne (souvent après une reprogrammation de RDV).
               Fusionner rassemble tout l&apos;historique dans une seule fiche.
@@ -711,6 +791,7 @@ export default function ClientsPage() {
                 </div>
               ))}
             </div>
+            </>}
           </div>
         )}
 
@@ -719,21 +800,23 @@ export default function ClientsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((c) => {
-              const key = c.email || `${c.nom}-${c.prenom}-${c.tel}`;
+              const key = c.clientId || c.email || `${c.nom}-${c.prenom}-${c.tel}`;
               const isExpanded = expanded.has(key);
               const isConfirmingDel = confirmClientDel === key;
-              const unassigned = c.prestations.filter((p) => !p.prestataire).length;
+              const actives = c.prestations.filter((p) => !p.archived);
+              const nbArchivees = c.prestations.length - actives.length;
+              const unassigned = actives.filter((p) => !p.prestataire).length;
               const hasDevis = c.prestations.some((p) => p.devisPDF || p.genDevis === "FAIT");
               const lastPrestataire = [...c.prestations].reverse().find((p) => p.prestataire)?.prestataire;
 
               return (
                 <div key={key} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                   {/* En-tête carte */}
-                  <div className="p-5">
+                  <div className="p-4 sm:p-5">
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <button
-                          onClick={() => setFicheClient(c)}
+                          onClick={() => c.clientId && setFicheById(c.clientId)}
                           className="font-semibold text-gray-900 hover:text-blue-600 transition-colors text-left"
                           title="Ouvrir la fiche complète"
                         >
@@ -741,6 +824,7 @@ export default function ClientsPage() {
                         </button>
                         <p className="text-xs text-gray-400 mt-0.5">
                           {c.prestations.length} prestation{c.prestations.length > 1 ? "s" : ""}
+                          {nbArchivees > 0 ? ` · dont ${nbArchivees} archivée${nbArchivees > 1 ? "s" : ""}` : ""}
                         </p>
                         {/* Tags */}
                         <div className="flex flex-wrap gap-1 mt-1.5">
@@ -799,16 +883,18 @@ export default function ClientsPage() {
                         >
                           <Pencil size={14} />
                         </button>
-                        <button
-                          onClick={() => {
-                            setArchiveModal({ ids: c.prestations.map((p) => p.row), label: `${c.prenom} ${c.nom}` });
-                            setArchiveReason(""); setArchivePayment("");
-                          }}
-                          className="p-1.5 rounded-lg hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-colors"
-                          title="Archiver ce client"
-                        >
-                          <Archive size={14} />
-                        </button>
+                        {actives.length > 0 && (
+                          <button
+                            onClick={() => {
+                              setArchiveModal({ ids: actives.map((p) => p.row), label: `${c.prenom} ${c.nom}` });
+                              setArchiveReason(""); setArchivePayment("");
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-colors"
+                            title="Archiver ce client"
+                          >
+                            <Archive size={14} />
+                          </button>
+                        )}
                         <button
                           onClick={() => setConfirmClientDel(isConfirmingDel ? null : key)}
                           className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
@@ -840,7 +926,8 @@ export default function ClientsPage() {
                         </a>
                       )}
                       {c.email && (() => {
-                        const last = c.prestations[0];
+                        // Récap de RDV : le prochain RDV s'il y en a un, sinon la dernière prestation
+                        const last = c.prochain ?? c.latest ?? c.prestations[c.prestations.length - 1];
                         const details = [
                           last?.typePresta ? `  • Prestation : ${last.typePresta}${last.quantite ? ` (x${last.quantite})` : ""}` : "",
                           last?.adresse    ? `  • Adresse    : ${last.adresse}` : "",
@@ -890,6 +977,13 @@ export default function ClientsPage() {
 
                     {/* Résumé rapide */}
                     <div className="mt-3 pt-3 border-t border-gray-50 space-y-1.5">
+                      {c.prochain && (
+                        <p className="flex items-center gap-1.5 text-xs font-semibold text-blue-700">
+                          <Calendar size={12} />
+                          Prochain RDV : {c.prochain.date}{c.prochain.heure ? ` à ${c.prochain.heure}` : ""}
+                          {c.prochain.typePresta ? ` · ${c.prochain.typePresta}` : ""}
+                        </p>
+                      )}
                       {lastPrestataire && (
                         <p className="flex items-center gap-1.5 text-xs text-gray-500">
                           <Wrench size={12} className="text-gray-400" />
@@ -933,10 +1027,10 @@ export default function ClientsPage() {
                       <CopyAvisLink
                         clientId={c.clientId}
                         clientName={`${c.prenom} ${c.nom}`}
-                        prestation={c.prestations[0]?.typePresta}
+                        prestation={c.latest?.typePresta}
                       />
                       {(() => {
-                        const last = c.prestations[0];
+                        const last = c.latest;
                         const avisUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/avis/${c.clientId}?nom=${encodeURIComponent(`${c.prenom} ${c.nom}`)}${last?.typePresta ? `&prestation=${encodeURIComponent(last.typePresta)}` : ""}`;
                         const msg =
                           `Bonjour ${c.prenom} 👋,\n\n` +
@@ -1010,17 +1104,10 @@ export default function ClientsPage() {
         </div>
       )}
 
-      {ficheClient && (
-        <ClientFiche
-          client={ficheClient}
-          onClose={() => setFicheClient(null)}
-          onChanged={load}
-        />
-      )}
       {ficheById && (
         <ClientFicheById
           clientId={ficheById}
-          onClose={() => setFicheById(null)}
+          onClose={closeFiche}
           onChanged={load}
         />
       )}

@@ -12,10 +12,12 @@ interface TopbarProps {
   loading?: boolean;
   alerts?: number;
   action?: React.ReactNode;
+  /** Version resserrée (moins de padding) — pages denses comme l'agenda */
+  compact?: boolean;
 }
 
 interface SearchResult {
-  type: "client" | "prestation" | "prospect";
+  type: "client" | "prestation" | "prospect" | "prestataire";
   label: string;
   sub: string;
   href: string;
@@ -23,7 +25,7 @@ interface SearchResult {
   status?: string | null;
 }
 
-function GlobalSearch() {
+function GlobalSearch({ onChanged }: { onChanged?: () => void }) {
   const [open, setOpen]       = useState(false);
   const [query, setQuery]     = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -116,9 +118,10 @@ function GlobalSearch() {
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium mt-0.5 flex-shrink-0 ${
                     r.type === "client"     ? "bg-blue-100 text-blue-700"
                     : r.type === "prospect" ? "bg-orange-100 text-orange-700"
+                    : r.type === "prestataire" ? "bg-emerald-100 text-emerald-700"
                     : "bg-purple-100 text-purple-700"
                   }`}>
-                    {r.type === "client" ? "Client" : r.type === "prospect" ? "Prospect" : "RDV"}
+                    {r.type === "client" ? "Client" : r.type === "prospect" ? "Prospect" : r.type === "prestataire" ? "Presta." : "RDV"}
                   </span>
                   <div className="min-w-0 text-left">
                     <p className="text-sm font-medium text-gray-900">{r.label}</p>
@@ -127,8 +130,8 @@ function GlobalSearch() {
                 </>
               );
               const cls = "w-full flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0";
-              // Client → on ouvre la fiche DIRECTEMENT (surimpression, sans navigation).
-              if (r.type === "client" && r.clientId) {
+              // Client ou RDV → on ouvre la fiche client DIRECTEMENT (surimpression, sans navigation).
+              if ((r.type === "client" || r.type === "prestation") && r.clientId) {
                 return (
                   <button key={i} className={cls}
                     onClick={() => { setFicheClientId(r.clientId!); setOpen(false); }}>
@@ -147,13 +150,13 @@ function GlobalSearch() {
       )}
 
       {ficheClientId && (
-        <ClientFicheById clientId={ficheClientId} onClose={() => setFicheClientId(null)} />
+        <ClientFicheById clientId={ficheClientId} onClose={() => setFicheClientId(null)} onChanged={onChanged} />
       )}
     </div>
   );
 }
 
-export default function Topbar({ title, subtitle, onRefresh, loading, alerts, action }: TopbarProps) {
+export default function Topbar({ title, subtitle, onRefresh, loading, alerts, action, compact }: TopbarProps) {
   const [spinning, setSpinning] = useState(false);
   const { toggle } = useSidebar();
 
@@ -165,7 +168,7 @@ export default function Topbar({ title, subtitle, onRefresh, loading, alerts, ac
   };
 
   return (
-    <header className="bg-white border-b border-gray-100 px-4 py-4 flex items-center justify-between gap-4">
+    <header className={`bg-white border-b border-gray-100 flex items-center justify-between ${compact ? "px-2 sm:px-4 py-1.5 sm:py-2.5 gap-2 sm:gap-4" : "px-4 py-4 gap-4"}`}>
       {/* Hamburger - mobile only */}
       <button
         onClick={toggle}
@@ -179,7 +182,8 @@ export default function Topbar({ title, subtitle, onRefresh, loading, alerts, ac
         {subtitle && <p className="text-xs sm:text-sm text-gray-400 mt-0.5 hidden sm:block">{subtitle}</p>}
       </div>
       <div className="flex-1 flex justify-end md:justify-start">
-        <GlobalSearch />
+        {/* Modif. depuis une fiche ouverte via la recherche → on rafraîchit la page */}
+        <GlobalSearch onChanged={onRefresh} />
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {action}

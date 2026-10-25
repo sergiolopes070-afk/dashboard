@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   AlertTriangle, Clock, CalendarCheck, UserPlus, UserCheck,
-  CalendarDays, ChevronRight, BellRing, ChevronDown, UserSearch, X, Loader2,
+  CalendarDays, ChevronRight, ChevronDown, UserSearch, X, Loader2,
   Package, Sparkles, Phone, ArrowRight, CheckCircle2, Mail, Download, FileSpreadsheet,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
@@ -65,20 +65,6 @@ function autonomieSemaines(it: StockItem): number | null {
   const conso = (it.historique || []).filter(m => m.type === "sortie" && m.date && new Date(m.date).getTime() >= depuis).reduce((s, m) => s + (Number(m.quantite) || 0), 0);
   if (conso <= 0) return null;
   return it.quantite / (conso / (30 / 7));
-}
-function autonomieLabel(s: number | null): string {
-  if (s == null) return "—";
-  if (s >= 8) return `≈ ${Math.round(s / 4.345)} mois`;
-  if (s >= 2) return `≈ ${Math.round(s)} sem.`;
-  return `≈ ${Math.max(1, Math.round(s * 7))} j`;
-}
-// Dernier achat (dernière entrée) d'un produit, au format JJ/MM.
-function dernierAchat(it: StockItem): string | null {
-  const dates = (it.historique || []).filter(m => m.type === "entree" && m.date).map(m => m.date).sort();
-  const last = dates[dates.length - 1];
-  if (!last) return null;
-  const d = new Date(last);
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function QuickProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
@@ -166,7 +152,6 @@ export default function HomePage() {
   const [demandesModalOpen, setDemandesModalOpen] = useState(false);
   const [clotureOpen, setClotureOpen]         = useState(false); // modale « RDV à clôturer »
   const [relanceOpen, setRelanceOpen]         = useState(false); // modale « relances en retard »
-  const [rdvOpen, setRdvOpen]                 = useState(false); // modale « prochains rendez-vous »
   const [busyId, setBusyId]                   = useState("");    // action en cours sur une ligne
   const [clotPay, setClotPay]                 = useState<Record<string, string>>({}); // mode de paiement choisi par RDV
   const [rentaPeriod, setRentaPeriod]         = useState<"semaine" | "mois">("mois");
@@ -243,7 +228,6 @@ export default function HomePage() {
 
   // ── Tâches du jour ──────────────────────────────────────────────────────────
   const leadsNouveaux = prospects.filter(p => p.statut === "NOUVEAU");
-  const aRelancer = prospects.filter(p => p.dateRelance && p.dateRelance <= todayIso && !["CONVERTI", "PERDU"].includes(p.statut));
   const rdvAujourdhui = (stats?.prestations ?? []).filter(p => { const d = frToDateMini(p.date); return d && sameDayMini(d, today); });
   const toReassign = stats?.toReassign ?? 0;
 
@@ -353,15 +337,8 @@ export default function HomePage() {
   const greeting = (() => { const h = new Date().getHours(); return h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; })();
   const dateLabel = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
-  const taches = [
-    { show: leadsNouveaux.length > 0, count: leadsNouveaux.length, sing: "nouveau lead à contacter", plur: "nouveaux leads à contacter", icon: Sparkles, color: "purple", href: "/prospects" },
-    { show: aRelancer.length > 0,     count: aRelancer.length,     sing: "client à relancer aujourd'hui", plur: "clients à relancer aujourd'hui", icon: Phone, color: "amber", href: "/prospects" },
-    { show: rdvAujourdhui.length > 0, count: rdvAujourdhui.length, sing: "rendez-vous aujourd'hui", plur: "rendez-vous aujourd'hui", icon: CalendarCheck, color: "blue", href: "/agenda" },
-    { show: demandesNouvelles.length > 0, count: demandesNouvelles.length, sing: "demande de matériel", plur: "demandes de matériel", icon: Package, color: "sky", href: "#demandes-materiel" },
-    { show: toReassign > 0,           count: toReassign,           sing: "prestation à réaffecter", plur: "prestations à réaffecter", icon: AlertTriangle, color: "red", href: "/prestations" },
-  ].filter(t => t.show);
-  const COLOR: Record<string, string> = { purple: "bg-purple-50 text-purple-700 border-purple-100", amber: "bg-amber-50 text-amber-700 border-amber-100", blue: "bg-blue-50 text-blue-700 border-blue-100", red: "bg-red-50 text-red-700 border-red-100", sky: "bg-sky-50 text-sky-700 border-sky-100" };
-  const ICONBG: Record<string, string> = { purple: "bg-purple-100 text-purple-600", amber: "bg-amber-100 text-amber-600", blue: "bg-blue-100 text-blue-600", red: "bg-red-100 text-red-600", sky: "bg-sky-100 text-sky-600" };
+  const COLOR: Record<string, string> = { purple: "bg-purple-50 text-purple-700 border-purple-100", amber: "bg-amber-50 text-amber-700 border-amber-100", blue: "bg-blue-50 text-blue-700 border-blue-100", red: "bg-red-50 text-red-700 border-red-100", sky: "bg-sky-50 text-sky-700 border-sky-100", orange: "bg-orange-50 text-orange-700 border-orange-100" };
+  const ICONBG: Record<string, string> = { purple: "bg-purple-100 text-purple-600", amber: "bg-amber-100 text-amber-600", blue: "bg-blue-100 text-blue-600", red: "bg-red-100 text-red-600", sky: "bg-sky-100 text-sky-600", orange: "bg-orange-100 text-orange-600" };
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -425,100 +402,92 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* ── Alerte produits intelligente ───────────────────────────────── */}
-        {produitsAlerte.length > 0 && (
-          <div className="bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-2xl p-4 flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center flex-shrink-0"><Package size={18} className="text-orange-600" /></div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-orange-800 text-sm">⚠️ Attention aux produits</p>
-              <p className="text-sm text-orange-700 mt-0.5">
-                {produitsAlerte.length} produit{produitsAlerte.length > 1 ? "s" : ""} bientôt épuisé{produitsAlerte.length > 1 ? "s" : ""} au rythme de tes prestations : <strong>{produitsAlerte.slice(0, 3).map(p => p.nom).join(", ")}</strong>{produitsAlerte.length > 3 ? "…" : ""}. Pense à racheter.
-              </p>
-            </div>
-            <a href="/stock" className="text-sm text-orange-700 font-medium underline flex-shrink-0 mt-1">Voir</a>
-          </div>
-        )}
-
-        {/* ── À optimiser : insights intelligents pour piloter le business ── */}
-        {stats && (() => {
+        {/* ── À faire : toutes les actions du jour au même endroit ──────────
+            Chaque ligne ouvre l'action sur place (pop-up) quand c'est possible. */}
+        {(() => {
           const now = Date.now();
-          const cm = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
-          const inMonth = (fr: string) => { const p = fr.split("/"); return p.length === 3 && `${p[2]}-${p[1]}` === cm; };
-          const caM  = stats.archive.filter(p => p.date && inMonth(p.date)).reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
-          const depM = depenses.filter(d => d.type === "mensuel" || (d.type === "ponctuel" && d.date?.startsWith(cm))).reduce((s, d) => s + d.montant, 0);
-          const benefM = caM - depM;
-          const rdvPasses    = stats.prestations.filter(p => { const d = frToDateMini(p.date); return d && d < today; });
-          const leadsFroids  = prospects.filter(p => p.statut === "NOUVEAU" && p.createdAt && (now - new Date(p.createdAt).getTime()) / 86_400_000 > 3);
-          const relanceRetard = prospects.filter(p => p.dateRelance && p.dateRelance < todayIso && !["CONVERTI", "PERDU"].includes(p.statut));
-
-          type Ins = { icon: string; color: string; title: string; text: string; href: string; cta: string; modal?: "cloture" | "relance" };
-          const ins: Ins[] = [];
-          if (rdvPasses.length > 0)
-            ins.push({ icon: "🗓️", color: "blue", title: `${rdvPasses.length} RDV passé${rdvPasses.length > 1 ? "s" : ""} à clôturer`, text: `Clôture-les (archive) pour que ton CA réalisé${caM === 0 ? " (actuellement 0 €)" : ""} et ton stock soient justes.`, href: "/agenda", cta: "Clôturer", modal: "cloture" });
-          if (benefM < 0)
-            ins.push({ icon: "📉", color: "orange", title: "Bénéfice du mois négatif", text: `${caM.toFixed(0)} € réalisé pour ${depM.toFixed(0)} € de charges. Encaisse tes prestations faites ou allège les charges fixes.`, href: "/depenses", cta: "Voir charges" });
-          if (leadsFroids.length > 0)
-            ins.push({ icon: "🔥", color: "purple", title: `${leadsFroids.length} lead${leadsFroids.length > 1 ? "s" : ""} en attente depuis +3 j`, text: "Un lead contacté vite convertit bien mieux. Rappelle-les tant qu'ils sont chauds.", href: "/prospects", cta: "Contacter" });
-          if (relanceRetard.length > 0)
-            ins.push({ icon: "⏰", color: "amber", title: `${relanceRetard.length} relance${relanceRetard.length > 1 ? "s" : ""} en retard`, text: "Des prospects devaient être relancés avant aujourd'hui.", href: "/prospects", cta: "Relancer", modal: "relance" });
-          if (ins.length === 0)
-            ins.push({ icon: "💪", color: "emerald", title: "Tout roule !", text: benefM > 0 ? `Bénéfice positif ce mois (+${benefM.toFixed(0)} €). Continue comme ça.` : "Aucune action urgente. Pense à démarcher pour remplir l'agenda.", href: "/agenda", cta: "Agenda" });
-
-          const C: Record<string, string> = { blue: "border-blue-100 bg-blue-50", orange: "border-orange-100 bg-orange-50", purple: "border-purple-100 bg-purple-50", amber: "border-amber-100 bg-amber-50", emerald: "border-emerald-100 bg-emerald-50" };
-          const CT: Record<string, string> = { blue: "text-blue-700", orange: "text-orange-700", purple: "text-purple-700", amber: "text-amber-700", emerald: "text-emerald-700" };
+          const leadsFroids   = leadsNouveaux.filter(p => p.createdAt && (now - new Date(p.createdAt).getTime()) / 86_400_000 > 3);
+          const relanceRetard = relanceEnRetard.filter(p => p.dateRelance < todayIso);
+          type Tache = { count: number; sing: string; plur: string; hint?: string; icon: typeof Phone; color: string; href?: string; onClick?: () => void };
+          const items: Tache[] = [
+            { count: toReassign,               sing: "prestation à réaffecter",     plur: "prestations à réaffecter",     hint: "prestataire refusé", icon: AlertTriangle, color: "red", href: "/prestations" },
+            { count: rdvPasses.length,         sing: "RDV passé à clôturer",        plur: "RDV passés à clôturer",        hint: "pour un CA et un stock justes", icon: CheckCircle2, color: "blue", onClick: () => setClotureOpen(true) },
+            { count: rdvAujourdhui.length,     sing: "rendez-vous aujourd'hui",     plur: "rendez-vous aujourd'hui",      icon: CalendarCheck, color: "blue", href: "/agenda" },
+            { count: relanceEnRetard.length,   sing: "prospect à relancer",         plur: "prospects à relancer",         hint: relanceRetard.length ? `dont ${relanceRetard.length} en retard` : undefined, icon: Phone, color: "amber", onClick: () => setRelanceOpen(true) },
+            { count: leadsNouveaux.length,     sing: "nouveau lead à contacter",    plur: "nouveaux leads à contacter",   hint: leadsFroids.length ? `dont ${leadsFroids.length} depuis +3 j` : undefined, icon: Sparkles, color: "purple", href: "/prospects" },
+            { count: demandesNouvelles.length, sing: "demande de matériel",         plur: "demandes de matériel",         icon: Package, color: "sky", onClick: () => setDemandesModalOpen(true) },
+            { count: produitsAlerte.length,    sing: "produit bientôt épuisé",      plur: "produits bientôt épuisés",     hint: produitsAlerte.slice(0, 2).map(p => p.nom).join(", ") + (produitsAlerte.length > 2 ? "…" : ""), icon: Package, color: "orange", href: "/stock" },
+          ].filter(t => t.count > 0);
           return (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-              <h2 className="font-bold text-gray-900 mb-3 flex items-center gap-2">🧭 À optimiser <span className="text-xs font-normal text-gray-400">tes priorités business</span></h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                {ins.slice(0, 3).map((x, i) => {
-                  const inner = (
-                    <>
-                      <p className={`text-sm font-semibold ${CT[x.color]} flex items-center gap-1.5`}><span>{x.icon}</span>{x.title}</p>
-                      <p className="text-xs text-gray-600 leading-snug">{x.text}</p>
-                      <span className={`text-xs font-medium ${CT[x.color]} inline-flex items-center gap-1 mt-1`}>{x.cta} <ArrowRight size={12} /></span>
-                    </>
-                  );
-                  const cls = `flex flex-col gap-1 p-3 rounded-xl border text-left ${C[x.color]} hover:brightness-[0.98] transition-all`;
-                  return x.modal ? (
-                    <button key={i} type="button" onClick={() => x.modal === "cloture" ? setClotureOpen(true) : setRelanceOpen(true)} className={cls}>{inner}</button>
-                  ) : (
-                    <a key={i} href={x.href} className={cls}>{inner}</a>
-                  );
-                })}
-              </div>
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+              <h2 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><span className="text-lg">👋</span>{greeting} — à faire</h2>
+              {loading && !stats ? (
+                <p className="text-sm text-gray-400">Chargement…</p>
+              ) : items.length === 0 ? (
+                <div className="flex items-center gap-3 py-4 justify-center text-center">
+                  <span className="text-2xl">🎉</span>
+                  <p className="text-gray-600 font-medium">Rien d&apos;urgent — tout est à jour. Profites-en !</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
+                  {items.map((t, i) => {
+                    const inner = (
+                      <>
+                        <div className={`w-9 h-9 rounded-lg ${ICONBG[t.color]} flex items-center justify-center flex-shrink-0`}><t.icon size={16} /></div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium leading-tight"><span className="text-lg font-bold mr-1">{t.count}</span>{t.count > 1 ? t.plur : t.sing}</p>
+                          {t.hint && <p className="text-[11px] opacity-75 truncate">{t.hint}</p>}
+                        </div>
+                        <ArrowRight size={16} className="opacity-40 group-hover:translate-x-0.5 transition-transform flex-shrink-0" />
+                      </>
+                    );
+                    const cls = `flex items-center gap-3 p-3 rounded-xl border text-left ${COLOR[t.color]} hover:brightness-[0.98] transition-all group`;
+                    return t.onClick
+                      ? <button key={i} type="button" onClick={t.onClick} className={cls}>{inner}</button>
+                      : <a key={i} href={t.href} className={cls}>{inner}</a>;
+                  })}
+                </div>
+              )}
             </div>
           );
         })()}
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         <div className="xl:col-span-2 space-y-4">
-        {/* ── À faire aujourd'hui ─────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-lg">👋</span>
-            <h2 className="font-bold text-gray-900">{greeting} — à faire aujourd&apos;hui</h2>
+        {/* ── Prochains rendez-vous : appel / WhatsApp en un geste ────────── */}
+        {stats && stats.upcomingList.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-bold text-gray-900">📅 Prochains rendez-vous</h2>
+              <a href="/agenda" className="flex items-center gap-1 text-sm text-blue-600 hover:underline font-medium">Agenda <ChevronRight size={14} /></a>
+            </div>
+            <div className="space-y-2">
+              {stats.upcomingList.map((p) => {
+                const d = frToDateMini(p.date);
+                const isToday = !!d && sameDayMini(d, today);
+                const wa = p.tel ? `https://wa.me/${p.tel.replace(/\s/g, "").replace(/^0/, "33")}` : null;
+                return (
+                  <div key={p.row} className={`flex items-center gap-3 p-3 rounded-xl border ${isToday ? "bg-blue-50 border-blue-200" : "bg-blue-50/40 border-blue-100"}`}>
+                    <div className="text-center flex-shrink-0 w-12">
+                      <p className="text-sm font-bold text-blue-700 leading-tight">{isToday ? "Auj." : p.date?.slice(0, 5)}</p>
+                      {p.heure && <p className="text-[11px] text-gray-400">{p.heure}</p>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{p.prenom} {p.nom}</p>
+                      <p className="text-xs text-gray-500 truncate">{p.typePresta}{p.adresse ? ` — ${p.adresse}` : ""}</p>
+                      {p.prestataire
+                        ? <p className="flex items-center gap-1 text-[11px] text-green-700 mt-0.5"><UserCheck size={11} />{p.prestataire}</p>
+                        : <p className="flex items-center gap-1 text-[11px] text-amber-600 mt-0.5"><Clock size={11} />À affecter</p>}
+                    </div>
+                    <div className="hidden sm:block"><StatusBadge statut={p.statut} small /></div>
+                    {p.tel && <a href={`tel:${p.tel}`} title="Appeler" className="p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 flex-shrink-0"><Phone size={14} /></a>}
+                    {wa && <a href={wa} target="_blank" rel="noopener noreferrer" title="WhatsApp" className="px-2.5 py-2 rounded-lg bg-green-500 text-white text-xs font-medium hover:bg-green-600 flex-shrink-0">WA</a>}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          {loading && !stats ? (
-            <p className="text-sm text-gray-400">Chargement…</p>
-          ) : taches.length === 0 ? (
-            <div className="flex items-center gap-3 py-4 justify-center text-center">
-              <span className="text-2xl">🎉</span>
-              <p className="text-gray-600 font-medium">Rien d&apos;urgent — tout est à jour. Profites-en !</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {taches.map((t, i) => (
-                <a key={i} href={t.href}
-                  onClick={t.href === "#demandes-materiel" ? (e) => { e.preventDefault(); setDemandesModalOpen(true); } : undefined}
-                  className={`flex items-center gap-3 p-3 rounded-xl border ${COLOR[t.color]} hover:brightness-[0.98] transition-all group cursor-pointer`}>
-                  <div className={`w-9 h-9 rounded-lg ${ICONBG[t.color]} flex items-center justify-center flex-shrink-0`}><t.icon size={16} /></div>
-                  <p className="flex-1 text-sm font-medium leading-tight"><span className="text-lg font-bold mr-1">{t.count}</span>{t.count > 1 ? t.plur : t.sing}</p>
-                  <ArrowRight size={16} className="opacity-40 group-hover:translate-x-0.5 transition-transform" />
-                </a>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
 
         {/* ── L'argent (CA réalisé = archivé, honnête) ────────────────────── */}
         {stats && (() => {
@@ -595,76 +564,6 @@ export default function HomePage() {
 
         </div>{/* fin colonne principale */}
         <div className="space-y-4">
-        {/* ── Prochains rendez-vous ───────────────────────────────────────── */}
-        {stats && stats.upcomingList.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-gray-900">📅 Prochains rendez-vous</h2>
-              <button type="button" onClick={() => setRdvOpen(true)} className="text-sm text-blue-600 hover:underline font-medium">Tout voir</button>
-            </div>
-            <div className="space-y-2">
-              {stats.upcomingList.map((p) => (
-                <div key={p.row} className="flex items-center gap-3 p-3 rounded-xl bg-blue-50/60 border border-blue-100">
-                  <div className="text-center flex-shrink-0 w-12">
-                    <p className="text-sm font-bold text-blue-700 leading-tight">{p.date?.slice(0, 5)}</p>
-                    {p.heure && <p className="text-[11px] text-gray-400">{p.heure}</p>}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 truncate">{p.prenom} {p.nom}</p>
-                    <p className="text-xs text-gray-500 truncate">{p.typePresta}{p.adresse ? ` — ${p.adresse}` : ""}</p>
-                  </div>
-                  {p.prestataire ? (
-                    <span className="flex items-center gap-1 text-xs text-green-700 flex-shrink-0"><UserCheck size={11} />{p.prestataire}</span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-xs text-amber-600 flex-shrink-0"><Clock size={11} />À affecter</span>
-                  )}
-                  <StatusBadge statut={p.statut} small />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Clients à relancer aujourd'hui ──────────────────────────────── */}
-        {aRelancer.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-gray-900 flex items-center gap-2"><BellRing size={16} className="text-amber-500" /> À relancer aujourd&apos;hui</h2>
-              <button type="button" onClick={() => setRelanceOpen(true)} className="text-sm text-blue-600 hover:underline font-medium">Tout voir</button>
-            </div>
-            <div className="space-y-2">
-              {aRelancer.slice(0, 4).map(p => {
-                const wa = p.tel ? `https://wa.me/${p.tel.replace(/\s/g,"").replace(/^0/,"33")}?text=${encodeURIComponent(`Bonjour ${p.prenom} 👋`)}` : null;
-                return (
-                  <div key={p.id} className="flex items-center gap-3 p-3 rounded-xl bg-amber-50/60 border border-amber-100">
-                    <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-xs flex-shrink-0">{(p.prenom?.[0] ?? "?").toUpperCase()}</div>
-                    <div className="flex-1 min-w-0"><p className="text-sm font-medium text-gray-900 truncate">{p.prenom} {p.nom}</p><p className="text-xs text-gray-500 truncate">{p.typePresta || "Prospect"}</p></div>
-                    {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="text-xs px-2.5 py-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 flex-shrink-0">WhatsApp</a>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* ── Demandes de matériel (prestataires) ─────────────────────────── */}
-        {demandesNouvelles.length > 0 && (
-          <div id="demandes-materiel" className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 scroll-mt-20">
-            <h2 className="font-bold text-gray-900 flex items-center gap-2 mb-4"><Package size={16} className="text-sky-500" /> Demandes de matériel</h2>
-            <div className="space-y-2">
-              {demandesNouvelles.slice(0, 6).map(d => (
-                <div key={d.id} className="flex items-start gap-3 p-3 rounded-xl bg-sky-50/60 border border-sky-100">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{d.categorie}{d.quantite ? ` · ${d.quantite}` : ""}</p>
-                    {d.details && <p className="text-xs text-gray-500">{d.details}</p>}
-                    <p className="text-[11px] text-gray-400 mt-0.5">{d.prestataireNom || "Prestataire"} · {new Date(d.at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</p>
-                  </div>
-                  <button onClick={() => traiterDemande(d.id)} className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-green-500 text-white hover:bg-green-600 flex-shrink-0"><CheckCircle2 size={13} /> Fait</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* ── Congés / indisponibilités à venir ───────────────────────────── */}
         {congesAvenir.length > 0 && (
@@ -688,7 +587,7 @@ export default function HomePage() {
 
         {/* ── Agenda de la semaine ────────────────────────────────────────── */}
         {stats && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold text-gray-900 flex items-center gap-2"><CalendarDays size={17} className="text-blue-600" /> Ta semaine</h2>
               <a href="/agenda" className="flex items-center gap-1 text-sm text-blue-600 hover:underline font-medium">Ouvrir <ChevronRight size={14} /></a>
@@ -716,39 +615,6 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* ── Stock & matériel ────────────────────────────────────────────── */}
-        {stock.length > 0 && (() => {
-          const valeur = stock.reduce((s, it) => s + it.quantite * (it.prixUnitaire ?? 0), 0);
-          const bas = stock.filter(it => it.seuil > 0 && it.quantite <= it.seuil);
-          return (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-bold text-gray-900 flex items-center gap-2"><Package size={17} className="text-orange-500" /> Stock &amp; matériel</h2>
-                <a href="/stock" className="text-sm text-blue-600 hover:underline font-medium">Gérer le stock</a>
-              </div>
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="rounded-xl bg-gray-50 p-3 text-center"><p className="text-lg font-bold text-gray-900">{stock.length}</p><p className="text-[11px] text-gray-400">Articles</p></div>
-                <div className="rounded-xl bg-emerald-50 p-3 text-center"><p className="text-lg font-bold text-emerald-700">{valeur.toFixed(0)} €</p><p className="text-[11px] text-gray-400">Valeur du stock</p></div>
-                <div className={`rounded-xl p-3 text-center ${bas.length ? "bg-red-50" : "bg-gray-50"}`}><p className={`text-lg font-bold ${bas.length ? "text-red-600" : "text-gray-400"}`}>{bas.length}</p><p className="text-[11px] text-gray-400">À réapprovisionner</p></div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {[...stock].sort((a, b) => (autonomieSemaines(a) ?? 999) - (autonomieSemaines(b) ?? 999)).slice(0, 6).map(it => {
-                  const a = autonomieSemaines(it); const low = it.seuil > 0 && it.quantite <= it.seuil; const buy = dernierAchat(it);
-                  return (
-                    <div key={it.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100">
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${low ? "bg-red-100 text-red-600" : "bg-orange-50 text-orange-500"}`}><Package size={15} /></div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 truncate">{it.nom}</p>
-                        <p className="text-[11px] text-gray-400">{it.quantite} {it.unite}{buy ? ` · acheté le ${buy}` : " · jamais réapprovisionné"}</p>
-                      </div>
-                      <span className={`text-xs font-medium flex-shrink-0 ${a != null && a < 2 ? "text-red-600" : "text-gray-500"}`}>{autonomieLabel(a)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })()}
 
       </div>
 
@@ -874,46 +740,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── Pop-up « Prochains rendez-vous » ── */}
-      {rdvOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setRdvOpen(false); }}>
-          <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-              <h2 className="font-bold text-gray-900 flex items-center gap-2">📅 Prochains rendez-vous <span className="text-xs font-normal text-gray-400">{stats?.upcomingList.length ?? 0}</span></h2>
-              <button onClick={() => setRdvOpen(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><X size={18} /></button>
-            </div>
-            <div className="overflow-y-auto flex-1 p-4 space-y-2.5">
-              {(stats?.upcomingList ?? []).length === 0 ? (
-                <div className="text-center py-10 text-gray-400"><CalendarDays size={36} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Aucun rendez-vous à venir</p></div>
-              ) : (stats?.upcomingList ?? []).map(p => {
-                const wa = p.tel ? `https://wa.me/${p.tel.replace(/\s/g, "").replace(/^0/, "33")}` : null;
-                return (
-                  <div key={p.row} className="rounded-xl border border-gray-100 p-3">
-                    <div className="flex items-start gap-3">
-                      <div className="text-center flex-shrink-0 w-12">
-                        <p className="text-sm font-bold text-blue-700 leading-tight">{p.date?.slice(0, 5)}</p>
-                        {p.heure && <p className="text-[11px] text-gray-400">{p.heure}</p>}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 truncate">{p.prenom} {p.nom}</p>
-                        <p className="text-xs text-gray-500 truncate">{p.typePresta}{p.prix ? ` · ${p.prix} €` : ""}{p.adresse ? ` — ${p.adresse}` : ""}</p>
-                        <p className="text-[11px] mt-0.5">{p.prestataire ? <span className="text-green-700 inline-flex items-center gap-1"><UserCheck size={11} />{p.prestataire}</span> : <span className="text-amber-600 inline-flex items-center gap-1"><Clock size={11} />À affecter</span>}</p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2 mt-2.5">
-                      {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600"><Phone size={13} /> WhatsApp</a>}
-                      {p.tel && <a href={`tel:${p.tel}`} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50"><Phone size={13} /> Appeler</a>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="px-4 py-2.5 border-t border-gray-100 text-center flex-shrink-0">
-              <a href="/agenda" className="text-xs text-gray-400 hover:text-gray-600">Ouvrir l'agenda pour gérer</a>
-            </div>
-          </div>
-        </div>
-      )}
 
       {loading && !stats && (
         <div className="flex items-center justify-center py-20"><div className="text-center"><div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" /><p className="text-gray-500 text-sm">Chargement…</p></div></div>

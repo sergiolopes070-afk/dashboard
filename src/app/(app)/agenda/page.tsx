@@ -7,6 +7,7 @@ import { ClientFicheById } from "@/components/ClientFiche";
 import EmailActions from "@/components/EmailActions";
 import PhotoLightbox, { LightboxPhoto } from "@/components/PhotoLightbox";
 import NewClientModal from "@/components/NewClientModal";
+import Topbar from "@/components/Topbar";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
@@ -880,7 +881,10 @@ export default function AgendaPage() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Topbar partagée : menu (mobile) + recherche globale. Version compacte pour laisser la place au calendrier. */}
+      <Topbar title="Agenda" onRefresh={loadData} loading={loading} compact />
+      <div className="flex-1 flex min-h-0">
 
       {/* ── Sidebar filtre mobile (drawer) ────────────────────────────────── */}
       {filterOpen && (
@@ -2142,6 +2146,7 @@ export default function AgendaPage() {
       {lightbox && (
         <PhotoLightbox photos={lightbox.photos} startIndex={lightbox.index} onClose={() => setLightbox(null)} />
       )}
+      </div>
     </div>
   );
 }

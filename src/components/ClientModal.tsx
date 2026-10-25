@@ -1,15 +1,14 @@
 "use client";
 import { useState, useEffect } from "react";
 import { X, Save, Loader2, UserPlus, UserPen } from "lucide-react";
-import { Prestation } from "@/lib/constants";
-
 interface ClientInfo {
+  clientId?: string; // si présent : mise à jour directe de la fiche client (même sans prestation)
   nom: string;
   prenom: string;
   tel: string;
   email: string;
   adresse: string;
-  prestations: Prestation[];
+  prestations?: { row: string }[];
 }
 
 interface ClientModalProps {
@@ -127,7 +126,7 @@ export default function ClientModal({ mode, client, onClose, onSaved }: ClientMo
         });
         if (!res.ok) throw new Error((await res.json()).error || "Erreur serveur");
       } else {
-        const rows = client!.prestations.map((p) => p.row);
+        const rows = (client?.prestations ?? []).map((p) => p.row);
         const updates = {
           nom    : form.nom,
           prenom : form.prenom,
@@ -138,7 +137,7 @@ export default function ClientModal({ mode, client, onClose, onSaved }: ClientMo
         const res = await fetch("/api/clients", {
           method : "PATCH",
           headers: { "Content-Type": "application/json" },
-          body   : JSON.stringify({ rows, updates }),
+          body   : JSON.stringify(client?.clientId ? { clientId: client.clientId, updates } : { rows, updates }),
         });
         if (!res.ok) throw new Error((await res.json()).error || "Erreur serveur");
       }
@@ -155,7 +154,7 @@ export default function ClientModal({ mode, client, onClose, onSaved }: ClientMo
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
@@ -173,7 +172,9 @@ export default function ClientModal({ mode, client, onClose, onSaved }: ClientMo
               <p className="text-xs text-gray-400 mt-0.5">
                 {isAdd
                   ? "Ajouter une nouvelle fiche client"
-                  : `${client?.prestations.length} prestation${(client?.prestations.length || 0) > 1 ? "s" : ""} concernée${(client?.prestations.length || 0) > 1 ? "s" : ""}`}
+                  : client?.clientId
+                    ? "Coordonnées de la fiche client"
+                    : `${client?.prestations?.length ?? 0} prestation${(client?.prestations?.length || 0) > 1 ? "s" : ""} concernée${(client?.prestations?.length || 0) > 1 ? "s" : ""}`}
               </p>
             </div>
           </div>

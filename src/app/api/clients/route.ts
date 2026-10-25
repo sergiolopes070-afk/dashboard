@@ -1,9 +1,22 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
-import { appendPrestation, updatePrestation, deleteClient, updateClientTags, updateClientNotes, getClientIdOfPrestation } from "@/lib/sheets";
+import { appendPrestation, updatePrestation, deleteClient, updateClientTags, updateClientNotes, getClientIdOfPrestation, getClientsAvecPrestations } from "@/lib/sheets";
 import { getSettingJSON, setSettingRaw } from "@/lib/settings";
+import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
+
+// GET : liste de TOUS les clients (table clients, archivés inclus) + historique complet.
+export async function GET() {
+  const unauth = await requireAuth();
+  if (unauth) return unauth;
+  try {
+    return NextResponse.json(await getClientsAvecPrestations());
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erreur inconnue";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
 
 // Enregistre la préférence fiscale d'un client (avance / credit) dans la table
 // `settings` (clé `fiscal_clients`, JSON) — même stockage que /api/clients/fiscal.
@@ -119,6 +132,18 @@ export async function PATCH(req: Request) {
     // Notes / journal de suivi update: { clientId, notes }
     if (body.clientId && body.notes !== undefined) {
       await updateClientNotes(body.clientId, body.notes);
+      return NextResponse.json({ success: true });
+    }
+    // Coordonnées par clientId (marche aussi pour un client sans prestation) :
+    // { clientId, updates: { nom, prenom, tel, email, adresse } }
+    if (body.clientId && body.updates) {
+      if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
+      const patch: Record<string, string> = {};
+      for (const k of ["nom", "prenom", "tel", "email", "adresse"] as const) {
+        if (typeof body.updates[k] === "string") patch[k] = body.updates[k];
+      }
+      const { error } = await supabase.from("clients").update(patch).eq("id", body.clientId);
+      if (error) throw new Error(error.message);
       return NextResponse.json({ success: true });
     }
     // Client info update: { rows, updates }

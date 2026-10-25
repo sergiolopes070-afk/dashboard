@@ -1534,7 +1534,7 @@ export default function ProspectsPage() {
                       <StatutBadge statut={p.statut} small />
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                      {p.tel && <span className="text-xs text-gray-500 flex items-center gap-1"><Phone size={11} />{p.tel}</span>}
+                      {p.tel && <a href={`tel:${p.tel}`} onClick={(e) => e.stopPropagation()} className="text-xs text-gray-500 flex items-center gap-1 hover:text-blue-600"><Phone size={11} />{p.tel}</a>}
                       {p.typePresta && <span className="text-xs text-gray-500">{p.typePresta}</span>}
                     </div>
                   </div>

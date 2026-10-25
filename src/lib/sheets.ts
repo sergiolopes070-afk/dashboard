@@ -84,6 +84,51 @@ export async function getPrestations(): Promise<Prestation[]> {
   return (data || []).map(rowToPrestation);
 }
 
+// TOUS les clients de la table `clients` (même ceux dont tout est archivé, ou
+// sans aucune prestation), avec TOUT leur historique — en UNE requête (jointure),
+// pas de N+1. Chaque prestation garde le format Prestation + un drapeau `archived`.
+export interface ClientAvecPrestations {
+  clientId   : string;
+  nom        : string;
+  prenom     : string;
+  tel        : string;
+  email      : string;
+  adresse    : string;
+  creeLe     : string;
+  tags       : string[];
+  notes      : Prestation["clientNotes"];
+  prestations: (Prestation & { archived: boolean })[];
+}
+export async function getClientsAvecPrestations(): Promise<ClientAvecPrestations[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("clients")
+    .select("*, prestations(*, prestataires(*))")
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data || []).map((c: Record<string, any>) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { prestations: rows, ...client } = c as { prestations?: Record<string, any>[] } & Record<string, any>;
+    const prestations = (rows || [])
+      .map(r => ({ ...rowToPrestation({ ...r, clients: client }), archived: !!r.archive }))
+      // Ordre chronologique (plus ancienne → plus récente), date vide en dernier
+      .sort((a, b) => (frToIso(a.date) || "9999").localeCompare(frToIso(b.date) || "9999") || a.timestamp.localeCompare(b.timestamp));
+    return {
+      clientId: client.id as string,
+      nom     : client.nom     || "",
+      prenom  : client.prenom  || "",
+      tel     : client.tel     || "",
+      email   : client.email   || "",
+      adresse : client.adresse || "",
+      creeLe  : (client.created_at as string) || "",
+      tags    : Array.isArray(client.tags) ? client.tags : (client.tags ? String(client.tags).split(",").map((t: string) => t.trim()).filter(Boolean) : []),
+      notes   : Array.isArray(client.notes) ? client.notes : [],
+      prestations,
+    };
+  });
+}
+
 export async function getPrestataires(): Promise<Prestataire[]> {
   if (!supabase) return [];
   const { data, error } = await supabase

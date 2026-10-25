@@ -66,7 +66,7 @@ function PaymentButton({ p }: { p: Prestation }) {
     `Bonjour ${p.prenom} 👋,\n\nVoici votre lien de paiement sécurisé KinouClean pour votre prestation *${p.typePresta}* :\n\n${url}\n\nMontant : *${amount} €*\n\nMerci et à bientôt ! 🙏`
   );
   const waHref = p.tel
-    ? `https://wa.me/${p.tel.replace(/\D/g, "")}?text=${waText}`
+    ? `https://wa.me/${p.tel.replace(/\D/g, "").replace(/^0/, "33")}?text=${waText}`
     : `https://wa.me/?text=${waText}`;
 
   // ── Message email ──
@@ -327,7 +327,7 @@ export default function PrestationTable({ prestations, showActions = true, onEdi
                 ) : (
                   <div className="font-medium text-gray-900">{p.prenom} {p.nom}</div>
                 )}
-                <div className="text-xs text-gray-400">{p.tel}</div>
+                {p.tel && <a href={`tel:${p.tel}`} onClick={(e) => e.stopPropagation()} className="text-xs text-gray-400 hover:text-blue-600 hover:underline">{p.tel}</a>}
               </td>
               <td className="py-3 px-4">
                 <div className="flex items-center gap-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>

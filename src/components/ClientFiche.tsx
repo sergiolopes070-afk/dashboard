@@ -3,13 +3,15 @@
 // Fiche client UNIFIÉE et réutilisable (Phase 2 — étape 1).
 // Panneau latéral autonome : coordonnées, fiscalité, journal de suivi, historique
 // des prestations, CA, date de création. Fait ses propres appels API (notes,
-// fiscalité) et prévient le parent via onChanged. Destiné à être ouvert depuis
-// n'importe où (Clients, Agenda, Prestations, Recherche…) à l'étape 2.
+// fiscalité) et prévient le parent via onChanged. Ouverte de PARTOUT via
+// ClientFicheById (Clients, Agenda, Prestations, Recherche…) = historique complet.
 // ─────────────────────────────────────────────────────────────────────────────
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   X, Phone, Mail, MapPin, Send, Trash2, Calendar, Euro, MessageCircle, Star, Camera, CheckCircle2,
+  Pencil, FileText, Download, CreditCard, Clock, StickyNote,
 } from "lucide-react";
+import ClientModal from "@/components/ClientModal";
 import { ClientNote, STATUT_COLORS } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
 import { Entite } from "@/lib/entite";
@@ -30,6 +32,23 @@ export interface FichePrestation {
   archived?  : boolean;
   photos?    : { url: string; path: string; article: string; phase: string }[];
   satisfaction?: number; // avis client (1-5 étoiles), saisi manuellement
+  statutPresta?: string;
+  adresse?     : string;
+  quantite?    : string;
+  message?     : string;  // note interne / demande du client
+  commentaire? : string;  // commentaire interne
+  devisUrl?    : string;  // PDF de devis stocké
+  devisGenere? : boolean; // devis déjà généré via /api/devis/[id]
+  stripePaymentUrl?: string;
+}
+
+// "dd/mm/yyyy" + "HH:MM" → Date (null si pas de date) — pour comparer chronologiquement.
+function frToDate(date: string, heure?: string): Date | null {
+  const p = (date || "").split("/");
+  if (p.length !== 3) return null;
+  const [h, m] = (heure || "00:00").split(":").map(n => parseInt(n) || 0);
+  const d = new Date(+p[2], +p[1] - 1, +p[0], h, m);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 export interface ClientFicheData {
@@ -203,6 +222,28 @@ export default function ClientFiche({
   };
   const telWa = client.tel.replace(/\s/g, "").replace(/^0/, "33");
 
+  // Prochain RDV = prestation active (non archivée, non annulée) la plus proche à venir.
+  const debutJour = new Date(); debutJour.setHours(0, 0, 0, 0);
+  const prochain = client.prestations
+    .filter(p => !p.archived && p.statut !== "ANNULÉ")
+    .map(p => ({ p, d: frToDate(p.date, p.heure) }))
+    .filter((x): x is { p: FichePrestation; d: Date } => !!x.d && x.d >= debutJour)
+    .sort((a, b) => a.d.getTime() - b.d.getTime())[0]?.p;
+  // Dernière prestation réellement effectuée (date passée la plus récente) → lien d'avis.
+  const derniere = client.prestations
+    .map(p => ({ p, d: frToDate(p.date, p.heure) }))
+    .filter((x): x is { p: FichePrestation; d: Date } => !!x.d && x.d < new Date())
+    .sort((a, b) => b.d.getTime() - a.d.getTime())[0]?.p ?? client.prestations[0];
+
+  // ── Devis : même mécanisme que la page Clients (/api/devis/[id] sert le PDF et
+  // passe devis_genere à true) → on recharge la fiche juste après.
+  function genererDevis(row: string) {
+    window.open(`/api/devis/${row}`, "_blank");
+    setTimeout(() => onChanged?.(), 1500);
+  }
+
+  const [showEdit, setShowEdit] = useState(false);
+
   return (
     <div className="fixed inset-0 z-[60] flex justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
@@ -225,12 +266,36 @@ export default function ClientFiche({
               )}
             </div>
           </div>
-          <button onClick={onClose} aria-label="Fermer la fiche" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors shrink-0">
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={() => setShowEdit(true)} aria-label="Modifier le client" title="Modifier les coordonnées"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 text-xs font-medium transition-colors">
+              <Pencil size={14} /> Modifier
+            </button>
+            <button onClick={onClose} aria-label="Fermer la fiche" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
-        <div className="p-5 space-y-5">
+        <div className="p-4 sm:p-5 space-y-5">
+          {/* Prochain RDV (mis en avant) */}
+          {prochain && (
+            <div className="bg-blue-600 text-white rounded-xl p-3 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-100 flex items-center gap-1"><Clock size={12} /> Prochain RDV</p>
+              <p className="text-base font-bold mt-0.5">
+                {frToDate(prochain.date)?.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+                {prochain.heure ? ` à ${prochain.heure}` : ""}
+              </p>
+              <p className="text-sm text-blue-50 mt-0.5">
+                {prochain.typePresta || "Prestation"}{prochain.quantite ? ` · ${prochain.quantite}` : ""}
+                {" · "}{prochain.prestataire ? `👤 ${prochain.prestataire}` : "⚠️ aucun prestataire"}
+              </p>
+              {prochain.adresse && prochain.adresse !== client.adresse && (
+                <p className="text-xs text-blue-100 mt-0.5 flex items-center gap-1"><MapPin size={11} />{prochain.adresse}</p>
+              )}
+            </div>
+          )}
+
           {/* Coordonnées */}
           <div className="space-y-1.5">
             {client.tel && (
@@ -325,7 +390,7 @@ export default function ClientFiche({
                       <p className="text-[10px] text-gray-400 mt-0.5">{fmtDate(n.date)}</p>
                     </div>
                     <button onClick={() => persistNotes(notes.filter(x => x.id !== n.id))}
-                      className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                      className="text-gray-300 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100 transition-all shrink-0">
                       <Trash2 size={12} />
                     </button>
                   </div>
@@ -378,10 +443,10 @@ export default function ClientFiche({
                 {client.prestations.map(p => {
                   const cls = STATUT_COLORS[p.statut] || "bg-gray-100 text-gray-600";
                   return (
-                    <div key={p.row} className="border border-gray-100 rounded-xl p-3">
+                    <div key={p.row} className={`border rounded-xl p-3 ${p === prochain ? "border-blue-300 bg-blue-50/30" : "border-gray-100"}`}>
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-sm font-medium text-gray-800 truncate">{p.typePresta || "—"}</span>
+                          <span className="text-sm font-medium text-gray-800 truncate">{p.typePresta || "—"}{p.quantite ? ` · ${p.quantite}` : ""}</span>
                           <EntiteBadge prestationId={p.row} typePresta={p.typePresta} overrides={entiteOverrides} onSet={setEntite} className="shrink-0" />
                         </div>
                         {p.prix && <span className="text-sm font-semibold text-green-700 shrink-0">{p.prix} €</span>}
@@ -391,7 +456,37 @@ export default function ClientFiche({
                         {p.prestataire && <span>👤 {p.prestataire}</span>}
                         {p.modePaiement && <span className="flex items-center gap-1"><Euro size={11} />{p.modePaiement}</span>}
                         {p.statut && <span className={`px-1.5 py-0.5 rounded-full font-medium ${cls}`}>{p.statut}</span>}
+                        {p.statutPresta && <span className={`px-1.5 py-0.5 rounded-full font-medium ${STATUT_COLORS[p.statutPresta] || "bg-gray-100 text-gray-600"}`}>{p.statutPresta}</span>}
                         {p.archived && <span className="px-1.5 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500">📦 Archivé</span>}
+                      </div>
+                      {p.adresse && (
+                        <p className="flex items-center gap-1 mt-1 text-xs text-gray-400"><MapPin size={11} className="shrink-0" /><span className="truncate">{p.adresse}</span></p>
+                      )}
+                      {/* Notes internes (demande client / commentaire) */}
+                      {(p.message || p.commentaire) && (
+                        <div className="mt-1.5 space-y-1">
+                          {p.message && <p className="flex items-start gap-1 text-xs text-gray-600 bg-gray-50 rounded-lg px-2 py-1 whitespace-pre-line break-words"><StickyNote size={11} className="shrink-0 mt-0.5 text-gray-400" />{p.message}</p>}
+                          {p.commentaire && <p className="flex items-start gap-1 text-xs text-amber-800 bg-amber-50 rounded-lg px-2 py-1 whitespace-pre-line break-words"><MessageCircle size={11} className="shrink-0 mt-0.5" />{p.commentaire}</p>}
+                        </div>
+                      )}
+                      {/* Devis + paiement */}
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {(p.devisUrl || p.devisGenere) && (
+                          <a href={p.devisUrl || `/api/devis/${p.row}`} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+                            <FileText size={12} /> Voir devis
+                          </a>
+                        )}
+                        <button type="button" onClick={() => genererDevis(p.row)}
+                          className="flex items-center gap-1 text-xs text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-lg transition-colors">
+                          <Download size={11} /> {p.devisUrl || p.devisGenere ? "Re-générer" : "Générer devis"}
+                        </button>
+                        {p.stripePaymentUrl && (
+                          <a href={p.stripePaymentUrl} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg transition-colors">
+                            <CreditCard size={11} /> Lien de paiement
+                          </a>
+                        )}
                       </div>
 
                       {/* Avis client (étoiles) — saisie manuelle, pour les primes, même si archivé */}
@@ -439,13 +534,13 @@ export default function ClientFiche({
             <button
               onClick={() => {
                 const params = new URLSearchParams({ nom: `${client.prenom} ${client.nom}`.trim() });
-                const last = client.prestations[0];
+                const last = derniere;
                 if (last?.typePresta) params.set("prestation", last.typePresta);
                 navigator.clipboard.writeText(`${window.location.origin}/avis/${client.clientId}?${params.toString()}`)
                   .then(() => toast.success("Lien d'avis copié"));
               }}
               className="w-full py-2 rounded-xl border border-yellow-200 bg-yellow-50 text-yellow-700 text-sm font-medium hover:bg-yellow-100 transition-colors flex items-center justify-center gap-1.5">
-              <Star size={14} /> Copier le lien d'avis
+              <Star size={14} /> Copier le lien d&apos;avis
             </button>
           )}
         </div>
@@ -453,12 +548,25 @@ export default function ClientFiche({
       {lightbox && (
         <PhotoLightbox photos={lightbox.photos} startIndex={lightbox.index} onClose={() => setLightbox(null)} />
       )}
+      {showEdit && (
+        <div onClick={e => e.stopPropagation()}>
+          <ClientModal
+            mode="edit"
+            client={{ clientId: client.clientId, nom: client.nom, prenom: client.prenom, tel: client.tel, email: client.email, adresse: client.adresse }}
+            onClose={() => setShowEdit(false)}
+            onSaved={() => { toast.success("Client modifié ✅"); onChanged?.(); }}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Variante : charge la fiche par clientId (ouvrable depuis n'importe où) ────
+// Source de vérité UNIQUE : /api/clients/[id] (tout l'historique, archivé inclus).
 // Cache mémoire des fiches déjà ouvertes → ré-affichage INSTANTANÉ (puis MAJ en fond).
+// Après toute modif faite DANS la fiche (RDV, notes, devis, coordonnées), la fiche
+// se recharge elle-même PUIS prévient le parent via onChanged (pour qu'il rafraîchisse).
 const ficheCache = new Map<string, ClientFicheData>();
 
 export function ClientFicheById({
@@ -470,6 +578,11 @@ export function ClientFicheById({
 }) {
   const [data, setData] = useState<ClientFicheData | null>(() => ficheCache.get(clientId) ?? null);
   const [error, setError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const handleChanged = useCallback(() => {
+    setReloadKey(k => k + 1);
+    onChanged?.();
+  }, [onChanged]);
 
   useEffect(() => {
     let actif = true;
@@ -481,9 +594,9 @@ export function ClientFicheById({
       .then(d => { if (actif) { ficheCache.set(clientId, d); setData(d); } })
       .catch(() => { if (actif && !cached) setError(true); });
     return () => { actif = false; };
-  }, [clientId]);
+  }, [clientId, reloadKey]);
 
-  if (data) return <ClientFiche client={data} onClose={onClose} onChanged={onChanged} />;
+  if (data) return <ClientFiche client={data} onClose={onClose} onChanged={handleChanged} />;
 
   return (
     <div className="fixed inset-0 z-[60] flex justify-end" onClick={onClose}>
