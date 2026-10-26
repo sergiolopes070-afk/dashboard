@@ -6,23 +6,10 @@ import {
   LayoutDashboard, Users, Briefcase, Archive,
   FileText, Settings, ChevronRight, Wrench, CalendarDays, TrendingDown, LogOut, X, UserSearch, Package, BarChart3,
 } from "lucide-react";
-import { cachePrefetch, CACHE_KEYS } from "@/lib/dataCache";
+import { prefetchPage } from "@/lib/dataCache";
 
-// Prefetch des données au survol : réchauffe le cache avant même le clic.
-const PREFETCH: Record<string, { key: string; url: string; transform?: (d: unknown) => unknown }> = {
-  "/prospects":    { key: CACHE_KEYS.prospects,    url: "/api/prospects" },
-  "/depenses":     { key: CACHE_KEYS.depenses,     url: "/api/depenses" },
-  "/stock":        { key: CACHE_KEYS.stock,        url: "/api/stock" },
-  "/prestataires": { key: CACHE_KEYS.prestataires, url: "/api/prestataires" },
-  "/prestations":  { key: CACHE_KEYS.prestations,  url: "/api/prestations" },
-  "/clients":      { key: "clients-full",          url: "/api/clients" }, // même clé que la page Clients
-  "/archive":      { key: CACHE_KEYS.archive,      url: "/api/archive", transform: (d) => (Array.isArray(d) ? [...d].reverse() : d) },
-};
-
-function prefetchRoute(href: string) {
-  const p = PREFETCH[href];
-  if (p) cachePrefetch(p.key, p.url, p.transform);
-}
+// Prefetch des données (prefetchPage) au survol, au toucher (mobile : touchstart
+// part avant le clic) ou au focus clavier : réchauffe le cache avant la navigation.
 
 // Menu par usage : le quotidien en haut, les finances ensemble, les réglages en bas.
 const sections = [
@@ -113,7 +100,9 @@ export default function Sidebar() {
                       key={href}
                       href={href}
                       onClick={close}
-                      onMouseEnter={() => prefetchRoute(href)}
+                      onMouseEnter={() => prefetchPage(href)}
+                      onTouchStart={() => prefetchPage(href)}
+                      onFocus={() => prefetchPage(href)}
                       className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all group
                         ${active
                           ? "bg-blue-600 text-white shadow-md"

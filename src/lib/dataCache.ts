@@ -57,3 +57,21 @@ export const CACHE_KEYS = {
   agenda      : "agenda",       // liste fusionnée (prestations + archivés) propre à l'agenda
   stock       : "stock",
 } as const;
+
+// Prefetch des données d'une page (par son href) : réchauffe le cache avant même
+// la navigation (survol / toucher d'un lien du menu, ou temps mort de l'accueil).
+// Chaque entrée stocke exactement le format que la page lit dans le cache.
+const PREFETCH: Record<string, { key: string; url: string; transform?: (d: unknown) => unknown }> = {
+  "/prospects":    { key: CACHE_KEYS.prospects,    url: "/api/prospects" },
+  "/depenses":     { key: CACHE_KEYS.depenses,     url: "/api/depenses" },
+  "/stock":        { key: CACHE_KEYS.stock,        url: "/api/stock" },
+  "/prestataires": { key: CACHE_KEYS.prestataires, url: "/api/prestataires" },
+  "/prestations":  { key: CACHE_KEYS.prestations,  url: "/api/prestations" },
+  "/clients":      { key: "clients-full",          url: "/api/clients" }, // même clé que la page Clients
+  "/archive":      { key: CACHE_KEYS.archive,      url: "/api/archive", transform: (d) => (Array.isArray(d) ? [...d].reverse() : d) },
+};
+
+export function prefetchPage(href: string): void {
+  const p = PREFETCH[href];
+  if (p) cachePrefetch(p.key, p.url, p.transform);
+}

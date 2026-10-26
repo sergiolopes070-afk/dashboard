@@ -57,17 +57,15 @@ export async function GET() {
   const unauth = await requireAuth();
   if (unauth) return unauth;
   if (!supabase) return NextResponse.json([]);
-  const { data, error } = await supabase
-    .from("prospects")
-    .select("*")
-    .order("created_at", { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const [suivi, dejaClientDe, autoGlobal] = await Promise.all([
+  // Lectures indépendantes → en parallèle (un seul aller-retour au lieu de deux).
+  const [{ data, error }, suivi, dejaClientDe, autoGlobal] = await Promise.all([
+    supabase.from("prospects").select("*").order("created_at", { ascending: false }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getSettingJSON<Record<string, any>>("prospects_suivi", {}),
     indexClients().catch(() => () => null as DejaClient),
     relancesAutoGlobal().catch(() => true),
   ]);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   // autoGlobal : interrupteur « Relances automatiques » (Configuration), pour que la
   // fiche affiche la prochaine relance auto sans requête supplémentaire.
   return NextResponse.json((data || []).map(r => ({

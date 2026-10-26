@@ -153,7 +153,9 @@ export default function PrestatairesPage() {
       const prestataireData: Prestataire[] = await resPrest.json();
       setData(prestataireData); cacheSet(CACHE_KEYS.prestataires, prestataireData);
       if (resPrestations.ok) { const d = await resPrestations.json(); setPrestations(d); cacheSet(CACHE_KEYS.prestations, d); }
-      if (resArchive.ok) { const d = await resArchive.json(); setArchive(d); cacheSet(CACHE_KEYS.archive, d); }
+      // Cache partagé avec la page Historique, qui le lit du plus récent au plus ancien
+      // (même format que la Sidebar et Dépenses) — l'ordre est sans effet sur les stats ici.
+      if (resArchive.ok) { const d = await resArchive.json(); setArchive(d); cacheSet(CACHE_KEYS.archive, [...d].reverse()); }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur");
     } finally {

@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import { Prestation, Prestataire, Depense, ModePaiement } from "./constants";
-import { getEntite, resolveEntite, Entite, ENTITE_OVERRIDE_KEY } from "./entite";
+import { resolveEntite, Entite, ENTITE_OVERRIDE_KEY } from "./entite";
 import { getSettingJSON } from "./settings";
 import { caRealise, caPrevu, estRealisee, prixPresta, frDateToIso } from "./finance";
 import { isoParis } from "./dateParis";
@@ -69,7 +69,6 @@ function rowToPrestation(row: Record<string, any>): Prestation {
     updatedAt        : (row.updated_at as string) || "",
     stripePaymentUrl : (row.stripe_payment_url as string) || "",
     modePaiement     : ((row.mode_paiement as string) || "") as ModePaiement,
-    clientNotes      : Array.isArray(client.notes) ? client.notes : [],
     photos           : Array.isArray(row.photos) ? row.photos : [],
   };
 }
@@ -78,7 +77,9 @@ function rowToPrestation(row: Record<string, any>): Prestation {
 
 // Jointures limitées aux champs lus par rowToPrestation : la fiche client complète
 // et la fiche prestataire (congés, code d'accès…) alourdissaient chaque ligne.
-const SELECT_PRESTATION = "*, clients(id, nom, prenom, tel, email, tags, notes), prestataires(nom, email)";
+// Pas de `notes` (journal client) : aucune liste ne l'affiche, et il était dupliqué
+// sur chaque prestation du client — la fiche client le lit via /api/clients/[id].
+const SELECT_PRESTATION = "*, clients(id, nom, prenom, tel, email, tags), prestataires(nom, email)";
 
 export async function getPrestations(): Promise<Prestation[]> {
   if (!supabase) return [];
@@ -119,7 +120,9 @@ export async function getClientsAvecPrestations(): Promise<ClientAvecPrestations
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { prestations: rows, ...client } = c as { prestations?: Record<string, any>[] } & Record<string, any>;
     const prestations = (rows || [])
-      .map(r => ({ ...rowToPrestation({ ...r, clients: client }), archived: !!r.archive }))
+      // Liste Clients allégée : photos, message et commentaire ne sont pas affichés
+      // dans la liste (la fiche complète passe par /api/clients/[id]).
+      .map(r => ({ ...rowToPrestation({ ...r, clients: client }), photos: undefined, message: "", commentaire: "", archived: !!r.archive }))
       // Ordre chronologique (plus ancienne → plus récente), date vide en dernier
       .sort((a, b) => (frToIso(a.date) || "9999").localeCompare(frToIso(b.date) || "9999") || a.timestamp.localeCompare(b.timestamp));
     return {
@@ -199,14 +202,18 @@ export async function setPrestataireIndispoPlage(pid: string, du: string, au: st
   return next;
 }
 
-export async function getArchive(): Promise<Prestation[]> {
+// from / to (ISO AAAA-MM-JJ, inclus) : fenêtre optionnelle sur la date d'intervention
+// (les lignes sans date sont alors exclues). Sans bornes : tout l'historique.
+export async function getArchive(from?: string, to?: string): Promise<Prestation[]> {
   if (!supabase) return [];
   const avisLaisse = getSettingJSON<Record<string, boolean>>("avis_laisse", {}); // en parallèle de la requête
-  const { data, error } = await supabase
+  let query = supabase
     .from("prestations")
     .select(SELECT_PRESTATION)
-    .eq("archive", true)
-    .order("created_at", { ascending: true });
+    .eq("archive", true);
+  if (from) query = query.gte("date_intervention", from);
+  if (to)   query = query.lte("date_intervention", to);
+  const { data, error } = await query.order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
   // Fusionne le flag « a laissé un avis » (réglage avis_laisse) → champ avis = "OUI".

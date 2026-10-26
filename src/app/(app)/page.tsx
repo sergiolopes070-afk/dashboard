@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   AlertTriangle, Clock, CalendarCheck, UserPlus, UserCheck,
@@ -9,17 +10,23 @@ import {
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import StatusBadge from "@/components/StatusBadge";
-import NewClientModal from "@/components/NewClientModal";
-import AddProspectModal from "@/components/AddProspectModal";
 import { useToast } from "@/components/Toast";
 import AvanceBadge from "@/components/AvanceBadge";
-import { cacheGet, cacheSet } from "@/lib/dataCache";
+import { cacheGet, cacheSet, CACHE_KEYS, prefetchPage } from "@/lib/dataCache";
 import { bilanPeriode, caRealise, formatMontant, isoLocal, periodeMois } from "@/lib/finance";
 import { grouperIndispos, libellePlage } from "@/lib/indispos";
-import ClotureModal from "@/components/ClotureModal";
 import { Prestation, Prestataire, Depense, PAIEMENTS_CLOTURE, MOTIF_TERMINEE } from "@/lib/constants";
 import { isoParis } from "@/lib/dateParis";
 import { waAEnvoyer, waMessage, waLien, waLibelle, waDonneesProspect, WaEtape } from "@/lib/waMessages";
+
+// Modales ouvertes à la demande : chargées à part (allège le JS du 1er affichage,
+// surtout sur mobile), puis préchargées au repos une fois l'accueil affiché.
+const importNewClient  = () => import("@/components/NewClientModal");
+const importAddProspect = () => import("@/components/AddProspectModal");
+const importCloture    = () => import("@/components/ClotureModal");
+const NewClientModal   = dynamic(importNewClient,   { ssr: false });
+const AddProspectModal = dynamic(importAddProspect, { ssr: false });
+const ClotureModal     = dynamic(importCloture,     { ssr: false });
 
 // ── Mini agenda helpers ──────────────────────────────────────────────────────
 const PALETTE_MINI = ["#4285F4","#EA4335","#34A853","#FBBC04","#8B5CF6","#F97316","#06B6D4","#EC4899","#10B981","#6366F1"];
@@ -208,11 +215,30 @@ export default function HomePage() {
         demandes : demRes.ok ? await demRes.json().then(d => Array.isArray(d.demandes) ? d.demandes : []) : prev?.demandes ?? [],
       };
       cacheSet(ACCUEIL_CACHE_KEY, next);
+      // Mêmes réponses brutes que celles lues par les pages Prospects / Stock →
+      // leur cache est déjà chaud quand on y va depuis l'accueil. (Pas Dépenses :
+      // sans l'historique en cache, elle afficherait un CA à 0 le temps du fetch.)
+      if (proRes.ok) cacheSet(CACHE_KEYS.prospects, next.prospects);
+      if (stkRes.ok && next.stock.length) cacheSet(CACHE_KEYS.stock, next.stock);
       setStats(next.stats); setDepenses(next.depenses); setProspects(next.prospects); setStock(next.stock); setDemandes(next.demandes);
     } catch (e: unknown) { setError(e instanceof Error ? e.message : "Erreur inconnue"); }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  // Une fois l'accueil chargé, au repos : précharge les données de la page Clients
+  // (la plus lourde) et le code des modales. Best-effort, ne bloque rien.
+  const statsCharges = !!stats;
+  useEffect(() => {
+    if (!statsCharges) return;
+    const w = window as Window & { requestIdleCallback?: (cb: () => void) => number; cancelIdleCallback?: (id: number) => void };
+    const run = () => {
+      prefetchPage("/clients");
+      importNewClient().catch(() => {}); importAddProspect().catch(() => {}); importCloture().catch(() => {});
+    };
+    if (w.requestIdleCallback) { const id = w.requestIdleCallback(run); return () => w.cancelIdleCallback?.(id); }
+    const t = setTimeout(run, 1500); return () => clearTimeout(t);
+  }, [statsCharges]);
 
   // Lien de l'email (« Ouvrir sur le tableau de bord ») : /?whatsapp=1 ouvre la
   // pop-up WhatsApp, puis on retire le paramètre de l'URL (pas de réouverture).

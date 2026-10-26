@@ -3,11 +3,8 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, SlidersHorizontal, CheckCircle2, MapPin, Loader2 } from "lucide-react";
 import { Prestation, Prestataire, StatutClient, TYPES_PRESTATION } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
-import { ClientFicheById } from "@/components/ClientFiche";
-import EmailActions from "@/components/EmailActions";
-import PhotoLightbox, { LightboxPhoto } from "@/components/PhotoLightbox";
-import NewClientModal from "@/components/NewClientModal";
-import ClotureModal from "@/components/ClotureModal";
+import dynamic from "next/dynamic";
+import type { LightboxPhoto } from "@/components/PhotoLightbox";
 import Topbar from "@/components/Topbar";
 import { useAvanceInscrits } from "@/components/AvanceBadge";
 import { matchInscrit } from "@/lib/avanceMatch";
@@ -16,6 +13,14 @@ import { fetchJsonOk } from "@/lib/fetchOk";
 import { useRouter } from "next/navigation";
 import { waLien, waMobile, waTexteAvis } from "@/lib/waMessages";
 import { isoParis } from "@/lib/dateParis";
+
+// Fenêtres / modales affichées à la demande (fiche RDV, clic) : chargées à part
+// pour alléger le JS du 1er affichage de l'agenda (mobile).
+const ClientFicheById = dynamic(() => import("@/components/ClientFiche").then(m => m.ClientFicheById), { ssr: false });
+const EmailActions    = dynamic(() => import("@/components/EmailActions"),   { ssr: false });
+const PhotoLightbox   = dynamic(() => import("@/components/PhotoLightbox"),  { ssr: false });
+const NewClientModal  = dynamic(() => import("@/components/NewClientModal"), { ssr: false });
+const ClotureModal    = dynamic(() => import("@/components/ClotureModal"),   { ssr: false });
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const PALETTE = [
@@ -60,6 +65,16 @@ function getMondayOfWeek(d: Date): Date {
 }
 function addDays(d: Date, n: number): Date {
   const r = new Date(d); r.setDate(r.getDate() + n); return r;
+}
+function toIsoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+// Historique (archivés) chargé par fenêtre : au 1er affichage, seulement depuis
+// le 1er du mois M-2 (couvre les vues jour / semaine / mois récentes). Dès qu'on
+// affiche une date plus ancienne, tout l'historique est chargé (une fois).
+function debutFenetreArchive(): string {
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 2);
+  return toIsoDate(d);
 }
 function toFrDate(d: Date): string {
   return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
@@ -573,12 +588,17 @@ export default function AgendaPage() {
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const netLoadedRef = useRef(false); // vrai dès qu'un chargement réseau a abouti (≠ cache)
+  const archiveFromRef = useRef(debutFenetreArchive()); // "" = tout l'historique
+  const loadSeqRef = useRef(0); // seule la réponse du dernier chargement est appliquée
   const loadData = () => {
+    const seq = ++loadSeqRef.current;
+    const from = archiveFromRef.current;
     Promise.all([
       fetch("/api/prestations").then(r => r.json()),
       fetch("/api/prestataires").then(r => r.json()),
-      fetch("/api/archive").then(r => r.json()),
+      fetch(from ? `/api/archive?from=${from}` : "/api/archive").then(r => r.json()),
     ]).then(([prestas, prestas2, archived]) => {
+      if (seq !== loadSeqRef.current) return; // un chargement plus récent est en cours
       // Marque les archivés avec _archived:true et fusionne
       const archivedMarked = (Array.isArray(archived) ? archived : [])
         .map((p: Prestation) => ({ ...p, _archived: true }));
@@ -595,9 +615,15 @@ export default function AgendaPage() {
       });
       netLoadedRef.current = true;
       setLoading(false);
-    }).catch(() => { netLoadedRef.current = true; setLoading(false); });
+    }).catch(() => { if (seq !== loadSeqRef.current) return; netLoadedRef.current = true; setLoading(false); });
   };
   useEffect(() => { loadData(); }, []);
+  // Passe à l'historique complet (date affichée avant la fenêtre, RDV introuvable).
+  const chargerToutArchive = () => {
+    if (!archiveFromRef.current) return;
+    archiveFromRef.current = "";
+    loadData();
+  };
 
   // Lien profond depuis l'accueil : /agenda?rdv=<id prestation> → saute à la date
   // du RDV (jour / semaine / mois) et ouvre sa fiche. Lu côté client (window) —
@@ -611,6 +637,8 @@ export default function AgendaPage() {
     if (!id) { rdvLinkDone.current = true; return; }
     const ev = prestations.find(p => p.row === id);
     if (!ev && !netLoadedRef.current) return; // données réseau pas encore arrivées
+    // RDV archivé plus ancien que la fenêtre chargée → on charge tout puis on réessaie.
+    if (!ev && archiveFromRef.current) { netLoadedRef.current = false; chargerToutArchive(); return; }
     rdvLinkDone.current = true;
     if (ev) {
       const d = frToDate(ev.date);
@@ -624,7 +652,7 @@ export default function AgendaPage() {
       toast.error("RDV introuvable");
     }
     router.replace("/agenda", { scroll: false });
-  }, [prestations, loading, router, toast]);
+  }, [prestations, loading, router, toast]); // eslint-disable-line react-hooks/exhaustive-deps -- chargerToutArchive lit des refs
 
   // Vrai si le client de ce RDV s'est inscrit à l'avance immédiate (tél, email ou prénom + nom).
   const estInscritAvance = (ev: { tel?: string; email?: string; prenom?: string; nom?: string }) => matchInscrit(avanceIdx, ev);
@@ -685,6 +713,13 @@ export default function AgendaPage() {
     const start = firstMondayOfMonthGrid(monthDate);
     return Array.from({ length: 42 }, (_, i) => addDays(start, i));
   }, [monthDate]);
+
+  // 1er jour affiché (jour / semaine / grille du mois) avant la fenêtre d'historique
+  // chargée → on charge tout l'historique.
+  const debutVisibleIso = toIsoDate(viewMode === "day" ? dayDate : viewMode === "week" ? weekStart : monthGrid[0]);
+  useEffect(() => {
+    if (archiveFromRef.current && debutVisibleIso < archiveFromRef.current) chargerToutArchive();
+  }, [debutVisibleIso]); // eslint-disable-line react-hooks/exhaustive-deps -- chargerToutArchive lit des refs
 
   // ── Navigation ─────────────────────────────────────────────────────────────
   function navPrev() {

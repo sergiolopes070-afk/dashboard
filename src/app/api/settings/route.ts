@@ -4,9 +4,19 @@ import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   const unauth = await requireAuth();
   if (unauth) return unauth;
+  // ?keys=a,b : ne lit que ces réglages (une page qui n'a besoin que d'une clé
+  // évite de télécharger toute la table). Sans paramètre : comportement complet.
+  const keys = (new URL(req.url).searchParams.get("keys") || "").split(",").map(k => k.trim()).filter(Boolean);
+  if (keys.length && supabase) {
+    const { data, error } = await supabase.from("settings").select("key, value").in("key", keys);
+    if (error) return NextResponse.json({ _supabase: true, _tableReady: false, _error: error.message });
+    const out: Record<string, string> = {};
+    for (const row of data || []) out[row.key as string] = row.value as string;
+    return NextResponse.json({ ...out, _supabase: true, _tableReady: true });
+  }
   const fromEnv: Record<string, string> = {};
   if (process.env.GMAIL_USER)             fromEnv.gmail_user             = process.env.GMAIL_USER;
   if (process.env.GMAIL_APP_PASSWORD)     fromEnv.gmail_app_password     = "***";

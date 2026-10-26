@@ -21,11 +21,15 @@ async function clearRelanceTracking(id: string) {
   } catch (e) { console.error("clearRelanceTracking:", e); }
 }
 
-export async function GET() {
+// ?from=AAAA-MM-JJ&to=AAAA-MM-JJ (optionnels) : fenêtre sur la date d'intervention.
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+export async function GET(req: Request) {
   const unauth = await requireAuth();
   if (unauth) return unauth;
   try {
-    const data = await getArchive();
+    const sp = new URL(req.url).searchParams;
+    const from = sp.get("from") || "", to = sp.get("to") || "";
+    const data = await getArchive(ISO.test(from) ? from : undefined, ISO.test(to) ? to : undefined);
     return NextResponse.json(data);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";

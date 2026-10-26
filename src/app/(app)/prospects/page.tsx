@@ -1803,7 +1803,7 @@ export default function ProspectsPage() {
 
   // Pense-bête : récupère le récap du dernier import (persisté dans settings).
   useEffect(() => {
-    fetch("/api/settings")
+    fetch("/api/settings?keys=inbox_last_import")
       .then(r => r.ok ? r.json() : null)
       .then(s => { if (s?.inbox_last_import) { try { setLastImport(JSON.parse(s.inbox_last_import)); } catch { /* ignore */ } } })
       .catch(() => {});

@@ -482,7 +482,9 @@ export default function ClientsPage() {
     setLoading(true);
     try {
       const [resCli, resPresta] = await Promise.all([
-        fetch(`/api/clients?t=${Date.now()}`, { cache: "no-store" }),
+        // Pas de paramètre anti-cache : la liste en cache (CLIENTS_CACHE_KEY, aussi
+        // préchargée par la Sidebar) s'affiche tout de suite, ce fetch la rafraîchit.
+        fetch("/api/clients", { cache: "no-store" }),
         fetch("/api/prestataires"),
       ]);
       if (resCli.ok) { const d = await resCli.json(); if (Array.isArray(d)) { setData(d); cacheSet(CLIENTS_CACHE_KEY, d); } }
@@ -554,6 +556,12 @@ export default function ClientsPage() {
     if (tri === "nouveaux") return [...list].sort((a, b) => (Date.parse(b.creeLe) || 0) - (Date.parse(a.creeLe) || 0));
     return list;
   }, [clients, search, tri]);
+
+  // Rendu progressif (mobile) : 50 fiches d'abord, « Voir plus » pour la suite.
+  // La recherche et les onglets portent toujours sur TOUTE la liste.
+  const PAGE_CLIENTS = 50;
+  const [nbVisibles, setNbVisibles] = useState(PAGE_CLIENTS);
+  useEffect(() => { setNbVisibles(PAGE_CLIENTS); }, [search, tri]);
 
   // Détecte les fiches en double de façon ROBUSTE et SÛRE. On ne se base JAMAIS
   // sur le nom (deux clients différents peuvent avoir le même nom). On relie deux
@@ -794,7 +802,7 @@ export default function ClientsPage() {
           <SkeletonCards count={6} />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map((c) => {
+            {filtered.slice(0, nbVisibles).map((c) => {
               const key = c.clientId || c.email || `${c.nom}-${c.prenom}-${c.tel}`;
               const isExpanded = expanded.has(key);
               const isConfirmingDel = confirmClientDel === key;
@@ -1092,6 +1100,16 @@ export default function ClientsPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+        {filtered.length > nbVisibles && (
+          <div className="flex justify-center mt-4">
+            <button
+              onClick={() => setNbVisibles(n => n + PAGE_CLIENTS)}
+              className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Voir plus ({filtered.length - nbVisibles} restant{filtered.length - nbVisibles > 1 ? "s" : ""})
+            </button>
           </div>
         )}
       </div>

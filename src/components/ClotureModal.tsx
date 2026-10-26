@@ -65,7 +65,7 @@ export default function ClotureModal({ prestation, prestations, label, motifInit
 
   // Interrupteur global des demandes d'avis (Configuration → Automatisations).
   useEffect(() => {
-    fetch("/api/settings").then(r => r.ok ? r.json() : null).then(s => {
+    fetch("/api/settings?keys=avis_actif").then(r => r.ok ? r.json() : null).then(s => {
       const actif = s ? s.avis_actif !== "false" : true;
       setAvisGlobalActif(actif); setEnvoyerAvis(actif);
     }).catch(() => {});
