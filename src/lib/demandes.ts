@@ -1,4 +1,4 @@
-import { getSettingJSON, setSettingRaw } from "./settings";
+import { getSettingJSON, majSettingJSON } from "./settings";
 
 // Demandes de matériel des prestataires — stockées dans settings (clé JSONB),
 // donc AUCUNE nouvelle table à créer.
@@ -20,30 +20,26 @@ export async function getDemandes(): Promise<Demande[]> {
   return Array.isArray(list) ? list : [];
 }
 
-async function save(list: Demande[]): Promise<void> {
-  await setSettingRaw(KEY, JSON.stringify(list.slice(-500)));
+// Relecture fraîche → modification → écriture (lève une erreur si échec).
+async function maj(fn: (list: Demande[]) => Demande[]): Promise<Demande[]> {
+  return majSettingJSON<Demande[]>(KEY, [], l => fn(Array.isArray(l) ? l : []).slice(-500));
 }
 
 export async function addDemande(d: Omit<Demande, "id" | "at" | "statut">): Promise<Demande> {
-  const list = await getDemandes();
   const demande: Demande = {
     ...d,
     id: (globalThis.crypto?.randomUUID?.() ?? String(Date.now() + Math.random())),
     at: new Date().toISOString(),
     statut: "NOUVELLE",
   };
-  await save([...list, demande]);
+  await maj(list => [...list, demande]);
   return demande;
 }
 
 export async function setDemandeStatut(id: string, statut: "NOUVELLE" | "TRAITEE"): Promise<Demande[]> {
-  const list = (await getDemandes()).map(x => x.id === id ? { ...x, statut } : x);
-  await save(list);
-  return list;
+  return maj(list => list.map(x => x.id === id ? { ...x, statut } : x));
 }
 
 export async function removeDemande(id: string): Promise<Demande[]> {
-  const list = (await getDemandes()).filter(x => x.id !== id);
-  await save(list);
-  return list;
+  return maj(list => list.filter(x => x.id !== id));
 }

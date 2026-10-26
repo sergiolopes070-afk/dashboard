@@ -16,8 +16,12 @@ export async function PATCH(req: Request) {
   if (unauth) return unauth;
   const { id, statut } = await req.json() as { id?: string; statut?: "NOUVELLE" | "TRAITEE" };
   if (!id) return NextResponse.json({ error: "id requis" }, { status: 400 });
-  const demandes = await setDemandeStatut(id, statut === "TRAITEE" ? "TRAITEE" : "NOUVELLE");
-  return NextResponse.json({ demandes });
+  try {
+    const demandes = await setDemandeStatut(id, statut === "TRAITEE" ? "TRAITEE" : "NOUVELLE");
+    return NextResponse.json({ demandes });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Enregistrement impossible" }, { status: 500 });
+  }
 }
 
 export async function DELETE(req: Request) {
@@ -25,6 +29,10 @@ export async function DELETE(req: Request) {
   if (unauth) return unauth;
   const { id } = await req.json() as { id?: string };
   if (!id) return NextResponse.json({ error: "id requis" }, { status: 400 });
-  const demandes = await removeDemande(id);
-  return NextResponse.json({ demandes });
+  try {
+    const demandes = await removeDemande(id);
+    return NextResponse.json({ demandes });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Suppression impossible" }, { status: 500 });
+  }
 }

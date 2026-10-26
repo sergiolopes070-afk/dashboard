@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { Entite, ENTITES, ENTITE_OVERRIDE_KEY } from "@/lib/entite";
-import { getSettingJSON, setSettingRaw } from "@/lib/settings";
+import { getSettingJSON, majSettingJSON } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -35,12 +35,15 @@ export async function POST(req: Request) {
   const { prestationId, entite } = await req.json() as { prestationId?: string; entite?: string | null };
   if (!prestationId) return NextResponse.json({ error: "prestationId requis" }, { status: 400 });
 
-  const map = await lire();
-  if (entite && ENTITES.includes(entite as Entite)) map[prestationId] = entite as Entite;
-  else delete map[prestationId]; // vide → suppression de l'exception (retour à l'auto)
-
-  const err = await setSettingRaw(KEY, JSON.stringify(map));
-  if (err) return NextResponse.json({ error: err }, { status: 500 });
+  let map: Map;
+  try {
+    map = await majSettingJSON<Map>(KEY, {}, m => {
+      if (entite && ENTITES.includes(entite as Entite)) m[prestationId] = entite as Entite;
+      else delete m[prestationId]; // vide → suppression de l'exception (retour à l'auto)
+    });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Enregistrement impossible" }, { status: 500 });
+  }
 
   return NextResponse.json({ success: true, overrides: map });
 }

@@ -11,7 +11,7 @@
 // À la conversion prospect → client, la liste est COPIÉE vers la clé du client
 // (transferDevisExternes, idempotent : dédoublonné par id ; la copie prospect reste).
 // ─────────────────────────────────────────────────────────────────────────────
-import { getSettingJSON, setSettingRaw } from "@/lib/settings";
+import { getSettingJSON, majSettingJSON } from "@/lib/settings";
 import { supabase } from "@/lib/supabase";
 
 export const BUCKET = "depenses";
@@ -54,8 +54,13 @@ export async function listDevis(kind: DevisKind, id: string): Promise<DevisExter
   return Array.isArray(list) ? list : [];
 }
 
-export async function saveDevis(kind: DevisKind, id: string, list: DevisExterne[]): Promise<string | null> {
-  return setSettingRaw(key(kind, id), JSON.stringify(list));
+// Relecture fraîche → modification → écriture (voir majSettingJSON). Lève une
+// erreur si la lecture ou l'écriture échoue (rien n'est écrasé).
+export async function majDevis(kind: DevisKind, id: string, maj: (list: DevisExterne[]) => DevisExterne[] | void): Promise<DevisExterne[]> {
+  return majSettingJSON<DevisExterne[]>(key(kind, id), [], l => {
+    const list = Array.isArray(l) ? l : [];
+    return maj(list) ?? list;
+  });
 }
 
 // Nettoie / normalise une saisie (création ou modification partielle).
@@ -114,13 +119,16 @@ export async function transferDevisExternes(prospectId: string, clientId: string
   if (!validId(prospectId) || !validId(clientId)) return 0;
   const from = await listDevis("prospect", prospectId);
   if (from.length === 0) return 0;
-  const to = await listDevis("client", clientId);
-  const known = new Set(to.map(d => d.id));
-  const added = from.filter(d => !known.has(d.id)).map(d => ({ ...d, origine: "prospect" as const }));
-  if (added.length === 0) return 0;
-  const err = await saveDevis("client", clientId, [...added, ...to]);
-  if (err) { console.error("[devis-externes] transfert KO :", err); return 0; }
-  return added.length;
+  let nb = 0;
+  try {
+    await majDevis("client", clientId, to => {
+      const known = new Set(to.map(d => d.id));
+      const added = from.filter(d => !known.has(d.id)).map(d => ({ ...d, origine: "prospect" as const }));
+      nb = added.length;
+      if (added.length > 0) return [...added, ...to];
+    });
+  } catch (e) { console.error("[devis-externes] transfert KO :", e instanceof Error ? e.message : e); return 0; }
+  return nb;
 }
 
 // Retrouve le client créé à partir d'un prospect (email, sinon téléphone, sinon

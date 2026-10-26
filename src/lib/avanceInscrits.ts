@@ -9,7 +9,7 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { getSetting } from "./mailer";
-import { getSettingJSON, setSettingRaw } from "./settings";
+import { getSettingJSON, majSettingJSON } from "./settings";
 import { normEmail, normTel } from "./inbox";
 import { telCle, nomCle } from "./avanceMatch";
 
@@ -101,7 +101,12 @@ export async function scanAvanceInscrits(opts: { days?: number } = {}): Promise<
   }
 
   if (nouveaux.length) {
-    await setSettingRaw(KEY, JSON.stringify([...existants, ...nouveaux].slice(-5000)));
+    // Ajout sur la liste RELUE juste avant l'écriture (dédoublonnée tél + email).
+    await majSettingJSON<Inscrit[]>(KEY, [], l => {
+      const arr = Array.isArray(l) ? l : [];
+      const deja = new Set(arr.map(i => `${i.tel}|${i.email}`));
+      return [...arr, ...nouveaux.filter(n => !deja.has(`${n.tel}|${n.email}`))].slice(-5000);
+    });
   }
   return { trouves, ajoutes: nouveaux.length, nouveaux };
 }

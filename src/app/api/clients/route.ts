@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { appendPrestation, updatePrestation, deleteClient, updateClientTags, updateClientNotes, getClientIdOfPrestation, getClientsAvecPrestations } from "@/lib/sheets";
-import { getSettingJSON, setSettingRaw } from "@/lib/settings";
+import { majSettingJSON } from "@/lib/settings";
 import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -21,9 +21,7 @@ export async function GET() {
 // Enregistre la préférence fiscale d'un client (avance / credit) dans la table
 // `settings` (clé `fiscal_clients`, JSON) — même stockage que /api/clients/fiscal.
 async function saveFiscal(clientId: string, fiscal: "avance" | "credit") {
-  const map = await getSettingJSON<Record<string, string>>("fiscal_clients", {});
-  map[clientId] = fiscal;
-  await setSettingRaw("fiscal_clients", JSON.stringify(map));
+  await majSettingJSON<Record<string, string>>("fiscal_clients", {}, map => { map[clientId] = fiscal; });
 }
 
 // POST : ajouter un nouveau client / prestation

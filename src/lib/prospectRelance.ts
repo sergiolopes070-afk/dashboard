@@ -15,7 +15,7 @@ import { ImapFlow } from "imapflow";
 import { supabase } from "./supabase";
 import { getSetting, sendProspectRelanceEmail, sendProspectInfosEmail, sendPatronNotif } from "./mailer";
 import { remiseAppliqueeProspect } from "./devisKinou";
-import { getSettingRaw, setSettingRaw } from "./settings";
+import { getSettingRaw, setSettingRaw, majSettingJSON } from "./settings";
 import { isoParis, frParis } from "./dateParis";
 import { telCle, emailCle } from "./avanceMatch";
 import {
@@ -86,11 +86,7 @@ async function lireSuiviFrais(): Promise<Record<string, Suivi> | null> {
   try { return JSON.parse(raw) as Record<string, Suivi>; } catch { return null; }
 }
 async function majSuivi(id: string, patch: Partial<Suivi>): Promise<Suivi> {
-  const all = await lireSuiviFrais();
-  if (!all) throw new Error("lecture du suivi impossible (rien n'a été écrit)");
-  all[id] = { ...(all[id] || {}), ...patch };
-  const err = await setSettingRaw(SUIVI_KEY, JSON.stringify(all));
-  if (err) throw new Error(`suivi non enregistré : ${err}`);
+  const all = await majSettingJSON<Record<string, Suivi>>(SUIVI_KEY, {}, a => { a[id] = { ...(a[id] || {}), ...patch }; });
   return all[id];
 }
 async function ajouterJournal(id: string, texte: string, maj: Record<string, unknown>): Promise<void> {

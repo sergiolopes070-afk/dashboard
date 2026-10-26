@@ -57,6 +57,10 @@ export async function GET(req: Request) {
   }
 
   const daysParam = parseInt(url.searchParams.get("days") || "", 10);
-  const res = await scanAvanceInscrits({ days: Number.isFinite(daysParam) && daysParam > 0 ? daysParam : undefined });
-  return NextResponse.json(res);
+  try {
+    const res = await scanAvanceInscrits({ days: Number.isFinite(daysParam) && daysParam > 0 ? daysParam : undefined });
+    return NextResponse.json(res);
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Scan impossible" }, { status: 500 });
+  }
 }

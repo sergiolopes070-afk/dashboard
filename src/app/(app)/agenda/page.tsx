@@ -1328,8 +1328,10 @@ export default function AgendaPage() {
               // ── Message mission au prestataire (WhatsApp, avec réponse directe) ──
               const prestataireObj = ev.prestataire ? prestataires.find(p => p.nom === ev.prestataire) : undefined;
               const baseUrl   = typeof window !== "undefined" ? window.location.origin : "";
-              const acceptUrl = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=accepter`;
-              const refusUrl  = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=refuser`;
+              // `p` = prestataire_id : le lien ne vaut que pour le prestataire à qui il a été envoyé.
+              const pParam    = prestataireObj?.id ? `&p=${encodeURIComponent(prestataireObj.id)}` : "";
+              const acceptUrl = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=accepter${pParam}`;
+              const refusUrl  = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=refuser${pParam}`;
               const missionMsg = (
                 `Bonjour ${ev.prestataire} 👋,\n\nUne mission vous a été proposée chez KinouClean :\n\n` +
                 `👤 Client : ${ev.prenom} ${ev.nom}\n` +

@@ -3,7 +3,7 @@ import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { sendDevisExterneEmail } from "@/lib/mailer";
 import { updateClientNotes } from "@/lib/sheets";
-import { BUCKET, FOLDER, listDevis, saveDevis, parseKind, validId, type DevisKind, type DevisExterne } from "../_store";
+import { BUCKET, FOLDER, listDevis, majDevis, parseKind, validId, type DevisKind, type DevisExterne } from "../_store";
 import { isoParis } from "@/lib/dateParis";
 
 export const dynamic = "force-dynamic";
@@ -110,10 +110,12 @@ export async function POST(req: Request) {
     envoisCount: (cur.envoisCount || 0) + 1,
   };
   // Relecture fraîche pour ne rien écraser pendant l'envoi SMTP.
-  const fresh = await listDevis(kind, id);
-  const next = (fresh.some(d => d.id === cur.id) ? fresh : list).map(d => (d.id === cur.id ? updated : d));
-  const errSave = await saveDevis(kind, id, next);
-  if (errSave) return NextResponse.json({ error: `Email envoyé à ${dest.email}, mais devis non mis à jour : ${errSave}` }, { status: 500 });
+  let next: DevisExterne[];
+  try {
+    next = await majDevis(kind, id, fresh => (fresh.some(d => d.id === cur.id) ? fresh : list).map(d => (d.id === cur.id ? updated : d)));
+  } catch (e) {
+    return NextResponse.json({ error: `Email envoyé à ${dest.email}, mais devis non mis à jour : ${e instanceof Error ? e.message : String(e)}` }, { status: 500 });
+  }
 
   // 6. Journal (best effort) — même stockage que les ajouts : notes client / commentaires prospect.
   const montant = cur.montant ? ` · ${cur.montant} € TTC` : "";

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
-import { getSettingJSON, setSettingRaw } from "@/lib/settings";
+import { majSettingJSON } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -25,10 +25,7 @@ export async function POST(req: Request) {
 
   if (avisLaisse !== undefined) {
     try {
-      const map = await getSettingJSON<Record<string, boolean>>("avis_laisse", {});
-      if (avisLaisse) map[id] = true; else delete map[id];
-      const err = await setSettingRaw("avis_laisse", JSON.stringify(map));
-      if (err) return NextResponse.json({ error: err }, { status: 500 });
+      await majSettingJSON<Record<string, boolean>>("avis_laisse", {}, map => { if (avisLaisse) map[id] = true; else delete map[id]; });
     } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur" }, { status: 500 }); }
   }
 

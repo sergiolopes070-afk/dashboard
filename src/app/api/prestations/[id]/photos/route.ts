@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
-import { getSettingJSON, setSettingRaw } from "@/lib/settings";
+import { getSettingJSON, majSettingJSON } from "@/lib/settings";
 import { updateClientNotes } from "@/lib/sheets";
 import { sendPhotosInterventionEmail } from "@/lib/mailer";
 import { cassepropre } from "@/lib/devisKinou";
@@ -188,11 +188,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const envoi: Envoi = { le: now, a: to };
   let warn = "";
   try {
-    const map = await getSettingJSON<Record<string, Envoi>>("photos_envoyees", {});
-    for (const i of ctx.ids) map[i] = envoi;
-    const err = await setSettingRaw("photos_envoyees", JSON.stringify(map));
-    if (err) warn = err;
-  } catch (e) { warn = e instanceof Error ? e.message : String(e); }
+    await majSettingJSON<Record<string, Envoi>>("photos_envoyees", {}, map => { for (const i of ctx.ids) map[i] = envoi; });
+  } catch (e) { warn = e instanceof Error ? e.message : String(e); console.error("[prestations/photos] marquage KO :", warn); }
 
   // Journal client (notes : plus récente en tête, même format que ClientFiche).
   const jjmm = ctx.date ? ctx.date.slice(0, 5) : new Date().toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit" });

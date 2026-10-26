@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
-import { getSettingJSON, setSettingRaw } from "@/lib/settings";
+import { getSettingJSON, majSettingJSON } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -40,12 +40,14 @@ export async function POST(req: Request) {
   if (!clientId) return NextResponse.json({ error: "clientId requis" }, { status: 400 });
 
   const valide: Fiscal = fiscal === "avance" || fiscal === "credit" ? fiscal : "";
-  const map = await lire();
-  if (valide) map[clientId] = valide;
-  else delete map[clientId];
-
-  const err = await setSettingRaw(KEY, JSON.stringify(map));
-  if (err) return NextResponse.json({ error: err }, { status: 500 });
+  try {
+    await majSettingJSON<Map>(KEY, {}, map => {
+      if (valide) map[clientId] = valide;
+      else delete map[clientId];
+    });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Enregistrement impossible" }, { status: 500 });
+  }
 
   return NextResponse.json({ success: true, fiscal: valide });
 }

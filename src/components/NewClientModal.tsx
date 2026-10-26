@@ -424,8 +424,10 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
     let prestataireBlock = null;
     if (savedPrestataire) {
       const prestaTel = savedPrestataire.tel.replace(/\s/g, "").replace(/^0/, "33");
-      const acceptUrl = savedPrestationId ? `${baseUrl}/api/mission/reponse?id=${savedPrestationId}&action=accepter` : "";
-      const refusUrl  = savedPrestationId ? `${baseUrl}/api/mission/reponse?id=${savedPrestationId}&action=refuser`  : "";
+      // `p` = prestataire_id : le lien ne vaut que pour le prestataire à qui il a été envoyé.
+      const pParam    = savedPrestataire.id ? `&p=${encodeURIComponent(savedPrestataire.id)}` : "";
+      const acceptUrl = savedPrestationId ? `${baseUrl}/api/mission/reponse?id=${savedPrestationId}&action=accepter${pParam}` : "";
+      const refusUrl  = savedPrestationId ? `${baseUrl}/api/mission/reponse?id=${savedPrestationId}&action=refuser${pParam}`  : "";
       const prestaMsg = encodeURIComponent(
         `Bonjour ${savedPrestataire.nom} 👋,\n\nUne nouvelle mission vous a été proposée chez KinouClean :\n\n` +
         `👤 Client : ${f.prenom} ${f.nom}\n` +

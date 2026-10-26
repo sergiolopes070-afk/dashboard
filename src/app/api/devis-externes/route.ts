@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
-import { listDevis, saveDevis, sanitize, removeFile, parseKind, validId, type DevisExterne } from "./_store";
+import { listDevis, majDevis, sanitize, removeFile, parseKind, validId, type DevisExterne } from "./_store";
 
 export const dynamic = "force-dynamic";
 
@@ -49,10 +49,9 @@ export async function POST(req: Request) {
   const devis = sanitize(body.devis || {});
   if (!devis.intitule && !devis.fichier) return badRequest("Indique au moins un intitulé ou joins le devis.");
 
-  const list = await listDevis(kind, body.id);
-  const next = [devis, ...list];
-  const err = await saveDevis(kind, body.id, next);
-  if (err) return NextResponse.json({ error: err }, { status: 500 });
+  let next: DevisExterne[];
+  try { next = await majDevis(kind, body.id, list => [devis, ...list]); }
+  catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : "Enregistrement impossible" }, { status: 500 }); }
   return NextResponse.json({ devis, list: next });
 }
 
@@ -64,15 +63,21 @@ export async function PATCH(req: Request) {
   const kind = parseKind(body.kind);
   if (!kind || !validId(body.id) || !body.devisId) return badRequest("Paramètres manquants");
 
-  const list = await listDevis(kind, body.id);
-  const cur = list.find(d => d.id === body.devisId);
-  if (!cur) return NextResponse.json({ error: "Devis introuvable" }, { status: 404 });
-  const updated = sanitize(body.updates || {}, cur);
+  // Modification appliquée sur la liste RELUE juste avant l'écriture.
+  const r: { cur?: DevisExterne; updated?: DevisExterne } = {};
+  let next: DevisExterne[];
+  try {
+    next = await majDevis(kind, body.id, list => {
+      r.cur = list.find(d => d.id === body.devisId);
+      if (!r.cur) return;
+      const updated = r.updated = sanitize(body.updates || {}, r.cur);
+      return list.map(d => (d.id === updated.id ? updated : d));
+    });
+  } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : "Enregistrement impossible" }, { status: 500 }); }
+  const { cur, updated } = r;
+  if (!cur || !updated) return NextResponse.json({ error: "Devis introuvable" }, { status: 404 });
   // Pièce jointe remplacée ou retirée → on supprime l'ancien fichier.
   if (cur.fichier && cur.fichier.path !== updated.fichier?.path && await fileIsExclusive(kind, body.id, cur)) await removeFile(cur.fichier.path);
-  const next = list.map(d => (d.id === cur.id ? updated : d));
-  const err = await saveDevis(kind, body.id, next);
-  if (err) return NextResponse.json({ error: err }, { status: 500 });
   return NextResponse.json({ devis: updated, list: next });
 }
 
@@ -85,11 +90,17 @@ export async function DELETE(req: Request) {
   if (!kind || !validId(body.id) || !body.devisId) return badRequest("Paramètres manquants");
 
   const list = await listDevis(kind, body.id);
-  const cur = list.find(d => d.id === body.devisId);
-  if (!cur) return NextResponse.json({ list });
-  const next = list.filter(d => d.id !== cur.id);
-  const err = await saveDevis(kind, body.id, next);
-  if (err) return NextResponse.json({ error: err }, { status: 500 });
+  if (!list.some(d => d.id === body.devisId)) return NextResponse.json({ list });
+  const r: { cur?: DevisExterne } = {};
+  let next: DevisExterne[];
+  try {
+    next = await majDevis(kind, body.id, l => {
+      r.cur = l.find(d => d.id === body.devisId);
+      if (r.cur) return l.filter(d => d.id !== body.devisId);
+    });
+  } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : "Suppression impossible" }, { status: 500 }); }
+  const cur = r.cur;
+  if (!cur) return NextResponse.json({ list: next });
   if (cur.fichier && await fileIsExclusive(kind, body.id, cur)) await removeFile(cur.fichier.path);
   return NextResponse.json({ list: next });
 }

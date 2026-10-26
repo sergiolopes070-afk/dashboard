@@ -13,7 +13,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { supabase } from "./supabase";
 import { getSetting } from "./mailer";
-import { getSettingJSON, getSettingRaw, setSettingRaw } from "./settings";
+import { getSettingJSON, getSettingRaw, setSettingRaw, majSettingJSON } from "./settings";
 import { isoParis } from "./dateParis";
 
 const SUBJECT_MATCH = "Nouvelle demande de devis";
@@ -32,8 +32,13 @@ const IMPORT_MIN_DATE = "2026-09-19";
 async function lireTraites(): Promise<string[]> {
   return getSettingJSON<string[]>(PROCESSED_KEY, []);
 }
-async function ecrireTraites(ids: string[]): Promise<void> {
-  await setSettingRaw(PROCESSED_KEY, JSON.stringify(ids.slice(-2000)));
+// Ajoute les Message-ID à la liste RELUE juste avant l'écriture (sans doublon).
+async function ecrireTraites(nouveaux: string[]): Promise<void> {
+  await majSettingJSON<string[]>(PROCESSED_KEY, [], l => {
+    const ids = Array.isArray(l) ? l : [];
+    const deja = new Set(ids);
+    return [...ids, ...nouveaux.filter(id => !deja.has(id))].slice(-2000);
+  });
 }
 
 // Normalisation pour comparer des identités de façon fiable.
@@ -344,7 +349,13 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
   }
 
   if (!dry && nouveauxIds.length) {
-    await ecrireTraites([...Array.from(traites), ...nouveauxIds]);
+    // Non bloquant (le 2ᵉ garde-fou empêche les doublons), mais signalé.
+    try { await ecrireTraites(nouveauxIds); }
+    catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[inbox] suivi des emails traités non enregistré :", msg);
+      result.errors.push(`Suivi des emails traités non enregistré : ${msg}`);
+    }
   }
   return result;
   } finally {
