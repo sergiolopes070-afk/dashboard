@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   AlertTriangle, Clock, CalendarCheck, UserPlus, UserCheck,
   CalendarDays, ChevronRight, ChevronDown, UserSearch, X, Loader2,
@@ -9,13 +10,14 @@ import {
 import Topbar from "@/components/Topbar";
 import StatusBadge from "@/components/StatusBadge";
 import NewClientModal from "@/components/NewClientModal";
-import AddressAutocomplete from "@/components/AddressAutocomplete";
+import AddProspectModal from "@/components/AddProspectModal";
+import { useToast } from "@/components/Toast";
 import AvanceBadge from "@/components/AvanceBadge";
 import { cacheGet, cacheSet } from "@/lib/dataCache";
 import { bilanPeriode, caRealise, formatMontant, isoLocal, periodeMois } from "@/lib/finance";
 import { grouperIndispos, libellePlage } from "@/lib/indispos";
 import ClotureModal from "@/components/ClotureModal";
-import { Prestation, Prestataire, Depense, PAIEMENTS_CLOTURE, MOTIF_TERMINEE, TYPES_PRESTATION } from "@/lib/constants";
+import { Prestation, Prestataire, Depense, PAIEMENTS_CLOTURE, MOTIF_TERMINEE } from "@/lib/constants";
 import { isoParis } from "@/lib/dateParis";
 import { waAEnvoyer, waMessage, waLien, waLibelle, waDonneesProspect, WaEtape } from "@/lib/waMessages";
 
@@ -88,9 +90,6 @@ function dernierMail(s?: SuiviProspect): { label: string; date: string; jours: n
 interface Demande { id: string; at: string; prestataireNom: string; categorie: string; quantite: string; details: string; statut: string; }
 interface StockItem { id: string; nom: string; unite: string; quantite: number; seuil: number; prixUnitaire: number | null; conso: Record<string, number>; historique: { date: string; type: string; quantite: number }[]; }
 
-const SOURCES_PROSPECT   = ["Google","Réseaux sociaux","Bouche à oreille","Recommandation","Formulaire web","Autre"];
-const TYPES_PRESTA_QUICK = TYPES_PRESTATION; // liste commune (constants.ts)
-
 // Autonomie d'un produit = stock / consommation hebdo réelle (sorties 30 j).
 function autonomieSemaines(it: StockItem): number | null {
   const depuis = Date.now() - 30 * 86_400_000;
@@ -99,80 +98,17 @@ function autonomieSemaines(it: StockItem): number | null {
   return it.quantite / (conso / (30 / 7));
 }
 
-function QuickProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ genre: "", prenom: "", nom: "", tel: "", email: "", typePresta: "", source: "", adresse: "", notes: "" });
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState("");
-  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
-  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.prenom || !form.nom) { setError("Prénom et nom sont requis."); return; }
-    setSaving(true); setError("");
-    try {
-      const res = await fetch("/api/prospects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-      if (!res.ok) throw new Error((await res.json()).error || "Erreur");
-      onSaved();
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : "Erreur"); }
-    finally { setSaving(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center"><UserSearch size={15} className="text-purple-600" /></div>
-            <div><h2 className="font-semibold text-gray-900">Nouveau prospect</h2><p className="text-xs text-gray-400">Ajout rapide</p></div>
-          </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full"><X size={18} className="text-gray-400" /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          {error && <p className="text-xs text-red-500 bg-red-50 p-2 rounded-lg">{error}</p>}
-          <div className="flex gap-2">
-            {["Monsieur","Madame"].map(g => (
-              <button key={g} type="button" onClick={() => set("genre", form.genre === g ? "" : g)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${form.genre === g ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"}`}>{g}</button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500 mb-1 block">Prénom *</label><input value={form.prenom} onChange={e => set("prenom", e.target.value)} className={inputCls} /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Nom *</label><input value={form.nom} onChange={e => set("nom", e.target.value)} className={inputCls} /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500 mb-1 block">Téléphone</label><input value={form.tel} onChange={e => set("tel", e.target.value)} className={inputCls} placeholder="06 00 00 00 00" /></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Email</label><input type="email" value={form.email} onChange={e => set("email", e.target.value)} className={inputCls} /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500 mb-1 block">Type de prestation</label>
-              <select value={form.typePresta} onChange={e => set("typePresta", e.target.value)} className={inputCls}>
-                <option value="">— Sélectionner —</option>{TYPES_PRESTA_QUICK.map(t => <option key={t} value={t}>{t}</option>)}
-              </select></div>
-            <div><label className="text-xs text-gray-500 mb-1 block">Source</label>
-              <select value={form.source} onChange={e => set("source", e.target.value)} className={inputCls}>
-                <option value="">— Source —</option>{SOURCES_PROSPECT.map(s => <option key={s} value={s}>{s}</option>)}
-              </select></div>
-          </div>
-          <div><label className="text-xs text-gray-500 mb-1 block">Adresse / Zone</label>
-            <AddressAutocomplete value={form.adresse} onChange={v => set("adresse", v)} onSelect={(a, cp, v) => set("adresse", `${a}, ${cp} ${v}`.trim())} className={inputCls} placeholder="Ville ou adresse" /></div>
-          <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">Annuler</button>
-            <button type="submit" disabled={saving} className="flex-1 py-2 rounded-xl bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2">
-              {saving ? <Loader2 size={14} className="animate-spin" /> : null}{saving ? "Enregistrement…" : "Ajouter"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
+// Filtre « à réaffecter » de la page Prestations (valeur exacte de son menu Statut).
+const STATUT_A_REAFFECTER = "PRESTATAIRE REFUSÉ – À RÉAFFECTER";
+// Reports rapides d'une relance (jours calendrier, heure de Paris).
+const REPORTS_RELANCE = [{ j: 1, label: "+1 j" }, { j: 3, label: "+3 j" }, { j: 7, label: "+1 sem." }];
 
 const ACCUEIL_CACHE_KEY = "accueil";
 interface AccueilCache { stats: Stats; depenses: Depense[]; prospects: Prospect[]; stock: StockItem[]; demandes: Demande[] }
 
 export default function HomePage() {
   const router = useRouter();
+  const toast = useToast();
   // Dernières données connues (cache mémoire) : affichage instantané au retour sur
   // l'accueil, la mise à jour se fait en arrière-plan.
   const cache = cacheGet<AccueilCache>(ACCUEIL_CACHE_KEY);
@@ -192,6 +128,7 @@ export default function HomePage() {
   const [clotureOpen, setClotureOpen]         = useState(false); // modale « RDV à clôturer »
   const [relanceOpen, setRelanceOpen]         = useState(false); // modale « relances en retard »
   const [busyId, setBusyId]                   = useState("");    // action en cours sur une ligne
+  const [clotTout, setClotTout]               = useState(false); // « Tout clôturer » en cours
   const [relanceRes, setRelanceRes]           = useState<Record<string, { ok: boolean; msg: string }>>({}); // résultat d'envoi par prospect
   const [waOpen, setWaOpen]                   = useState(false); // modale « WhatsApp à envoyer aujourd'hui »
   const [waFait, setWaFait]                   = useState<Record<string, WaEtape>>({}); // envoyés (✓) pendant la session
@@ -366,11 +303,33 @@ export default function HomePage() {
     } catch { /* non bloquant */ }
     finally { setBusyId(""); }
   }
+  // Mode de paiement affiché pour un RDV à clôturer : choix fait dans la pop-up,
+  // sinon celui déjà prévu sur le RDV, sinon « Avance immédiate ».
+  const payDe = (p: Prestation) => clotPay[p.row] ?? (p.modePaiement || PAIEMENTS_CLOTURE[0]);
+  // Clôture en lot des RDV passés dont le mode de paiement est déjà prévu.
+  async function cloturerTout() {
+    const cibles = rdvPasses.filter(p => p.modePaiement);
+    if (!cibles.length || clotTout) return;
+    const total = cibles.reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+    if (!confirm(`Clôturer ${cibles.length} RDV (${formatMontant(total)}) avec leur mode de paiement prévu ?`)) return;
+    setClotTout(true);
+    const res = await Promise.all(cibles.map(p =>
+      fetch("/api/archive", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: p.row, reason: MOTIF_TERMINEE, modePaiement: payDe(p) }),
+      }).then(r => r.ok).catch(() => false),
+    ));
+    const okIds = cibles.filter((_, i) => res[i]).map(p => p.row);
+    const ko = cibles.length - okIds.length;
+    if (okIds.length) { retirerRdvClotures(okIds); toast.success(`${okIds.length} RDV clôturé${okIds.length > 1 ? "s" : ""}`); }
+    if (ko) toast.error(`${ko} clôture${ko > 1 ? "s" : ""} en échec — réessaie`);
+    setClotTout(false);
+  }
   // Retire les RDV clôturés de la liste locale (pop-up + compteur).
   function retirerRdvClotures(ids: string[]) {
     setStats(s => s ? { ...s, prestations: s.prestations.filter(p => !ids.includes(p.row)) } : s);
   }
-  // Reporte la relance d'un prospect à demain (reste géré depuis le tableau de bord).
+  // Reporte la relance d'un prospect (+1 j / +3 j / +1 sem., reste géré depuis le tableau de bord).
   async function reporterRelance(id: string, isoDate: string) {
     setBusyId(id);
     try {
@@ -512,17 +471,17 @@ export default function HomePage() {
           const relanceRetard = relanceEnRetard.filter(p => p.dateRelance < todayIso);
           type Tache = { count: number; sing: string; plur: string; hint?: string; icon: typeof Phone; color: string; href?: string; onClick?: () => void };
           const items: Tache[] = [
-            { count: toReassign,               sing: "prestation à réaffecter",     plur: "prestations à réaffecter",     hint: "prestataire refusé", icon: AlertTriangle, color: "red", href: "/prestations" },
+            { count: toReassign,               sing: "prestation à réaffecter",     plur: "prestations à réaffecter",     hint: "prestataire refusé", icon: AlertTriangle, color: "red", href: `/prestations?statut=${encodeURIComponent(STATUT_A_REAFFECTER)}` },
             { count: rdvPasses.length,         sing: "RDV passé à clôturer",        plur: "RDV passés à clôturer",        hint: "pour un CA et un stock justes", icon: CheckCircle2, color: "blue", onClick: () => setClotureOpen(true) },
-            { count: rdvAujourdhui.length,     sing: "rendez-vous aujourd'hui",     plur: "rendez-vous aujourd'hui",      icon: CalendarCheck, color: "blue", href: "/agenda" },
+            { count: rdvAujourdhui.length,     sing: "rendez-vous aujourd'hui",     plur: "rendez-vous aujourd'hui",      icon: CalendarCheck, color: "blue", href: rdvAujourdhui.length === 1 ? `/agenda?rdv=${rdvAujourdhui[0].row}` : "/agenda" },
             { count: relanceEnRetard.length,   sing: "prospect à relancer",         plur: "prospects à relancer",         hint: relanceRetard.length ? `dont ${relanceRetard.length} en retard` : undefined, icon: Phone, color: "amber", onClick: () => setRelanceOpen(true) },
             { count: waRestants,               sing: "💬 message WhatsApp à envoyer", plur: "💬 messages WhatsApp à envoyer", hint: "même message que l'email parti aujourd'hui", icon: MessageCircle, color: "green", onClick: () => setWaOpen(true) },
-            { count: leadsNouveaux.length,     sing: "nouveau lead à contacter",    plur: "nouveaux leads à contacter",   hint: leadsFroids.length ? `dont ${leadsFroids.length} depuis +3 j` : undefined, icon: Sparkles, color: "purple", href: "/prospects" },
+            { count: leadsNouveaux.length,     sing: "nouveau lead à contacter",    plur: "nouveaux leads à contacter",   hint: leadsFroids.length ? `dont ${leadsFroids.length} depuis +3 j` : undefined, icon: Sparkles, color: "purple", href: "/prospects?onglet=urgent" },
             { count: demandesNouvelles.length, sing: "demande de matériel",         plur: "demandes de matériel",         icon: Package, color: "sky", onClick: () => setDemandesModalOpen(true) },
             { count: produitsAlerte.length,    sing: "produit bientôt épuisé",      plur: "produits bientôt épuisés",     hint: produitsAlerte.slice(0, 2).map(p => p.nom).join(", ") + (produitsAlerte.length > 2 ? "…" : ""), icon: Package, color: "orange", href: "/stock" },
           ].filter(t => t.count > 0);
           return (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
+            <div id="a-faire" className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5 scroll-mt-4">
               <h2 className="font-bold text-gray-900 mb-3 flex items-center gap-2"><span className="text-lg">👋</span>{greeting} — à faire</h2>
               {loading && !stats ? (
                 <p className="text-sm text-gray-400">Chargement…</p>
@@ -547,7 +506,7 @@ export default function HomePage() {
                     const cls = `flex items-center gap-3 p-3 rounded-xl border text-left ${COLOR[t.color]} hover:brightness-[0.98] transition-all group`;
                     return t.onClick
                       ? <button key={i} type="button" onClick={t.onClick} className={cls}>{inner}</button>
-                      : <a key={i} href={t.href} className={cls}>{inner}</a>;
+                      : <Link key={i} href={t.href ?? "/"} className={cls}>{inner}</Link>;
                   })}
                 </div>
               )}
@@ -562,7 +521,7 @@ export default function HomePage() {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-bold text-gray-900">📅 Prochains rendez-vous</h2>
-              <a href="/agenda" className="flex items-center gap-1 text-sm text-blue-600 hover:underline font-medium">Agenda <ChevronRight size={14} /></a>
+              <Link href="/agenda" className="flex items-center gap-1 min-h-[40px] text-sm text-blue-600 hover:underline font-medium">Agenda <ChevronRight size={14} /></Link>
             </div>
             <div className="space-y-2">
               {stats.upcomingList.map((p) => {
@@ -571,6 +530,7 @@ export default function HomePage() {
                 const wa = p.tel ? `https://wa.me/${p.tel.replace(/\s/g, "").replace(/^0/, "33")}` : null;
                 return (
                   <div key={p.row} className={`flex items-center gap-3 p-3 rounded-xl border ${isToday ? "bg-blue-50 border-blue-200" : "bg-blue-50/40 border-blue-100"}`}>
+                    <Link href={`/agenda?rdv=${p.row}`} title="Ouvrir dans l'agenda" className="flex items-center gap-3 flex-1 min-w-0">
                     <div className="text-center flex-shrink-0 w-12">
                       <p className="text-sm font-bold text-blue-700 leading-tight">{isToday ? "Auj." : p.date?.slice(0, 5)}</p>
                       {p.heure && <p className="text-[11px] text-gray-400">{p.heure}</p>}
@@ -582,9 +542,10 @@ export default function HomePage() {
                         ? <p className="flex items-center gap-1 text-[11px] text-green-700 mt-0.5"><UserCheck size={11} />{p.prestataire}</p>
                         : <p className="flex items-center gap-1 text-[11px] text-amber-600 mt-0.5"><Clock size={11} />À affecter</p>}
                     </div>
+                    </Link>
                     <div className="hidden sm:block"><StatusBadge statut={p.statut} small /></div>
-                    {p.tel && <a href={`tel:${p.tel}`} title="Appeler" className="p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 flex-shrink-0"><Phone size={14} /></a>}
-                    {wa && <a href={wa} target="_blank" rel="noopener noreferrer" title="WhatsApp" className="px-2.5 py-2 rounded-lg bg-green-500 text-white text-xs font-medium hover:bg-green-600 flex-shrink-0">WA</a>}
+                    {p.tel && <a href={`tel:${p.tel}`} title="Appeler" aria-label="Appeler" className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 flex-shrink-0"><Phone size={14} /></a>}
+                    {wa && <a href={wa} target="_blank" rel="noopener noreferrer" title="WhatsApp" className="h-10 px-2.5 flex items-center rounded-lg bg-green-500 text-white text-xs font-medium hover:bg-green-600 flex-shrink-0">WA</a>}
                   </div>
                 );
               })}
@@ -627,7 +588,7 @@ export default function HomePage() {
                       <button key={p} onClick={() => setRentaPeriod(p)} className={`px-3 py-1 rounded-lg text-xs font-medium ${rentaPeriod === p ? "bg-white shadow text-gray-800" : "text-gray-500"}`}>{p === "semaine" ? "Cette semaine" : "Ce mois"}</button>
                     ))}
                   </div>
-                  <a href="/depenses" className="text-sm text-blue-600 hover:underline font-medium">Gérer</a>
+                  <Link href="/depenses" className="text-sm text-blue-600 hover:underline font-medium">Gérer</Link>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -681,7 +642,7 @@ export default function HomePage() {
           <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold text-gray-900 flex items-center gap-2"><CalendarDays size={17} className="text-blue-600" /> Ta semaine</h2>
-              <a href="/agenda" className="flex items-center gap-1 text-sm text-blue-600 hover:underline font-medium">Ouvrir <ChevronRight size={14} /></a>
+              <Link href="/agenda" className="flex items-center gap-1 text-sm text-blue-600 hover:underline font-medium">Ouvrir <ChevronRight size={14} /></Link>
             </div>
             <div className="grid grid-cols-7 gap-1">
               {weekDays.map((day, i) => {
@@ -694,9 +655,9 @@ export default function HomePage() {
                       <div className={`mx-auto w-7 h-7 flex items-center justify-center rounded-full text-sm font-bold ${isToday ? "bg-blue-600 text-white" : "text-gray-700"}`}>{day.getDate()}</div>
                     </div>
                     {events.map(ev => (
-                      <a key={ev.row} href="/agenda" title={`${ev.heure ? ev.heure + " – " : ""}${ev.prenom} ${ev.nom} · ${ev.typePresta}`} className="block rounded px-1.5 py-0.5 text-white text-xs truncate leading-tight hover:opacity-80" style={{ backgroundColor: colorByPresta[ev.prestataire] ?? "#9CA3AF" }}>
+                      <Link key={ev.row} href={`/agenda?rdv=${ev.row}`} title={`${ev.heure ? ev.heure + " – " : ""}${ev.prenom} ${ev.nom} · ${ev.typePresta}`} className="block rounded px-1.5 py-0.5 text-white text-xs truncate leading-tight hover:opacity-80" style={{ backgroundColor: colorByPresta[ev.prestataire] ?? "#9CA3AF" }}>
                         {ev.heure && <span className="opacity-80 mr-1">{ev.heure}</span>}{ev.prenom} {ev.nom}
-                      </a>
+                      </Link>
                     ))}
                     {events.length === 0 && <p className="text-xs text-gray-300 text-center mt-auto mb-auto">—</p>}
                   </div>
@@ -710,7 +671,7 @@ export default function HomePage() {
       </div>
 
       {showNewClient && <NewClientModal prestataires={stats?.prestataires ?? []} onClose={() => setShowNewClient(false)} onSaved={() => load()} /* reste ouverte sur l'écran de succès (confirmation client) */ />}
-      {showNewProspect && <QuickProspectModal onClose={() => setShowNewProspect(false)} onSaved={() => { setShowNewProspect(false); load(); }} />}
+      {showNewProspect && <AddProspectModal onClose={() => setShowNewProspect(false)} onSaved={() => { setShowNewProspect(false); load(); }} />}
 
       {/* ── Pop-up des demandes de matériel ── */}
       {demandesModalOpen && (
@@ -755,7 +716,7 @@ export default function HomePage() {
               {rdvPasses.length === 0 ? (
                 <div className="text-center py-10 text-gray-400"><CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Tout est clôturé 🎉</p></div>
               ) : rdvPasses.map(p => {
-                const pay = clotPay[p.row] ?? "Avance immédiate";
+                const pay = payDe(p);
                 return (
                   <div key={p.row} className="rounded-xl border border-gray-100 p-3">
                     <div className="flex items-start justify-between gap-2">
@@ -782,8 +743,24 @@ export default function HomePage() {
                 );
               })}
             </div>
-            <div className="px-4 py-2.5 border-t border-gray-100 text-center flex-shrink-0">
-              <a href="/agenda" className="text-xs text-gray-400 hover:text-gray-600">Ouvrir l'agenda pour plus d'options</a>
+            <div className="px-4 py-2.5 border-t border-gray-100 text-center flex-shrink-0 space-y-1.5">
+              {(() => {
+                const prevus = rdvPasses.filter(p => p.modePaiement);
+                const sansMode = rdvPasses.length - prevus.length;
+                if (!prevus.length) return null;
+                const total = prevus.reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
+                return (
+                  <>
+                    <button type="button" onClick={cloturerTout} disabled={clotTout || !!busyId}
+                      className="w-full min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
+                      {clotTout ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                      Tout clôturer (paiement prévu) · {prevus.length} RDV{total > 0 ? ` · ${formatMontant(total)}` : ""}
+                    </button>
+                    {sansMode > 0 && <p className="text-[11px] text-gray-500">{sansMode} RDV sans mode de paiement prévu : à clôturer un par un ci-dessus.</p>}
+                  </>
+                );
+              })()}
+              <Link href="/agenda" className="inline-flex items-center min-h-[40px] text-xs text-gray-400 hover:text-gray-600">Ouvrir l&apos;agenda pour plus d&apos;options</Link>
             </div>
           </div>
         </div>
@@ -807,7 +784,6 @@ export default function HomePage() {
               ) : [...relanceEnRetard, ...prospects.filter(p => relanceRes[p.id] && !relanceEnRetard.includes(p))].map(p => {
                 const res = relanceRes[p.id];
                 const wa = p.tel ? `https://wa.me/${p.tel.replace(/\s/g, "").replace(/^0/, "33")}` : null;
-                const demain = isoParis(1);
                 return (
                   <div key={p.id} className="rounded-xl border border-gray-100 p-3">
                     <div className="flex items-start justify-between gap-2">
@@ -821,7 +797,7 @@ export default function HomePage() {
                             : <p className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1"><Mail size={11} /> Aucun mail envoyé depuis le dashboard</p>;
                         })()}
                       </div>
-                      <a href={`/prospects?fiche=${p.id}`} className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline flex-shrink-0">Fiche <ChevronRight size={12} /></a>
+                      <Link href={`/prospects?fiche=${p.id}`} className="flex items-center gap-1 min-h-[40px] -my-2 text-xs font-medium text-blue-600 hover:underline flex-shrink-0">Fiche <ChevronRight size={12} /></Link>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-2.5">
                       <button onClick={() => relancerMail(p.id)} disabled={busyId === p.id}
@@ -830,10 +806,17 @@ export default function HomePage() {
                       </button>
                       {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-green-500 text-white text-sm font-medium hover:bg-green-600 flex-shrink-0"><Phone size={14} /> WhatsApp</a>}
                       {p.tel && <a href={`tel:${p.tel}`} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50 flex-shrink-0"><Phone size={14} /> Appeler</a>}
-                      <button onClick={() => reporterRelance(p.id, demain)} disabled={busyId === p.id}
-                        className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-100 text-amber-800 text-sm font-medium hover:bg-amber-200 disabled:opacity-50 flex-shrink-0">
-                        {busyId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />} Reporter
-                      </button>
+                      <div className="flex items-center gap-1 flex-shrink-0" role="group" aria-label="Reporter la relance">
+                        <span className="flex items-center gap-1 text-xs font-medium text-amber-800">
+                          {busyId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />} Reporter
+                        </span>
+                        {REPORTS_RELANCE.map(r => (
+                          <button key={r.j} onClick={() => reporterRelance(p.id, isoParis(r.j))} disabled={busyId === p.id}
+                            className="min-h-[40px] px-2.5 rounded-lg bg-amber-100 text-amber-800 text-sm font-medium hover:bg-amber-200 disabled:opacity-50">
+                            {r.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     {res && (
                       <p className={`mt-2 text-xs font-medium rounded-lg px-2.5 py-1.5 ${res.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
@@ -845,7 +828,7 @@ export default function HomePage() {
               })}
             </div>
             <div className="px-4 py-2.5 border-t border-gray-100 text-center flex-shrink-0">
-              <a href="/prospects" className="text-xs text-gray-400 hover:text-gray-600">Ouvrir la page prospects pour plus d'options</a>
+              <Link href="/prospects" className="inline-flex items-center min-h-[40px] text-xs text-gray-400 hover:text-gray-600">Ouvrir la page prospects pour plus d&apos;options</Link>
             </div>
           </div>
         </div>
@@ -907,7 +890,7 @@ export default function HomePage() {
                         <p className="font-semibold text-gray-900 truncate">{p.prenom} {p.nom}</p>
                         <p className="text-[11px] text-gray-500">{waLibelle(etape)} — email parti {matin ? "ce matin" : "aujourd'hui"}{p.typePresta ? ` · ${p.typePresta}` : ""}</p>
                       </div>
-                      <a href={`/prospects?fiche=${p.id}`} className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline flex-shrink-0">Fiche <ChevronRight size={12} /></a>
+                      <Link href={`/prospects?fiche=${p.id}`} className="flex items-center gap-1 min-h-[40px] -my-2 text-xs font-medium text-blue-600 hover:underline flex-shrink-0">Fiche <ChevronRight size={12} /></Link>
                     </div>
                     <button type="button" onClick={() => setWaApercu(ouvert ? "" : p.id)} className="mt-2 flex items-center gap-1 text-[11px] font-medium text-gray-500 hover:text-gray-700">
                       <ChevronDown size={12} className={`transition-transform ${ouvert ? "rotate-180" : ""}`} /> {ouvert ? "Masquer le message" : "Voir le message"}

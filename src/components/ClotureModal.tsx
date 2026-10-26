@@ -4,7 +4,7 @@
 // Utilisée par : tableau de bord, Prestations, Agenda, Clients, EditPrestationModal.
 // - Motif : MOTIFS_ARCHIVAGE + « Autre » (texte libre) + commentaire optionnel
 // - Prestation réalisée → mode de paiement obligatoire (PAIEMENTS_CLOTURE,
-//   « Avance immédiate » par défaut) + satisfaction / avis laissé (optionnels)
+//   pré-rempli avec celui prévu sur le RDV, sinon « Avance immédiate ») + satisfaction / avis laissé (optionnels)
 //   + demande d'avis par email (1 seule prestation, si l'interrupteur global est actif)
 // - Annulation → aucun paiement, non comptée dans le CA ni le stock
 // Appelle PATCH /api/archive { id, reason, modePaiement, satisfaction, avisLaisse }.
@@ -18,7 +18,7 @@ import {
 } from "@/lib/constants";
 
 // Champs minimum nécessaires pour afficher / clôturer une prestation.
-export type ClotureCible = Pick<Prestation, "row" | "prenom" | "nom" | "date" | "heure" | "typePresta" | "prix">;
+export type ClotureCible = Pick<Prestation, "row" | "prenom" | "nom" | "date" | "heure" | "typePresta" | "prix" | "modePaiement">;
 
 export interface ClotureModalProps {
   /** Prestation à clôturer (cas courant). */
@@ -51,7 +51,11 @@ export default function ClotureModal({ prestation, prestations, label, motifInit
   const initAutre = !!motifInitial && !MOTIFS_ARCHIVAGE.includes(motifInitial);
   const [motif, setMotif]           = useState(initAutre ? AUTRE : motifInitial);
   const [motifLibre, setMotifLibre] = useState(initAutre ? motifInitial : "");
-  const [paiement, setPaiement]     = useState<string>(PAIEMENTS_CLOTURE[0]); // « Avance immédiate »
+  // Mode déjà prévu sur le(s) RDV (le même pour tous) → présélectionné ; sinon « Avance immédiate ».
+  const [paiement, setPaiement]     = useState<string>(() => {
+    const modes = Array.from(new Set(cibles.map(p => p.modePaiement || "")));
+    return modes.length === 1 && modes[0] && PAIEMENTS_CLOTURE.includes(modes[0]) ? modes[0] : PAIEMENTS_CLOTURE[0];
+  });
   const [commentaire, setCommentaire] = useState("");
   const [satisf, setSatisf]         = useState(0);     // 0 = non noté
   const [avisLaisse, setAvisLaisse] = useState(false); // le client a laissé un avis Google

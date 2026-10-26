@@ -181,3 +181,24 @@ export function waDonneesProspect(p: {
     remise: remise ?? remiseAppliqueeProspect(p.besoins, p.budget, p.typePresta, p.suivi?.remise),
   };
 }
+
+// ─── Messages clients (hors prospects) ───────────────────────────────────────
+// Demande d'avis après prestation : même texte que le bouton « Copier message fin
+// de prestation » (agenda + fiches clients). `lien` = page /avis/<id>?nom=…
+export function waTexteAvis(d: { prenom?: string; prestation?: string; lien: string }): string {
+  return `Bonjour ${(d.prenom || "").trim()} 👋,\n\n` +
+    `J'espère que votre ${d.prestation ? `prestation de ${d.prestation}` : "prestation"} s'est très bien passée 😊.\n\n` +
+    `Votre satisfaction est notre priorité et nous serions ravis d'avoir votre retour !\n\n` +
+    `Si vous avez quelques instants, pourriez-vous laisser un avis ici ⭐ :\n${d.lien}\n\n` +
+    `Merci infiniment pour votre confiance 🙏\n\nÀ très bientôt,\n${SIGNATURE}`;
+}
+
+// Rappel court d'un RDV à venir (date JJ/MM/AAAA, heure HH:MM — toutes facultatives).
+export function waTexteRappelRdv(d: { prenom?: string; date?: string; heure?: string; adresse?: string }): string {
+  const prenom = (d.prenom || "").trim();
+  const quand = d.date ? `le ${d.date}${d.heure ? ` à ${d.heure}` : ""}` : d.heure ? `à ${d.heure}` : "";
+  return `Bonjour${prenom ? ` ${prenom}` : ""},\n\n` +
+    `Petit rappel de votre rendez-vous KinouClean${quand ? ` ${quand}` : ""} 🙂` +
+    (d.adresse ? `\n📍 ${d.adresse}` : "") +
+    `\n\nEn cas d'empêchement, merci de nous prévenir au plus tôt en répondant simplement ici.\n\nÀ très bientôt,\n${SIGNATURE}`;
+}

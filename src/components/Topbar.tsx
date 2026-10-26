@@ -1,6 +1,8 @@
 "use client";
 import { RefreshCw, Bell, Search, X, Menu } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import DarkModeToggle from "./DarkModeToggle";
 import { useSidebar } from "./SidebarContext";
 import { ClientFicheById } from "./ClientFiche";
@@ -11,7 +13,7 @@ interface TopbarProps {
   onRefresh?: () => void;
   loading?: boolean;
   alerts?: number;
-  /** Action de la cloche (ex. ouvrir l'onglet « Aujourd'hui ») — sinon remonte en haut */
+  /** Action de la cloche (ex. ouvrir l'onglet « Aujourd'hui ») — sinon bloc « À faire » de l'accueil */
   onAlertsClick?: () => void;
   /** Ce que comptent les alertes, pour l'infobulle (ex. « relances du jour ») */
   alertsLabel?: string;
@@ -144,9 +146,9 @@ function GlobalSearch({ onChanged }: { onChanged?: () => void }) {
                 );
               }
               return (
-                <a key={i} href={r.href} onClick={() => setOpen(false)} className={cls}>
+                <Link key={i} href={r.href} onClick={() => setOpen(false)} className={cls}>
                   {inner}
-                </a>
+                </Link>
               );
             })}
           </div>
@@ -163,6 +165,16 @@ function GlobalSearch({ onChanged }: { onChanged?: () => void }) {
 export default function Topbar({ title, subtitle, onRefresh, loading, alerts, onAlertsClick, alertsLabel, action, compact }: TopbarProps) {
   const [spinning, setSpinning] = useState(false);
   const { toggle } = useSidebar();
+  const pathname = usePathname();
+  const router = useRouter();
+
+  // Cloche : action propre à la page si fournie, sinon bloc « À faire » de l'accueil.
+  const handleAlerts = () => {
+    if (onAlertsClick) { onAlertsClick(); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    const bloc = pathname === "/" ? document.getElementById("a-faire") : null;
+    if (bloc) bloc.scrollIntoView({ behavior: "smooth", block: "start" });
+    else router.push("/#a-faire");
+  };
 
   const handleRefresh = () => {
     if (!onRefresh) return;
@@ -194,10 +206,10 @@ export default function Topbar({ title, subtitle, onRefresh, loading, alerts, on
         {alerts && alerts > 0 ? (
           <div className="relative">
             <button
-              onClick={() => { onAlertsClick?.(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              onClick={handleAlerts}
               title={`${alerts} ${alertsLabel ?? `point${alerts > 1 ? "s" : ""} à voir`}`}
               aria-label={`${alerts} alerte${alerts > 1 ? "s" : ""}`}
-              className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
               <Bell size={18} />
             </button>
             <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">

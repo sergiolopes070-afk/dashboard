@@ -16,6 +16,21 @@ import { frDateToIso } from "@/lib/finance";
 // « TERMINÉ » retiré : une prestation terminée passe par la clôture et part dans l'Historique.
 const STATUTS = ["Tous", "À affecter", "EMAIL ENVOYÉ", "CONFIRMÉ", "EN ATTENTE PRESTA", "PRESTATAIRE REFUSÉ – À RÉAFFECTER", "ANNULÉ"];
 
+// ?statut=… (lien profond depuis l'accueil) → valeur de STATUTS. Accepte la valeur
+// exacte ou une forme « naturelle » sans accents/majuscules : a-affecter, confirme,
+// a-reaffecter / refuse, en-attente, annule…
+const normStatut = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const STATUT_ALIAS: Record<string, string> = {
+  reaffecter: "PRESTATAIRE REFUSÉ – À RÉAFFECTER", areaffecter: "PRESTATAIRE REFUSÉ – À RÉAFFECTER",
+  refuse: "PRESTATAIRE REFUSÉ – À RÉAFFECTER", prestatairerefuse: "PRESTATAIRE REFUSÉ – À RÉAFFECTER",
+  affecter: "À affecter", enattente: "EN ATTENTE PRESTA",
+};
+function statutDepuisUrl(v: string | null): string | null {
+  if (!v) return null;
+  const n = normStatut(v);
+  return STATUTS.find(s => normStatut(s) === n) ?? STATUT_ALIAS[n] ?? null;
+}
+
 // Tris proposés
 const TRIS = [
   { value: "date_asc",  label: "Intervention ↑ (plus proche)" },
@@ -39,6 +54,12 @@ export default function PrestationsPage() {
   const [importing, setImporting]         = useState(false);
   const [tri, setTri]                     = useState<Tri>("date_asc");
   const [showNew, setShowNew]             = useState(false);
+  // Présélection du filtre statut depuis l'URL (?statut=…). Lu dans un effet
+  // (côté client) — pas de useSearchParams, donc pas de Suspense requis.
+  useEffect(() => {
+    const st = statutDepuisUrl(new URLSearchParams(window.location.search).get("statut"));
+    if (st) setStatut(st);
+  }, []);
   const toast = useToast();
 
   const load = useCallback(async () => {

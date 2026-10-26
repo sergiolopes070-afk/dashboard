@@ -16,6 +16,7 @@ import ClotureModal from "@/components/ClotureModal";
 import AvanceBadge from "@/components/AvanceBadge";
 import { formatMontant } from "@/lib/finance";
 import { fetchJsonOk } from "@/lib/fetchOk";
+import { waMobile, waLien, waTexteAvis } from "@/lib/waMessages";
 import { Prestation, Prestataire, ClientNote, STATUT_COLORS, estAnnulation } from "@/lib/constants";
 
 const TAGS_PRESET = ["Régulier", "VIP", "Difficile", "Sensible", "Pro", "Fidèle"];
@@ -917,9 +918,17 @@ export default function ClientsPage() {
                     {/* Coordonnées */}
                     <div className="space-y-1.5">
                       {c.tel && (
-                        <a href={`tel:${c.tel}`} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">
-                          <Phone size={13} className="text-gray-400" />{c.tel}
-                        </a>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <a href={`tel:${c.tel}`} className="flex items-center gap-2 min-h-[40px] text-sm text-gray-600 hover:text-gray-900">
+                            <Phone size={13} className="text-gray-400" />{c.tel}
+                          </a>
+                          {waMobile(c.tel) && (
+                            <a href={`https://wa.me/${waMobile(c.tel)}`} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors">
+                              <MessageCircle size={13} />WhatsApp
+                            </a>
+                          )}
+                        </div>
                       )}
                       {c.email && (() => {
                         // Récap de RDV : le prochain RDV s'il y en a un, sinon la dernière prestation
@@ -1028,13 +1037,17 @@ export default function ClientsPage() {
                       {(() => {
                         const last = c.latest;
                         const avisUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/avis/${c.clientId}?nom=${encodeURIComponent(`${c.prenom} ${c.nom}`)}${last?.typePresta ? `&prestation=${encodeURIComponent(last.typePresta)}` : ""}`;
-                        const msg =
-                          `Bonjour ${c.prenom} 👋,\n\n` +
-                          `J'espère que votre ${last?.typePresta ? `prestation de ${last.typePresta}` : "prestation"} s'est très bien passée 😊.\n\n` +
-                          `Votre satisfaction est notre priorité et nous serions ravis d'avoir votre retour !\n\n` +
-                          `Si vous avez quelques instants, pourriez-vous laisser un avis ici ⭐ :\n${avisUrl}\n\n` +
-                          `Merci infiniment pour votre confiance 🙏\n\nÀ très bientôt,\nL'équipe KinouClean`;
-                        return <CopyMsgBtn msg={msg} />;
+                        const msg = waTexteAvis({ prenom: c.prenom, prestation: last?.typePresta, lien: avisUrl });
+                        const lien = waLien(c.tel, msg);
+                        return (<>
+                          {lien && (
+                            <a href={lien} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 active:bg-green-800 transition-colors">
+                              <MessageCircle size={13} />Demander un avis sur WhatsApp
+                            </a>
+                          )}
+                          <CopyMsgBtn msg={msg} />
+                        </>);
                       })()}
                     </div>
                   )}

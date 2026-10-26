@@ -13,6 +13,9 @@ import { useAvanceInscrits } from "@/components/AvanceBadge";
 import { matchInscrit } from "@/lib/avanceMatch";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import { fetchJsonOk } from "@/lib/fetchOk";
+import { useRouter } from "next/navigation";
+import { waLien, waMobile, waTexteAvis } from "@/lib/waMessages";
+import { isoParis } from "@/lib/dateParis";
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const PALETTE = [
@@ -65,6 +68,18 @@ function frToDate(fr: string): Date | null {
   if (!fr) return null;
   const p = fr.split("/");
   return p.length === 3 ? new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0])) : null;
+}
+// Champs natifs <input type="date"> : stockage "JJ/MM/AAAA" ⇄ valeur "AAAA-MM-JJ".
+// Une valeur déjà ISO traverse telle quelle (sheets.frToIso l'accepte aussi).
+function toInputDate(d: string): string {
+  if (!d) return "";
+  const p = d.split("/");
+  return p.length === 3 ? `${p[2]}-${p[1].padStart(2, "0")}-${p[0].padStart(2, "0")}` : d;
+}
+function fromInputDate(d: string): string {
+  if (!d) return "";
+  const p = d.split("-");
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d;
 }
 function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
@@ -317,6 +332,7 @@ function AddressAutocomplete({ value, onChange, onSelect, inputCls }: {
 // ─── Page principale ──────────────────────────────────────────────────────────
 export default function AgendaPage() {
   const toast = useToast();
+  const router = useRouter();
   // Pile d'annulation (Ctrl/⌘+Z) : chaque action annulable y dépose sa fonction inverse.
   const undoStackRef = useRef<{ label: string; undo: () => void | Promise<void> }[]>([]);
   const pushUndo = (label: string, undo: () => void | Promise<void>) => {
@@ -556,6 +572,7 @@ export default function AgendaPage() {
   const [cancelling,    setCancelling]    = useState(false);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
+  const netLoadedRef = useRef(false); // vrai dès qu'un chargement réseau a abouti (≠ cache)
   const loadData = () => {
     Promise.all([
       fetch("/api/prestations").then(r => r.json()),
@@ -576,10 +593,38 @@ export default function AgendaPage() {
         });
         return next;
       });
+      netLoadedRef.current = true;
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => { netLoadedRef.current = true; setLoading(false); });
   };
   useEffect(() => { loadData(); }, []);
+
+  // Lien profond depuis l'accueil : /agenda?rdv=<id prestation> → saute à la date
+  // du RDV (jour / semaine / mois) et ouvre sa fiche. Lu côté client (window) —
+  // pas de useSearchParams, donc pas de Suspense requis (même approche que /clients).
+  // On attend les données fraîches (le cache peut ne pas encore contenir le RDV),
+  // puis on retire ?rdv= de l'URL pour que rechargement / retour ne la rouvrent pas.
+  const rdvLinkDone = useRef(false);
+  useEffect(() => {
+    if (rdvLinkDone.current) return;
+    const id = new URLSearchParams(window.location.search).get("rdv");
+    if (!id) { rdvLinkDone.current = true; return; }
+    const ev = prestations.find(p => p.row === id);
+    if (!ev && !netLoadedRef.current) return; // données réseau pas encore arrivées
+    rdvLinkDone.current = true;
+    if (ev) {
+      const d = frToDate(ev.date);
+      if (d) {
+        setDayDate(d);
+        setWeekStart(getMondayOfWeek(d));
+        setMonthDate(new Date(d.getFullYear(), d.getMonth(), 1));
+      }
+      setSelectedEvent(ev);
+    } else {
+      toast.error("RDV introuvable");
+    }
+    router.replace("/agenda", { scroll: false });
+  }, [prestations, loading, router, toast]);
 
   // Vrai si le client de ce RDV s'est inscrit à l'avance immédiate (tél, email ou prénom + nom).
   const estInscritAvance = (ev: { tel?: string; email?: string; prenom?: string; nom?: string }) => matchInscrit(avanceIdx, ev);
@@ -1391,12 +1436,12 @@ export default function AgendaPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="text-xs text-gray-400 mb-1 block">Date (JJ/MM/AAAA)</label>
-                          <input className={inputCls} value={editForm.date ?? ""} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} placeholder="JJ/MM/AAAA" />
+                          <label className="text-xs text-gray-400 mb-1 block">Date</label>
+                          <input type="date" className={`${inputCls} min-h-[40px]`} value={toInputDate(editForm.date ?? "")} onChange={e => setEditForm(f => ({ ...f, date: fromInputDate(e.target.value) }))} />
                         </div>
                         <div>
                           <label className="text-xs text-gray-400 mb-1 block">Heure</label>
-                          <input className={inputCls} value={editForm.heure ?? ""} onChange={e => setEditForm(f => ({ ...f, heure: e.target.value }))} placeholder="HH:MM" />
+                          <input type="time" className={`${inputCls} min-h-[40px]`} value={editForm.heure ?? ""} onChange={e => setEditForm(f => ({ ...f, heure: e.target.value }))} />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
@@ -1500,7 +1545,7 @@ export default function AgendaPage() {
                         const telClean = (ev.tel || "").replace(/\s/g, "");
                         const quick = [
                           { key: "tel",  icon: "📞", label: "Appeler",    href: telClean ? `tel:${telClean}` : "" },
-                          { key: "wa",   icon: "💬", label: "WhatsApp",   href: telClean ? `https://wa.me/${telClean.replace(/^0/, "33")}` : "" },
+                          { key: "wa",   icon: "💬", label: "WhatsApp",   href: waMobile(ev.tel) ? `https://wa.me/${waMobile(ev.tel)}` : "" },
                           { key: "maps", icon: "🧭", label: "Itinéraire", href: ev.adresse ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(ev.adresse)}` : "" },
                           { key: "mail", icon: "✉️", label: "Mail",       href: ev.email ? `mailto:${ev.email}` : "" },
                         ];
@@ -1551,7 +1596,7 @@ export default function AgendaPage() {
                           const baseUrl   = typeof window !== "undefined" ? window.location.origin : "";
                           const acceptUrl = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=accepter`;
                           const refusUrl  = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=refuser`;
-                          const msg = encodeURIComponent(
+                          const msg = (
                             `Bonjour ${ev.prestataire} 👋,\n\nUne mission vous a été proposée chez KinouClean :\n\n` +
                             `👤 Client : ${ev.prenom} ${ev.nom}\n` +
                             `📞 Téléphone : ${ev.tel || "—"}\n` +
@@ -1575,10 +1620,17 @@ export default function AgendaPage() {
                               </div>
                             );
                           }
-                          const prestaTel = prestataireObj.tel.replace(/\s/g, "").replace(/^0/, "33");
+                          const missionLien = waLien(prestataireObj.tel, msg);
+                          if (!missionLien) {
+                            return (
+                              <div className="w-full py-2 rounded-xl border border-dashed border-gray-200 text-gray-400 text-xs text-center px-2">
+                                📱 Le n° de <span className="font-medium">{ev.prestataire}</span> n&apos;est pas un mobile (06/07) : WhatsApp indisponible
+                              </div>
+                            );
+                          }
                           return (
                             <a
-                              href={`https://wa.me/${prestaTel}?text=${msg}`}
+                              href={missionLien}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="w-full py-2 rounded-xl border border-green-200 text-green-700 text-sm font-medium hover:bg-green-50 transition-colors flex items-center justify-center gap-1.5"
@@ -1605,13 +1657,17 @@ export default function AgendaPage() {
                             (resteR != null ? `💳 Reste à charge : ${fmtR(resteR)} €\n` : "") +
                             (resteR != null ? `\nN'oubliez pas de finaliser votre inscription à l'avance immédiate.\n` : "") +
                             `\nEn cas d'empêchement, merci de nous prévenir au plus tôt.\n\nÀ très bientôt,\nL'équipe KinouClean`;
+                          const rappelLien = waLien(ev.tel, rappelMsg);
+                          // RDV à venir (aujourd'hui inclus) → rappel WhatsApp en 1 geste.
+                          const rdvJour = frToDate(ev.date);
+                          const aVenir = !!rdvJour && rdvJour >= today;
                           return (
                             <div className="flex flex-col gap-2">
-                              {ev.tel && (
+                              {rappelLien && aVenir && (
                                 <a
-                                  href={`https://wa.me/${ev.tel.replace(/\s/g, "").replace(/^0/, "33")}?text=${encodeURIComponent(rappelMsg)}`}
+                                  href={rappelLien}
                                   target="_blank" rel="noopener noreferrer"
-                                  className="w-full py-2 rounded-xl border border-sky-200 text-sky-700 text-sm font-medium hover:bg-sky-50 transition-colors flex items-center justify-center gap-1.5"
+                                  className="w-full min-h-[40px] py-2 rounded-xl border border-sky-200 text-sky-700 text-sm font-medium hover:bg-sky-50 transition-colors flex items-center justify-center gap-1.5"
                                 >
                                   🔔 Rappel WhatsApp à {ev.prenom}
                                 </a>
@@ -1690,17 +1746,24 @@ export default function AgendaPage() {
                         >
                           ⭐ {avisLinkCopied ? "Lien copié !" : "Copier lien avis"}
                         </button>
+                        {(() => {
+                          const params = new URLSearchParams({ nom: `${ev.prenom} ${ev.nom}`.trim() });
+                          if (ev.typePresta) params.set("prestation", ev.typePresta);
+                          const avisUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/avis/${ev.row}?${params.toString()}`;
+                          const avisLien = waLien(ev.tel, waTexteAvis({ prenom: ev.prenom, prestation: ev.typePresta, lien: avisUrl }));
+                          return avisLien ? (
+                            <a href={avisLien} target="_blank" rel="noopener noreferrer"
+                              className="w-full min-h-[40px] py-2 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 active:bg-green-800 transition-colors flex items-center justify-center gap-1.5">
+                              💬 Envoyer la demande d&apos;avis sur WhatsApp
+                            </a>
+                          ) : null;
+                        })()}
                         <button
                           onClick={() => {
                             const params = new URLSearchParams({ nom: `${ev.prenom} ${ev.nom}`.trim() });
                             if (ev.typePresta) params.set("prestation", ev.typePresta);
                             const avisUrl = `${window.location.origin}/avis/${ev.row}?${params.toString()}`;
-                            const msg =
-                              `Bonjour ${ev.prenom} 👋,\n\n` +
-                              `J'espère que votre ${ev.typePresta ? `prestation de ${ev.typePresta}` : "prestation"} s'est très bien passée 😊.\n\n` +
-                              `Votre satisfaction est notre priorité et nous serions ravis d'avoir votre retour !\n\n` +
-                              `Si vous avez quelques instants, pourriez-vous laisser un avis ici ⭐ :\n${avisUrl}\n\n` +
-                              `Merci infiniment pour votre confiance 🙏\n\nÀ très bientôt,\nL'équipe KinouClean`;
+                            const msg = waTexteAvis({ prenom: ev.prenom, prestation: ev.typePresta, lien: avisUrl });
                             navigator.clipboard.writeText(msg).then(() => {
                               setAvisMsgCopied(true);
                               setTimeout(() => setAvisMsgCopied(false), 2000);
@@ -2055,25 +2118,40 @@ export default function AgendaPage() {
               <span className="font-medium text-gray-700">{rescheduleEv.prenom} {rescheduleEv.nom}</span>
               {rescheduleEv.typePresta ? ` — ${rescheduleEv.typePresta}` : ""}
             </p>
+            {/* Raccourcis : demain (Paris) même heure / même jour +7 j même heure */}
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button type="button"
+                onClick={() => { setRescheduleDate(fromInputDate(isoParis(1))); setRescheduleHrs(rescheduleEv.heure || rescheduleHrs); }}
+                className="min-h-[40px] rounded-xl border border-blue-200 text-blue-700 text-sm font-medium hover:bg-blue-50 transition-colors">
+                Demain
+              </button>
+              <button type="button"
+                onClick={() => {
+                  const base = frToDate(rescheduleEv.date) ?? frToDate(fromInputDate(isoParis()))!;
+                  setRescheduleDate(toFrDate(addDays(base, 7)));
+                  setRescheduleHrs(rescheduleEv.heure || rescheduleHrs);
+                }}
+                className="min-h-[40px] rounded-xl border border-blue-200 text-blue-700 text-sm font-medium hover:bg-blue-50 transition-colors">
+                +1 sem. même heure
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-3 mb-5">
-              <div>
+              <div className="min-w-0">
                 <label className="text-xs font-medium text-gray-500 mb-1 block">Nouvelle date</label>
                 <input
-                  type="text"
-                  placeholder="JJ/MM/AAAA"
-                  value={rescheduleDate}
-                  onChange={e => setRescheduleDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  type="date"
+                  value={toInputDate(rescheduleDate)}
+                  onChange={e => setRescheduleDate(fromInputDate(e.target.value))}
+                  className="w-full min-h-[40px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="text-xs font-medium text-gray-500 mb-1 block">Nouvelle heure</label>
                 <input
-                  type="text"
-                  placeholder="HH:MM"
+                  type="time"
                   value={rescheduleHrs}
                   onChange={e => setRescheduleHrs(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full min-h-[40px] border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>

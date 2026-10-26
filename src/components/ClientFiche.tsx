@@ -14,6 +14,7 @@ import {
 import ClientModal from "@/components/ClientModal";
 import { ClientNote, STATUT_COLORS, TYPES_PRESTATION } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
+import { waMobile } from "@/lib/waMessages";
 import { Entite } from "@/lib/entite";
 import EntiteBadge from "@/components/EntiteBadge";
 import PhotoLightbox, { LightboxPhoto } from "@/components/PhotoLightbox";
@@ -221,7 +222,7 @@ export default function ClientFiche({
     const d = new Date(iso);
     return isNaN(d.getTime()) ? "" : d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }) + " · " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
   };
-  const telWa = client.tel.replace(/\s/g, "").replace(/^0/, "33");
+  const telWa = waMobile(client.tel); // mobiles FR uniquement (règle commune waMessages)
 
   // Prochain RDV = prestation active (non archivée, non annulée) la plus proche à venir.
   const debutJour = new Date(); debutJour.setHours(0, 0, 0, 0);
@@ -330,7 +331,7 @@ export default function ClientFiche({
                 <MapPin size={14} className="text-gray-400 shrink-0" /><span className="truncate">{client.adresse}</span>
               </p>
             )}
-            {client.tel && (
+            {telWa && (
               <a href={`https://wa.me/${telWa}`} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 mt-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-lg hover:bg-green-100 transition-colors">
                 <MessageCircle size={12} /> WhatsApp
