@@ -619,3 +619,40 @@ export async function sendDevisExterneEmail(to: string, d: {
     throw new Error(`Gmail a refusé l'envoi : ${e instanceof Error ? e.message : String(e)}`);
   }
 }
+
+// ─── PHOTOS D'INTERVENTION (compte rendu PDF avant / après) — envoi MANUEL ──────
+// Depuis l'agenda (fiche RDV). Comme le devis externe : lève une erreur explicite
+// (Gmail non connecté / refus SMTP) pour un message clair dans le dashboard.
+export const PHOTOS_INTERVENTION_OBJET = "Les photos de votre intervention KinouClean";
+
+export function buildPhotosInterventionHtml(d: { prenom?: string; typePresta?: string; date?: string; message?: string }): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const P = (txt: string) => `<p style="font-size:15px;color:#4B5563;line-height:1.7;margin:0 0 14px;">${txt}</p>`;
+  const presta = (d.typePresta || "").trim();
+  const message = (d.message || "").trim();
+  return shell(`
+    <p style="font-size:16px;color:#1F2937;margin:0 0 14px;">Bonjour${d.prenom ? ` ${esc(cassepropre(d.prenom))}` : ""},</p>
+    ${P(`Merci de nous avoir fait confiance${presta ? ` pour votre prestation de <strong>${esc(presta.toLowerCase())}</strong>` : ""}${d.date ? ` du ${esc(d.date)}` : ""} ✨`)}
+    ${P("Vous trouverez ci-joint le compte rendu de l'intervention avec les photos <strong>avant / après</strong> prises par votre intervenant.")}
+    ${message ? `<table width="100%" cellpadding="0" cellspacing="0" style="background:#F9FAFB;border-left:3px solid #c17f3e;border-radius:8px;margin:0 0 16px;"><tr><td style="padding:12px 16px;font-size:15px;color:#374151;line-height:1.7;">${esc(message).replace(/\n/g, "<br/>")}</td></tr></table>` : ""}
+    <p style="font-size:14px;color:#6B7280;line-height:1.6;margin:0 0 18px;">Une question ou une remarque ? Répondez simplement à cet email ou appelez-nous au <a href="${TEL_LINK}" style="color:#1C3557;"><strong>${TEL}</strong></a>.</p>
+    <p style="font-size:15px;color:#4B5563;line-height:1.7;margin:16px 0 0;">À très bientôt,<br/><strong>L'équipe KinouClean</strong></p>`);
+}
+
+export async function sendPhotosInterventionEmail(to: string, d: {
+  prenom?: string; typePresta?: string; date?: string; message?: string;
+  pdf: Buffer; filename: string;
+}): Promise<void> {
+  const gmail = await getGmailTransporter();
+  if (!gmail) throw new Error("Gmail non connecté (Configuration → Connexion Gmail).");
+  try {
+    await gmail.transporter.sendMail({
+      from: `"KinouClean" <${gmail.user}>`, to,
+      subject: PHOTOS_INTERVENTION_OBJET,
+      html: buildPhotosInterventionHtml(d),
+      attachments: [{ filename: d.filename, content: d.pdf, contentType: "application/pdf" }],
+    });
+  } catch (e: unknown) {
+    throw new Error(`Gmail a refusé l'envoi : ${e instanceof Error ? e.message : String(e)}`);
+  }
+}

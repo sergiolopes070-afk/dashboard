@@ -446,6 +446,47 @@ export default function AgendaPage() {
       .catch(() => {});
   }, [selectedEvent?.clientId]);
 
+  // ── Envoi des photos d'intervention au client (PDF compte rendu) ────────────
+  type PhotosEnvoi = { le: string; a: string };
+  const [photosInfo,  setPhotosInfo]  = useState<{ row: string; email: string; envoi: PhotosEnvoi | null } | null>(null);
+  const [photosSheet, setPhotosSheet] = useState(false);
+  const [photosTo,    setPhotosTo]    = useState("");
+  const [photosMsg,   setPhotosMsg]   = useState("");
+  const [photosBusy,  setPhotosBusy]  = useState(false);
+  const photosRow = selectedEvent && Array.isArray(selectedEvent.photos) && selectedEvent.photos.length > 0 ? selectedEvent.row : null;
+  useEffect(() => {
+    setPhotosSheet(false); setPhotosMsg(""); setPhotosInfo(null); setPhotosTo("");
+    if (!photosRow) return;
+    let alive = true;
+    fetch(`/api/prestations/${photosRow}/photos`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!alive || !d) return;
+        setPhotosInfo({ row: photosRow, email: d.email || "", envoi: d.envoi || null });
+        setPhotosTo(d.email || "");
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [photosRow]);
+  async function envoyerPhotos(row: string) {
+    if (!photosTo.trim()) return;
+    setPhotosBusy(true);
+    try {
+      const res = await fetch(`/api/prestations/${row}/photos`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: photosTo.trim(), message: photosMsg }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || `Erreur ${res.status}`);
+      setPhotosInfo(prev => ({ row, email: prev?.email || d.email, envoi: d.envoi }));
+      setPhotosSheet(false); setPhotosMsg("");
+      toast.success(`Photos envoyées à ${d.email}`);
+      if (d.warn) toast.error(d.warn);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
+    finally { setPhotosBusy(false); }
+  }
+  const frJJMM = (iso: string) => new Date(iso).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit" });
+
   async function setFiscalPref(clientId: string, val: "" | "avance" | "credit") {
     const next = fiscal === val ? "" : val; // re-cliquer = désélectionner
     const prev = fiscal;
@@ -1769,6 +1810,61 @@ export default function AgendaPage() {
                               </div>
                             </div>
                           ))}
+
+                          {/* ── Envoi des photos au client (PDF compte rendu) ── */}
+                          {(() => {
+                            const info = photosInfo && photosInfo.row === ev.row ? photosInfo : null;
+                            const envoi = info?.envoi || null;
+                            const emailClient = info?.email || ev.email || "";
+                            return (
+                              <div className="mt-2">
+                                {envoi && (
+                                  <p className="text-[11px] text-green-700 mb-1.5">✓ Envoyées le {frJJMM(envoi.le)} à {envoi.a}</p>
+                                )}
+                                {!photosSheet ? (
+                                  <button type="button"
+                                    onClick={() => { setPhotosSheet(true); setPhotosTo(t => t || emailClient); }}
+                                    className="w-full py-2 rounded-xl border border-blue-200 text-blue-700 text-sm font-medium hover:bg-blue-50 transition-colors">
+                                    {envoi ? "📸 Renvoyer les photos au client" : "📸 Envoyer les photos au client"}
+                                  </button>
+                                ) : (
+                                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
+                                    <p className="text-xs text-blue-900 font-semibold">Envoyer le compte rendu photos (PDF)</p>
+                                    {emailClient ? (
+                                      <label className="block">
+                                        <span className="text-[11px] text-gray-600">Destinataire</span>
+                                        <input type="email" inputMode="email" value={photosTo} onChange={e => setPhotosTo(e.target.value)}
+                                          className="mt-0.5 w-full bg-white border border-blue-200 rounded-lg px-2.5 py-2 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                                      </label>
+                                    ) : (
+                                      <p className="text-[12px] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-2">
+                                        Pas d&apos;adresse email sur la fiche client — ajoute-la depuis la fiche client pour pouvoir envoyer les photos.
+                                      </p>
+                                    )}
+                                    <label className="block">
+                                      <span className="text-[11px] text-gray-600">Message personnel (optionnel)</span>
+                                      <textarea value={photosMsg} onChange={e => setPhotosMsg(e.target.value)} rows={3} maxLength={2000}
+                                        placeholder="Ex. : Pensez à bien aérer la pièce pendant le séchage…"
+                                        className="mt-0.5 w-full bg-white border border-blue-200 rounded-lg px-2.5 py-2 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y" />
+                                    </label>
+                                    <div className="flex gap-2">
+                                      <a href={`/api/prestations/${ev.row}/photos?pdf=1`} target="_blank" rel="noopener noreferrer"
+                                        className="flex-1 py-2 rounded-xl border border-blue-200 bg-white text-blue-700 text-sm font-medium text-center hover:bg-blue-100 transition-colors">
+                                        Aperçu du PDF
+                                      </a>
+                                      <button type="button" disabled={photosBusy || !emailClient || !photosTo.trim()}
+                                        onClick={() => envoyerPhotos(ev.row)}
+                                        className="flex-1 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5">
+                                        {photosBusy ? (<><Loader2 size={14} className="animate-spin" /> Envoi…</>) : "Envoyer"}
+                                      </button>
+                                    </div>
+                                    <button type="button" onClick={() => setPhotosSheet(false)} disabled={photosBusy}
+                                      className="w-full text-[12px] text-gray-500 py-1">Annuler</button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
 
