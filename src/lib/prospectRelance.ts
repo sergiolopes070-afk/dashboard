@@ -21,6 +21,7 @@ import {
   etatAuto, autoGlobalActif, dernierEnvoiJour, estDimanche, jjmmIso, versJour, horsDimanche,
   SuiviAuto, Piste, EtatAuto, PLAFOND_JOUR, RELANCES_AUTO_KEY, RELANCES_AUTO_DERNIER_KEY,
 } from "./prospectRelanceCadence";
+import { listeWhatsAppDuJour, waSectionHtml, waSectionTexte, waTitreResume, waVueJson, WaLigneJour } from "./waAEnvoyerServeur";
 
 const SUIVI_KEY = "prospects_suivi";
 type EtatEnCours = Extract<EtatAuto, { etat: "programmee" | "cloture" }>;
@@ -160,6 +161,8 @@ export interface RapportRelancesAuto {
   envoyees: LigneRapport[]; reponses: LigneRapport[]; clotures: LigneRapport[];
   plafond: LigneRapport[]; reportees: LigneRapport[]; aVenir: LigneRapport[]; erreurs: string[];
   note?: string;
+  // WhatsApp semi-automatiques du jour (calculés APRÈS les relances auto) — sortie JSON.
+  whatsapp?: { nb: number; lignes: ReturnType<typeof waVueJson>[] } | { erreur: string };
 }
 
 const pisteTxt = (p?: Piste) => (p === "infos" ? "demande d'infos" : "devis");
@@ -307,13 +310,31 @@ export async function executerRelancesAuto(opts: { mode: "simulation" | "test" |
 }
 
 // Mémorise le dernier passage (affiché dans Configuration) + résumé au patron.
-export async function finaliserRelancesAuto(r: RapportRelancesAuto): Promise<void> {
-  if (r.mode !== "reel") return;
-  const err = await setSettingRaw(RELANCES_AUTO_DERNIER_KEY, JSON.stringify(r));
-  if (err) r.erreurs.push(`Sauvegarde du dernier passage : ${err}`);
+// Le résumé contient aussi le NOMBRE de WhatsApp à envoyer à la main (calculé
+// APRÈS les relances auto, pour inclure celles parties ce matin) ; il part dès
+// qu'il y a quelque chose, y compris si seule la liste WhatsApp est non vide.
+// baseUrl : URL absolue du tableau de bord (bouton « Ouvrir sur le tableau de bord »), facultative.
+export async function finaliserRelancesAuto(r: RapportRelancesAuto, opts: { baseUrl?: string } = {}): Promise<void> {
+  if (r.mode === "reel") {
+    const err = await setSettingRaw(RELANCES_AUTO_DERNIER_KEY, JSON.stringify(r));
+    if (err) r.erreurs.push(`Sauvegarde du dernier passage : ${err}`);
+  }
 
-  const rien = !r.envoyees.length && !r.reponses.length && !r.clotures.length && !r.erreurs.length && !r.plafond.length;
+  // Lecture seule : calculé dans tous les modes (JSON du cron), envoyé seulement en réel.
+  let wa: WaLigneJour[] = [];
+  try {
+    wa = await listeWhatsAppDuJour(r.jour);
+    r.whatsapp = { nb: wa.length, lignes: wa.map(waVueJson) };
+  } catch (e) {
+    const m = e instanceof Error ? e.message : "erreur";
+    r.whatsapp = { erreur: m };
+    if (r.mode === "reel") r.erreurs.push(`Liste WhatsApp du jour : ${m}`);
+  }
+  if (r.mode !== "reel") return;
+
+  const rien = !r.envoyees.length && !r.reponses.length && !r.clotures.length && !r.erreurs.length && !r.plafond.length && !wa.length;
   if (rien) return;
+  const waTitre = waTitreResume(wa.length);
   const li = (l: LigneRapport, extra = "") => `<li>${esc(l.nom)}${extra}</li>`;
   const bloc = (titre: string, items: string[]) => items.length ? `<h3 style="font-size:15px;margin:16px 0 6px;">${titre}</h3><ul style="margin:0;padding-left:18px;">${items.join("")}</ul>` : "";
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1F2937;">
@@ -323,6 +344,7 @@ export async function finaliserRelancesAuto(r: RapportRelancesAuto): Promise<voi
     ${bloc(`❌ Clôturés sans réponse (${r.clotures.length})`, r.clotures.map(l => li(l)))}
     ${bloc(`⏸️ Non envoyées — plafond ${PLAFOND_JOUR}/jour (${r.plafond.length})`, r.plafond.map(l => li(l, ` — R${l.niveau}`)))}
     ${bloc(`⚠️ Erreurs (${r.erreurs.length})`, r.erreurs.map(e => `<li>${esc(e)}</li>`))}
+    ${wa.length ? `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;margin-top:8px;">${waSectionHtml(wa, waTitre, opts.baseUrl)}</table>` : ""}
     <p style="color:#6B7280;font-size:12px;margin-top:18px;">Pour tout arrêter : Configuration → Relances automatiques des prospects.</p>
   </div>`;
   const text = [
@@ -332,8 +354,9 @@ export async function finaliserRelancesAuto(r: RapportRelancesAuto): Promise<voi
     `Clôturés : ${r.clotures.map(l => l.nom).join(", ") || "—"}`,
     r.plafond.length ? `Plafond atteint, non envoyées : ${r.plafond.map(l => l.nom).join(", ")}` : "",
     r.erreurs.length ? `Erreurs : ${r.erreurs.join(" | ")}` : "",
+    waSectionTexte(wa, waTitre, opts.baseUrl),
   ].filter(Boolean).join("\n");
-  const sujet = `🤖 Relances prospects : ${r.envoyees.length} envoyée(s), ${r.reponses.length} réponse(s), ${r.clotures.length} clôture(s)${r.erreurs.length ? " ⚠️" : ""}`;
+  const sujet = `🤖 Relances prospects : ${r.envoyees.length} envoyée(s), ${r.reponses.length} réponse(s), ${r.clotures.length} clôture(s)${wa.length ? `, ${wa.length} WhatsApp à envoyer` : ""}${r.erreurs.length ? " ⚠️" : ""}`;
   try { await sendPatronNotif(sujet, html, text); }
   catch (e) { console.error("[relances auto] résumé patron KO :", e); }
 }

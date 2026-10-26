@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle, Clock, CalendarCheck, UserPlus, UserCheck,
   CalendarDays, ChevronRight, ChevronDown, UserSearch, X, Loader2,
@@ -171,6 +172,7 @@ const ACCUEIL_CACHE_KEY = "accueil";
 interface AccueilCache { stats: Stats; depenses: Depense[]; prospects: Prospect[]; stock: StockItem[]; demandes: Demande[] }
 
 export default function HomePage() {
+  const router = useRouter();
   // Dernières données connues (cache mémoire) : affichage instantané au retour sur
   // l'accueil, la mise à jour se fait en arrière-plan.
   const cache = cacheGet<AccueilCache>(ACCUEIL_CACHE_KEY);
@@ -195,6 +197,7 @@ export default function HomePage() {
   const [waFait, setWaFait]                   = useState<Record<string, WaEtape>>({}); // envoyés (✓) pendant la session
   const [waPasse, setWaPasse]                 = useState<string[]>([]);              // « Passer » : masqués pour la session
   const [waApercu, setWaApercu]               = useState<string>("");                // aperçu du message déplié
+  const [waVoirListe, setWaVoirListe]         = useState(false);                     // liste détaillée dépliée (mobile)
   const [clotPay, setClotPay]                 = useState<Record<string, string>>({}); // mode de paiement choisi par RDV
   const [clotDetail, setClotDetail]           = useState<Prestation | null>(null); // clôture complète (motif, satisfaction…)
   const [rentaPeriod, setRentaPeriod]         = useState<"semaine" | "mois">("mois");
@@ -274,6 +277,33 @@ export default function HomePage() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  // Lien de l'email (« Ouvrir sur le tableau de bord ») : /?whatsapp=1 ouvre la
+  // pop-up WhatsApp, puis on retire le paramètre de l'URL (pas de réouverture).
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("whatsapp") !== "1") return;
+    setWaOpen(true);
+    url.searchParams.delete("whatsapp");
+    // Via le routeur Next : un history.replaceState direct est réécrit par Next.
+    router.replace(url.pathname + url.search + url.hash, { scroll: false });
+  }, [router]);
+
+  // Retour depuis l'app WhatsApp : on relit les prospects (les WhatsApp notés côté
+  // serveur disparaissent de la liste, même après un rechargement de la page).
+  const prospectsLusRef = useRef(0);
+  useEffect(() => {
+    const relire = () => {
+      if (document.visibilityState !== "visible" || Date.now() - prospectsLusRef.current < 3000) return;
+      prospectsLusRef.current = Date.now();
+      fetch("/api/prospects").then(r => r.ok ? r.json() : null).then(p => {
+        if (Array.isArray(p)) setProspects(p);
+      }).catch(() => { /* non bloquant : on garde la liste actuelle */ });
+    };
+    window.addEventListener("focus", relire);
+    document.addEventListener("visibilitychange", relire);
+    return () => { window.removeEventListener("focus", relire); document.removeEventListener("visibilitychange", relire); };
+  }, []);
+
   // ── Tâches du jour ──────────────────────────────────────────────────────────
   const leadsNouveaux = prospects.filter(p => p.statut === "NOUVEAU");
   const rdvAujourdhui = (stats?.prestations ?? []).filter(p => { const d = frToDateMini(p.date); return d && sameDayMini(d, today); });
@@ -306,9 +336,14 @@ export default function HomePage() {
     return out;
   }, [prospects, waFait, waPasse, todayIso]);
   const waRestants = waListe.filter(w => !w.fait).length;
+  // Mode « enchaîner » : le prochain prospect non envoyé et non passé.
+  const waSuivant = waListe.find(w => !w.fait) || null;
+  const waRang = waListe.length - waRestants + 1;
 
   // Lien wa.me ouvert (le navigateur suit le lien) + étape notée côté serveur.
   // Optimiste : la ligne passe à « ✓ Envoyé » tout de suite.
+  // Appelé via setTimeout depuis le clic : le navigateur lit le href du lien
+  // AVANT que React ne remplace le bouton par le prospect suivant.
   function noterWa(id: string, etape: WaEtape) {
     setWaFait(f => ({ ...f, [id]: etape }));
     fetch(`/api/prospects/${id}/relance`, {
@@ -826,8 +861,39 @@ export default function HomePage() {
             </div>
             <div className="overflow-y-auto flex-1 p-4 space-y-2.5">
               {waListe.length === 0 ? (
-                <div className="text-center py-10 text-gray-400"><CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Aucun WhatsApp à envoyer aujourd&apos;hui 🎉</p></div>
-              ) : waListe.map(({ p, etape, fait }) => {
+                loading && prospects.length === 0
+                  ? <div className="text-center py-10 text-gray-400"><Loader2 size={28} className="mx-auto mb-2 animate-spin opacity-50" /><p className="text-sm">Chargement…</p></div>
+                  : <div className="text-center py-10 text-gray-400"><CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Aucun WhatsApp à envoyer aujourd&apos;hui 🎉</p></div>
+              ) : (<>
+              {/* ── Enchaîner : un seul gros bouton, le suivant est prêt au retour ── */}
+              <div className="rounded-2xl border border-green-200 bg-green-50/60 p-3.5">
+                {waSuivant ? (() => {
+                  const { p: ps, etape: es } = waSuivant;
+                  const lienSuivant = waLien(ps.tel, waMessage(es, waDonneesProspect(ps)));
+                  return lienSuivant ? (
+                    <>
+                      <a key={ps.id} href={lienSuivant} target="_blank" rel="noopener noreferrer" onClick={() => { setTimeout(() => noterWa(ps.id, es), 0); }}
+                        className="flex items-center justify-center gap-2 w-full px-3 py-4 rounded-xl bg-[#25D366] text-white text-base font-bold hover:brightness-95 active:brightness-90 shadow-md">
+                        <MessageCircle size={20} className="flex-shrink-0" /> <span className="truncate">▶ Envoyer le suivant : {ps.prenom || ps.nom || "prospect"} ({waRang}/{waListe.length})</span>
+                      </a>
+                      <p className="mt-2 text-[11px] text-center text-green-900/70">{waLibelle(es)}{ps.typePresta ? ` · ${ps.typePresta}` : ""}</p>
+                      <p className="mt-1 text-xs text-center text-gray-500">Après chaque envoi dans WhatsApp, reviens ici : le suivant est prêt.</p>
+                    </>
+                  ) : null;
+                })() : (
+                  <div className="text-center">
+                    <p className="flex items-center justify-center gap-2 py-2 text-green-800 text-base font-bold"><CheckCircle2 size={20} /> Tout est envoyé</p>
+                    <button type="button" onClick={() => setWaOpen(false)}
+                      className="mt-2 w-full py-3 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800">Fermer</button>
+                  </div>
+                )}
+              </div>
+              <button type="button" onClick={() => setWaVoirListe(v => !v)}
+                className="sm:hidden w-full flex items-center justify-center gap-1 py-2 text-xs font-medium text-gray-500 hover:text-gray-700">
+                <ChevronDown size={14} className={`transition-transform ${waVoirListe ? "rotate-180" : ""}`} /> {waVoirListe ? "Masquer la liste" : `Voir la liste (${waListe.length})`}
+              </button>
+              <div className={`space-y-2.5 ${waVoirListe ? "" : "hidden sm:block"}`}>
+              {waListe.map(({ p, etape, fait }) => {
                 const texte = waMessage(etape, waDonneesProspect(p));
                 const lien = waLien(p.tel, texte);
                 const envoi = p.suivi?.dernierEnvoiIso ? new Date(p.suivi.dernierEnvoiIso) : null;
@@ -855,7 +921,7 @@ export default function HomePage() {
                       {fait ? (
                         <p className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-100 text-green-800 text-sm font-semibold"><CheckCircle2 size={15} /> Envoyé</p>
                       ) : lien && (
-                        <a href={lien} target="_blank" rel="noopener noreferrer" onClick={() => noterWa(p.id, etape)}
+                        <a href={lien} target="_blank" rel="noopener noreferrer" onClick={() => { setTimeout(() => noterWa(p.id, etape), 0); }}
                           className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#25D366] text-white text-sm font-bold hover:brightness-95 active:brightness-90 shadow-sm">
                           <MessageCircle size={16} /> Envoyer sur WhatsApp
                         </a>
@@ -870,6 +936,8 @@ export default function HomePage() {
                   </div>
                 );
               })}
+              </div>
+              </>)}
             </div>
             <div className="px-4 py-2.5 border-t border-gray-100 text-center flex-shrink-0">
               <p className="text-[11px] text-gray-400">Chaque bouton ouvre WhatsApp avec le message prêt : il ne reste qu&apos;à appuyer sur Envoyer.</p>

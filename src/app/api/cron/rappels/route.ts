@@ -7,6 +7,7 @@ import {
   isWhatsAppConfigured, sendWhatsAppTemplate, normaliserMobileWA, masquerTel, whatsAppErrorText,
   WA_TEMPLATE_CLIENT, WA_TEMPLATE_PRESTA, WA_TEMPLATE_LANG,
 } from "@/lib/whatsapp";
+import { listeWhatsAppDuJour, waSectionHtml, waSectionTexte, waTitreResume, waVueJson, WaLigneJour } from "@/lib/waAEnvoyerServeur";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,11 @@ export const dynamic = "force-dynamic";
 //   • anti-doublon par prestation + date + destinataire (`whatsapp_rappels_envoye`) ;
 //   • dernier passage mémorisé dans `whatsapp_rappels_dernier` + section dans
 //     l'email de 18h. L'email reste le filet de sécurité (liens wa.me).
+//
+// WhatsApp PROSPECTS semi-automatiques (src/lib/waAEnvoyerServeur.ts) : section
+// « pas encore envoyés aujourd'hui » (couvre les emails envoyés à la main dans la
+// journée). L'email part aussi s'il n'y a aucun RDV demain mais des WhatsApp en
+// attente. En test : liste dans le JSON, rien n'est envoyé.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getCronSecret(): string | undefined {
@@ -239,6 +245,16 @@ export async function GET(req: Request) {
     statut: it.statut, ...(it.raison ? { raison: it.raison } : {}),
   });
 
+  // ── WhatsApp prospects (semi-auto) pas encore envoyés aujourd'hui ──
+  const reqUrl = new URL(req.url);
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || reqUrl.origin;
+  let waProspects: WaLigneJour[] = [];
+  let waProspectsErreur: string | null = null;
+  try { waProspects = await listeWhatsAppDuJour(); }
+  catch (e) { waProspectsErreur = e instanceof Error ? e.message : "liste WhatsApp prospects indisponible"; }
+  const waProspectsVue = waProspectsErreur ? { erreur: waProspectsErreur } : { nb: waProspects.length, lignes: waProspects.map(waVueJson) };
+  const waProspectsTitre = waTitreResume(waProspects.length, "encore à envoyer aujourd'hui");
+
   if (test) {
     return NextResponse.json({
       mode: "TEST (aucun email envoyé)",
@@ -253,11 +269,12 @@ export async function GET(req: Request) {
         mode: waMode, langue: WA_TEMPLATE_LANG,
         messages: waItems.map(it => ({ ...waVue(it), params: it.params })),
       },
+      whatsappProspects: waProspectsVue,
     });
   }
 
-  if (rappels.length === 0) {
-    return NextResponse.json({ demain: demainISO, nbRappels: 0, note: "Aucun RDV demain — pas d'email envoyé." });
+  if (rappels.length === 0 && waProspects.length === 0) {
+    return NextResponse.json({ demain: demainISO, nbRappels: 0, whatsappProspects: waProspectsVue, note: "Aucun RDV demain ni WhatsApp prospect en attente — pas d'email envoyé." });
   }
 
   // ── WhatsApp : envoi réel (ou simulation), AVANT l'email pour pouvoir y
@@ -297,7 +314,7 @@ export async function GET(req: Request) {
   }
 
   const gmail = await getGmailTransporter();
-  if (!gmail) return NextResponse.json({ error: "Gmail non connecté", whatsapp: waResume }, { status: 503 });
+  if (!gmail) return NextResponse.json({ error: "Gmail non connecté", whatsapp: waResume, whatsappProspects: waProspectsVue }, { status: 503 });
   const dest = process.env.AUTH_EMAIL || gmail.user;
 
   // Bouton "table" (le standard email : compatible Gmail/Outlook/iOS) + lien
@@ -340,14 +357,18 @@ export async function GET(req: Request) {
     `\n— WhatsApp automatique (client + prestataire) —\n${waTitre}\n` +
     waItems.map(it => `${it.dest === "client" ? "Client" : "Prestataire"} ${it.nom}${it.tel ? ` (${masquerTel(it.tel)})` : ""} : ${waLibelle(it)}`).join("\n") + "\n";
 
+  // Section « WhatsApp prospects » : nombre + bouton vers le tableau de bord.
+  const waProspectsHtml = waSectionHtml(waProspects, waProspectsTitre, baseUrl);
+  const waProspectsTexte = waSectionTexte(waProspects, waProspectsTitre, baseUrl);
+
   // Version texte brut : les URL y sont cliquables dans tous les clients mail.
   const texte =
     `Rappels à envoyer — RDV du ${frDate(demainISO)} (${rappels.length})\n\n` +
-    rappels.map(r =>
+    (rappels.length ? rappels.map(r =>
       `${r.heure ? r.heure + " · " : ""}${r.client || "Client"}` +
       `${r.prestations.length ? ` — ${r.prestations.join(" + ")}` : ""}` +
       `${r.tel ? ` — ${r.tel}` : ""}\n${r.waLink || "(pas de numéro)"}\n`
-    ).join("\n") + waTexte;
+    ).join("\n") : "Aucun rendez-vous demain.\n") + waTexte + waProspectsTexte;
 
   const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:0;background:#f4f4f7;font-family:Arial,Helvetica,sans-serif;">
@@ -358,9 +379,11 @@ export async function GET(req: Request) {
         <div style="color:rgba(255,255,255,0.65);font-size:13px;margin-top:4px;">${frDate(demainISO)} · ${rappels.length} rendez-vous</div>
       </td></tr>
       <tr><td style="padding:6px 12px;">
-        <p style="font-size:13px;color:#6B7280;padding:12px 4px 4px;">Cliquez sur chaque bouton pour ouvrir WhatsApp avec le message de rappel prérempli.</p>
-        <table width="100%" cellpadding="0" cellspacing="0">${lignes}</table>
-      </td></tr>${waHtml}
+        ${rappels.length
+          ? `<p style="font-size:13px;color:#6B7280;padding:12px 4px 4px;">Cliquez sur chaque bouton pour ouvrir WhatsApp avec le message de rappel prérempli.</p>
+        <table width="100%" cellpadding="0" cellspacing="0">${lignes}</table>`
+          : `<p style="font-size:13px;color:#6B7280;padding:12px 4px 4px;">Aucun rendez-vous demain.</p>`}
+      </td></tr>${waHtml}${waProspectsHtml}
       <tr><td style="background:#1C3557;padding:14px 28px;text-align:center;">
         <div style="color:rgba(255,255,255,0.6);font-size:11px;">KinouClean · rappel automatique quotidien</div>
       </td></tr>
@@ -372,7 +395,9 @@ export async function GET(req: Request) {
   try {
     await gmail.transporter.sendMail({
       from: `"KinouClean" <${gmail.user}>`, to: dest,
-      subject: `🔔 ${rappels.length} rappel(s) à envoyer — RDV du ${frDate(demainISO)}`,
+      subject: rappels.length
+        ? `🔔 ${rappels.length} rappel(s) à envoyer — RDV du ${frDate(demainISO)}${waProspects.length ? ` · 💬 ${waProspects.length} WhatsApp prospect(s)` : ""}`
+        : `💬 ${waProspects.length} WhatsApp prospect(s) pas encore envoyé(s) aujourd'hui`,
       text: texte,
       html,
     });
@@ -442,5 +467,5 @@ export async function GET(req: Request) {
     await setSettingRaw("rappel_client_envoye", JSON.stringify(guard));
   } catch { /* non bloquant */ }
 
-  return NextResponse.json({ demain: demainISO, nbRappels: rappels.length, ownerEnvoyeA: ownerOk ? dest : null, prestaEnvoyes, clientEnvoyes, whatsapp: waResume });
+  return NextResponse.json({ demain: demainISO, nbRappels: rappels.length, ownerEnvoyeA: ownerOk ? dest : null, prestaEnvoyes, clientEnvoyes, whatsapp: waResume, whatsappProspects: waProspectsVue });
 }

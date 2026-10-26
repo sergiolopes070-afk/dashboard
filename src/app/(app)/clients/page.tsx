@@ -60,6 +60,8 @@ interface Client {
   latest?: PrestaC;         // dernière prestation effectuée (date passée la plus récente)
   prochain?: PrestaC;       // prochain RDV actif à venir
   activiteTs: number;       // dernière activité (tri « Récents »)
+  reel: boolean;            // au moins une prestation en cours ou réalisée (pas que des annulations)
+  prixManquant: boolean;    // une prestation valable sans prix
 }
 
 // Cache local (format différent de CACHE_KEYS.prestations, partagé par d'autres pages).
@@ -74,7 +76,7 @@ function frTs(date: string, heure?: string): number {
   return isNaN(t) ? 0 : t;
 }
 
-type Tri = "prestations" | "recents" | "rdv" | "nouveaux";
+type Tri = "prestations" | "recents" | "rdv" | "nouveaux" | "sans";
 
 const NOTE_TYPES = [
   { icon: "📞", label: "Appel" },
@@ -508,6 +510,11 @@ export default function ClientsPage() {
         .filter(p => !p.archived && p.statut !== "ANNULÉ" && frTs(p.date) >= debutJour.getTime())
         .reduce<PrestaC | undefined>((acc, p) =>
           !acc || frTs(p.date, p.heure) < frTs(acc.date, acc.heure) ? p : acc, undefined);
+      // Vrai client = au moins une prestation en cours ou réalisée (pas seulement annulée).
+      // Les autres fiches (aucune prestation, que des annulations) sortent de la liste par défaut.
+      const valables = ps.filter(p => !p.archived || !estAnnulation(p.archiveReason));
+      const reel = valables.length > 0;
+      const prixManquant = valables.some(p => !(parseFloat(p.prix) > 0));
       const activiteTs = Math.max(
         0, ...ps.map(p => frTs(p.date, p.heure)), ...ps.map(p => Date.parse(p.timestamp) || 0), Date.parse(c.creeLe) || 0,
       );
@@ -518,13 +525,18 @@ export default function ClientsPage() {
         derniere: latest?.date || "",
         tags: c.tags ?? [],
         notes: c.notes ?? [],
-        latest, prochain, activiteTs,
+        latest, prochain, activiteTs, reel, prixManquant,
       };
     }).sort((a, b) => b.prestations.length - a.prestations.length);
   }, [data]);
 
+  const nbSans = useMemo(() => clients.filter(c => !c.reel).length, [clients]);
   const filtered = useMemo(() => {
     let list = clients;
+    // Onglet « Sans prestation réalisée » : fiches vides ou 100 % annulées. Ailleurs, on
+    // ne les montre que si on les cherche explicitement (la recherche couvre tout).
+    if (tri === "sans") list = list.filter(c => !c.reel);
+    else if (!search.trim()) list = list.filter(c => c.reel);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((c) =>
@@ -720,6 +732,7 @@ export default function ClientsPage() {
               ["rdv", "📅 RDV à venir"],
               ["recents", "Activité récente"],
               ["nouveaux", "Nouveaux clients"],
+              ["sans", `Sans prestation réalisée (${nbSans})`],
             ] as [Tri, string][]).map(([val, label]) => (
               <button
                 key={val}
@@ -799,6 +812,8 @@ export default function ClientsPage() {
                           {c.prenom} {c.nom}
                         </button>
                         <span className="ml-1.5 align-middle"><AvanceBadge tel={c.tel} email={c.email} prenom={c.prenom} nom={c.nom} /></span>
+                        {c.prixManquant && <span className="ml-1.5 align-middle text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200" title="Une prestation n'a pas de prix">Prix manquant</span>}
+                        {!c.reel && <span className="ml-1.5 align-middle text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500" title="Aucune prestation réalisée (vide ou annulée)">Sans prestation réalisée</span>}
                         <p className="text-xs text-gray-400 mt-0.5">
                           {c.prestations.length} prestation{c.prestations.length > 1 ? "s" : ""}
                           {nbArchivees > 0 ? ` · dont ${nbArchivees} archivée${nbArchivees > 1 ? "s" : ""}` : ""}

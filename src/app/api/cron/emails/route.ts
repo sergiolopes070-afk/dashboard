@@ -198,7 +198,7 @@ export async function GET(req: Request) {
   let relancesProspects: unknown;
   try {
     const rp = await executerRelancesAuto({ mode, deadline: debutMs + 45_000 });
-    await finaliserRelancesAuto(rp);
+    await finaliserRelancesAuto(rp, { baseUrl });   // + liste WhatsApp du jour (après les envois auto)
     relancesProspects = rp;
   } catch (e) { relancesProspects = { erreur: e instanceof Error ? e.message : "relances prospects échouées" }; }
 

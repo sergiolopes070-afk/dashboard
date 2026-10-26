@@ -52,6 +52,8 @@ export async function POST(req: Request) {
   const adresse    = clean(body.adresse ?? body.address);
   const message    = clean(body.message);
   const budget     = clean(body.budget ?? body.prix);
+  // Source facultative (ex. "Instagram" pour les leads Meta) ; défaut : le formulaire du site.
+  const source     = clean(body.source).slice(0, 60) || "Site (formulaire direct)";
   // Souhait de créneau (préférence, PAS une réservation) : rangé dans les notes.
   // Accepte les champs À PLAT (date_souhaitee, heure…) OU un objet imbriqué `creneau`.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -90,7 +92,7 @@ export async function POST(req: Request) {
     prenom, nom,
     tel        : tel || null,
     email      : email || null,
-    source     : "Site (formulaire direct)",
+    source     : source,
     type_presta: prestation,
     adresse    : adresse || null,
     budget     : budget || null,      // estimation éventuelle
