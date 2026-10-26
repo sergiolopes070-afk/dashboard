@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useMemo, useRef } from "react";
-import { ChevronLeft, ChevronRight, Plus, X, SlidersHorizontal, CheckCircle2, MapPin, Loader2 } from "lucide-react";
-import { Prestation, Prestataire, StatutClient, TYPES_PRESTATION } from "@/lib/constants";
+import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, SlidersHorizontal, CheckCircle2, Loader2 } from "lucide-react";
+import { Prestation, Prestataire, TYPES_PRESTATION } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
 import dynamic from "next/dynamic";
 import type { LightboxPhoto } from "@/components/PhotoLightbox";
@@ -21,6 +21,7 @@ const EmailActions    = dynamic(() => import("@/components/EmailActions"),   { s
 const PhotoLightbox   = dynamic(() => import("@/components/PhotoLightbox"),  { ssr: false });
 const NewClientModal  = dynamic(() => import("@/components/NewClientModal"), { ssr: false });
 const ClotureModal    = dynamic(() => import("@/components/ClotureModal"),   { ssr: false });
+const EditPrestationModal = dynamic(() => import("@/components/EditPrestationModal"), { ssr: false });
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const PALETTE = [
@@ -46,13 +47,6 @@ const EVENT_DUR  = 60;
 const JOURS_LONG  = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
 const JOURS_SHORT = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 const MOIS        = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
-// Statuts client alignés sur StatutClient / STATUT_COLORS (src/lib/constants.ts).
-// Le Record garantit à la compilation qu'aucun statut partagé n'est oublié.
-const STATUTS_MAP: Record<StatutClient, true> = {
-  "EMAIL ENVOYÉ": true, "CONFIRMÉ": true, "PRESTATAIRE REFUSÉ – À RÉAFFECTER": true,
-  "TERMINÉ": true, "PAYÉ": true, "ANNULÉ": true, "": true,
-};
-const STATUTS = Object.keys(STATUTS_MAP) as StatutClient[];
 type ViewMode = "day" | "week" | "month";
 const VIEW_KEY = "agenda:viewMode";
 
@@ -268,78 +262,38 @@ function DayDetailModal({
   );
 }
 
-// ─── Autocomplete adresse (Base Adresse Nationale) ───────────────────────────
-interface BanFeature {
-  properties: { label: string; name: string; postcode: string; city: string };
-}
-
-function useAddressSearch(query: string) {
-  const [suggestions, setSuggestions] = useState<BanFeature[]>([]);
-  const [loading, setLoading] = useState(false);
-  useEffect(() => {
-    if (query.length < 4) { setSuggestions([]); return; }
-    const timer = setTimeout(() => {
-      setLoading(true);
-      fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=6`)
-        .then(r => r.json())
-        .then((d: { features: BanFeature[] }) => setSuggestions(d.features || []))
-        .catch(() => setSuggestions([]))
-        .finally(() => setLoading(false));
-    }, 280);
-    return () => clearTimeout(timer);
-  }, [query]);
-  return { suggestions, loading };
-}
-
-function AddressAutocomplete({ value, onChange, onSelect, inputCls }: {
-  value: string;
-  onChange: (v: string) => void;
-  onSelect: (adresse: string, cp: string, ville: string) => void;
-  inputCls: string;
+// ─── Section repliable de la fiche RDV (état ouvert/fermé mémorisé) ──────────
+function FicheSection({ id, title, defaultOpen = false, aside, children }: {
+  id: string;
+  title: string;
+  defaultOpen?: boolean;
+  aside?: React.ReactNode;
+  children: React.ReactNode;
 }) {
-  const [open,        setOpen]        = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-  const { suggestions } = useAddressSearch(searchQuery);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
+  const key = `agenda:rdvSection:${id}`;
+  const [open, setOpen] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem(key);
+      if (v === "1") return true;
+      if (v === "0") return false;
+    } catch { /* stockage indisponible */ }
+    return defaultOpen;
+  });
+  const toggle = () => setOpen(o => {
+    try { localStorage.setItem(key, o ? "0" : "1"); } catch { /* stockage indisponible */ }
+    return !o;
+  });
   return (
-    <div ref={ref} className="relative">
-      <input
-        type="text"
-        value={value}
-        onChange={e => { onChange(e.target.value); setSearchQuery(e.target.value); setOpen(true); }}
-        onFocus={() => searchQuery.length >= 4 && setOpen(true)}
-        placeholder="12 rue de la Paix, Paris…"
-        autoComplete="off"
-        className={inputCls}
-      />
-      {open && suggestions.length > 0 && (
-        <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-          {suggestions.map((s, i) => (
-            <li
-              key={i}
-              onMouseDown={e => e.preventDefault()}
-              onClick={() => {
-                onSelect(s.properties.name, s.properties.postcode, s.properties.city);
-                setSearchQuery("");
-                setOpen(false);
-              }}
-              className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-start gap-2"
-            >
-              <MapPin size={13} className="text-gray-400 mt-0.5 flex-shrink-0" />
-              <span>{s.properties.label}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="mt-4 border-t border-gray-100 pt-2">
+      <button type="button" onClick={toggle} aria-expanded={open}
+        className="w-full min-h-[36px] flex items-center justify-between gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+        <span className="truncate">{title}</span>
+        <span className="flex items-center gap-1.5 min-w-0">
+          {aside}
+          <ChevronDown size={16} className={`shrink-0 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
+        </span>
+      </button>
+      {open && <div className="mt-1.5">{children}</div>}
     </div>
   );
 }
@@ -545,22 +499,12 @@ export default function AgendaPage() {
   // ── Clôture (archive) depuis l'agenda → ClotureModal partagée ─────────────
   const [archiveEv, setArchiveEv] = useState<Prestation | null>(null);
 
-  // ── Édition inline depuis le modal ────────────────────────────────────────
-  const [editMode,   setEditMode]   = useState(false);
-  const [editForm,   setEditForm]   = useState<Partial<Prestation>>({});
-  const [editSaving, setEditSaving] = useState(false);
-  const [editCp,     setEditCp]     = useState("");
-  const [editVille,  setEditVille]  = useState("");
+  // ── Édition : formulaire unique partagé (EditPrestationModal, aussi utilisé par Prestations) ──
+  const [editEv, setEditEv] = useState<Prestation | null>(null);
+  // Après enregistrement : la fiche RDV reste ouverte et se rafraîchit avec les données rechargées.
+  const refreshSelRef = useRef<string | null>(null);
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [cancelConfirm, setCancelConfirm] = useState(false);
-  // Multiplicateur de prix en édition (prix unitaire × nombre → editForm.prix)
-  const [editUnit, setEditUnit] = useState("");
-  const [editNb,   setEditNb]   = useState("1");
-  const applyEditPrice = (unit: string, nb: string) => {
-    setEditUnit(unit); setEditNb(nb);
-    const u = parseFloat(unit.replace(",", ".")) || 0; const n = Math.max(1, parseInt(nb) || 1);
-    setEditForm(f => ({ ...f, prix: u > 0 ? String(Number((u * n).toFixed(2))) : "" }));
-  };
   // Ajout d'une prestation à un RDV déjà programmé (même client, même créneau).
   const [addOpen, setAddOpen]   = useState(false);
   const [addType, setAddType]   = useState("");
@@ -618,6 +562,15 @@ export default function AgendaPage() {
     }).catch(() => { if (seq !== loadSeqRef.current) return; netLoadedRef.current = true; setLoading(false); });
   };
   useEffect(() => { loadData(); }, []);
+  // Rafraîchit la fiche RDV ouverte une fois les données rechargées après une modification.
+  useEffect(() => {
+    const row = refreshSelRef.current;
+    if (!row) return;
+    const fresh = prestations.find(p => p.row === row);
+    if (!fresh) return;
+    refreshSelRef.current = null;
+    setSelectedEvent(prev => prev && prev.row === row ? fresh : prev);
+  }, [prestations]);
   // Passe à l'historique complet (date affichée avant la fenêtre, RDV introuvable).
   const chargerToutArchive = () => {
     if (!archiveFromRef.current) return;
@@ -764,48 +717,6 @@ export default function AgendaPage() {
     // Mémorise l'action pour l'annuler avec Ctrl/⌘+Z (remet l'ancienne date/heure).
     pushUndo(`Déplacement de ${ev.prenom || "RDV"}`, () => applyReschedule(row, prevDate, prevHeure));
     toast.success("RDV déplacé — ⌘/Ctrl+Z pour annuler");
-  }
-
-  // ── Sauvegarde édition inline ─────────────────────────────────────────────
-  async function saveEdit() {
-    if (!selectedEvent) return;
-    setEditSaving(true);
-    const updates: Record<string, string> = {};
-    (Object.keys(editForm) as (keyof Prestation)[]).forEach(k => {
-      updates[k] = String(editForm[k] ?? "");
-    });
-    // Combiner adresse + CP + ville si CP ou ville renseignés
-    const fullAdresse = [editForm.adresse, editCp, editVille].filter(Boolean).join(" ");
-    if (fullAdresse) updates.adresse = fullAdresse;
-    try {
-      const res = await fetch("/api/prestations", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ row: selectedEvent.row, updates }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `Erreur ${res.status}`);
-      }
-      // Recharger les vraies données depuis la base
-      loadData();
-      const updated = { ...selectedEvent, ...editForm, adresse: fullAdresse || editForm.adresse || selectedEvent.adresse } as Prestation;
-      setEditMode(false);
-      setEditCp(""); setEditVille("");
-      toast.success("Modifications enregistrées");
-      // Passage à « TERMINÉ » → clôture avec mode de paiement (plus d'auto-archivage silencieux).
-      if (editForm.statut === "TERMINÉ" && selectedEvent.statut !== "TERMINÉ" && !(selectedEvent as Prestation & { _archived?: boolean })._archived) {
-        setSelectedEvent(null);
-        setArchiveEv(updated);
-      } else {
-        setSelectedEvent(updated);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erreur inconnue";
-      toast.error(`Erreur lors de la sauvegarde : ${msg}`);
-    } finally {
-      setEditSaving(false);
-    }
   }
 
   // ── Annulation rapide (sans motif, sans modal) ───────────────────────────
@@ -1357,9 +1268,11 @@ export default function AgendaPage() {
       )}
 
       {selectedEvent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40"
           onClick={() => { setSelectedEvent(null); setCancelConfirm(false); }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-5 max-h-[90vh] overflow-y-auto"
+          {/* Mobile : feuille du bas (pleine largeur) — desktop : modale centrée */}
+          <div key={selectedEvent.row}
+            className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-sm sm:mx-4 max-h-[90vh] overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]"
             onClick={e => e.stopPropagation()}>
             {(() => {
               const ev    = selectedEvent;
@@ -1367,200 +1280,93 @@ export default function AgendaPage() {
               const color = pid ? (colorMap[pid] ?? PALETTE[0]) : { bg:"#9CA3AF", light:"#F3F4F6", text:"#374151" };
               const isArchived = !!(ev as Prestation & { _archived?: boolean; archive_reason?: string })._archived;
               const archiveReason = (ev as Prestation & { _archived?: boolean; archive_reason?: string }).archive_reason;
-              const inputCls = "w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-800 focus:outline-none focus:border-blue-400";
+              // RDV passé ? (date + heure ; sans heure : jour strictement avant aujourd'hui)
+              const rdvJour = frToDate(ev.date);
+              const rdvDebut = rdvJour ? new Date(rdvJour) : null;
+              if (rdvDebut && ev.heure) { const [hh, mm] = ev.heure.split(":").map(Number); rdvDebut.setHours(hh || 0, mm || 0, 0, 0); }
+              const estPasse = !!rdvDebut && (ev.heure ? rdvDebut.getTime() < Date.now() : rdvDebut < today);
+              const aVenir = !!rdvJour && rdvJour >= today;
+              // ── Message mission au prestataire (WhatsApp, avec réponse directe) ──
+              const prestataireObj = ev.prestataire ? prestataires.find(p => p.nom === ev.prestataire) : undefined;
+              const baseUrl   = typeof window !== "undefined" ? window.location.origin : "";
+              const acceptUrl = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=accepter`;
+              const refusUrl  = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=refuser`;
+              const missionMsg = (
+                `Bonjour ${ev.prestataire} 👋,\n\nUne mission vous a été proposée chez KinouClean :\n\n` +
+                `👤 Client : ${ev.prenom} ${ev.nom}\n` +
+                `📞 Téléphone : ${ev.tel || "—"}\n` +
+                `🧹 Prestation : ${ev.typePresta || "—"}\n` +
+                `📍 Adresse : ${ev.adresse || "—"}\n` +
+                `📅 Date : ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
+                `💶 Prix : ${ev.prix && ev.prix !== "0" ? ev.prix + " €" : "À définir"}` +
+                (ev.modePaiement ? `\n💳 Mode de paiement : ${ev.modePaiement}` : "") +
+                (ev.message?.trim() ? `\n\n💬 Message client :\n${ev.message.trim()}` : "") +
+                (ev.commentaire?.trim() ? `\n\n📝 Note interne :\n${ev.commentaire.trim()}` : "") +
+                `\n\nMerci de répondre directement via ces liens :\n\n` +
+                `✅ ACCEPTER la mission :\n${acceptUrl}\n\n` +
+                `❌ REFUSER la mission :\n${refusUrl}\n\n` +
+                `Votre réponse met à jour la fiche automatiquement 🙏`
+              );
+              const missionLien = prestataireObj?.tel ? waLien(prestataireObj.tel, missionMsg) : null;
+              // ── Rappel client ──
+              // Avance immédiate par défaut (≈90 % des clients) → on affiche
+              // TOUJOURS le reste à charge (−50 %) dès qu'il y a un montant.
+              // Message manuel : à retirer à la main dans les rares cas « crédit ».
+              const prixNumR = parseFloat((ev.prix || "").replace(",", "."));
+              const resteR = !isNaN(prixNumR) && prixNumR > 0 ? prixNumR / 2 : null;
+              const fmtR = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+              const rappelMsg =
+                `Bonjour ${ev.prenom || ""},\n\n` +
+                `Petit rappel de votre rendez-vous KinouClean 🙂\n\n` +
+                `🧹 ${ev.typePresta || "Prestation KinouClean"}\n` +
+                `📅 ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
+                `📍 ${ev.adresse || "—"}\n` +
+                (ev.prix && ev.prix !== "0" ? `💶 Montant : ${ev.prix} €\n` : "") +
+                (resteR != null ? `💳 Reste à charge : ${fmtR(resteR)} €\n` : "") +
+                (resteR != null ? `\nN'oubliez pas de finaliser votre inscription à l'avance immédiate.\n` : "") +
+                `\nEn cas d'empêchement, merci de nous prévenir au plus tôt.\n\nÀ très bientôt,\nL'équipe KinouClean`;
+              const rappelLien = waLien(ev.tel, rappelMsg);
               return (
                 <>
-                  {/* ── Header ── */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <div className="px-2 py-0.5 rounded-full text-xs font-semibold"
-                        style={{ backgroundColor: isArchived ? "#F3F4F6" : color.light, color: isArchived ? "#6B7280" : color.text }}>
-                        {ev.prestataire || "Sans prestataire"}
+                  {/* ── Header (collant) : nom + statut + modifier / fermer ── */}
+                  <div className="sticky top-0 z-10 bg-white px-5 pt-2 sm:pt-4 pb-3 border-b border-gray-100 rounded-t-2xl">
+                    <div className="sm:hidden mx-auto mb-2 h-1 w-10 rounded-full bg-gray-200" aria-hidden />
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        {ev.clientId ? (
+                          <button onClick={() => setFicheClientId(ev.clientId)}
+                            className={`block font-bold text-base text-left hover:text-blue-600 transition-colors truncate max-w-full ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}
+                            title="Ouvrir la fiche client">
+                            {ev.prenom} {ev.nom}
+                          </button>
+                        ) : (
+                          <h3 className={`font-bold text-base truncate ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</h3>
+                        )}
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                          <div className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                            style={{ backgroundColor: isArchived ? "#F3F4F6" : color.light, color: isArchived ? "#6B7280" : color.text }}>
+                            {ev.prestataire || "Sans prestataire"}
+                          </div>
+                          {isArchived && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200">
+                              📦 Archivé
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      {isArchived && (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200">
-                          📦 Archivé
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {!isArchived && (
-                        editMode
-                          ? <button onClick={() => setEditMode(false)} className="text-xs text-gray-400 hover:text-gray-600 font-medium">Annuler</button>
-                          : <button
-                              onClick={() => {
-                                setEditForm({
-                                  prenom: ev.prenom, nom: ev.nom, tel: ev.tel, email: ev.email,
-                                  typePresta: ev.typePresta, adresse: ev.adresse, prix: ev.prix,
-                                  prestataire: ev.prestataire, statut: ev.statut,
-                                  heure: ev.heure, date: ev.date,
-                                  message: ev.message, commentaire: ev.commentaire,
-                                  modePaiement: ev.modePaiement,
-                                });
-                                // Pré-remplit CP/ville depuis l'adresse stockée (« rue …, 75001 Paris ») pour ne pas les perdre/dupliquer
-                                const mAdr = (ev.adresse || "").match(/^(.*?)[,\s]+(\d{5})\s+(.+)$/);
-                                if (mAdr) {
-                                  setEditForm(f => ({ ...f, adresse: mAdr[1] }));
-                                  setEditCp(mAdr[2]); setEditVille(mAdr[3]);
-                                } else { setEditCp(""); setEditVille(""); }
-                                setEditUnit(ev.prix || ""); setEditNb("1");
-                                setEditMode(true);
-                              }}
-                              className="text-xs text-blue-500 hover:text-blue-700 font-semibold"
-                            >✏️ Modifier</button>
-                      )}
-                      <button onClick={() => { setSelectedEvent(null); setEditMode(false); setCancelConfirm(false); }}
-                        className="text-gray-400 hover:text-gray-600 text-xl font-bold leading-none">×</button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!isArchived && (
+                          <button onClick={() => setEditEv(ev)}
+                            className="text-xs text-blue-500 hover:text-blue-700 font-semibold min-h-[32px] px-1">✏️ Modifier</button>
+                        )}
+                        <button onClick={() => { setSelectedEvent(null); setCancelConfirm(false); }}
+                          aria-label="Fermer"
+                          className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-xl font-bold leading-none">×</button>
+                      </div>
                     </div>
                   </div>
 
-                  {/* ── Mode édition ── */}
-                  {editMode ? (
-                    <div className="space-y-3 mb-4">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-xs text-gray-400 mb-1 block">Prénom</label>
-                          <input className={inputCls} value={editForm.prenom ?? ""} onChange={e => setEditForm(f => ({ ...f, prenom: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-400 mb-1 block">Nom</label>
-                          <input className={inputCls} value={editForm.nom ?? ""} onChange={e => setEditForm(f => ({ ...f, nom: e.target.value }))} />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Téléphone</label>
-                        <input className={inputCls} value={editForm.tel ?? ""} onChange={e => setEditForm(f => ({ ...f, tel: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Email</label>
-                        <input className={inputCls} value={editForm.email ?? ""} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Prestation</label>
-                        <select className={inputCls} value={editForm.typePresta ?? ""} onChange={e => setEditForm(f => ({ ...f, typePresta: e.target.value }))}>
-                          <option value="">— Choisir —</option>
-                          {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Adresse</label>
-                        <AddressAutocomplete
-                          value={editForm.adresse ?? ""}
-                          onChange={v => setEditForm(f => ({ ...f, adresse: v }))}
-                          onSelect={(adresse, cp, ville) => {
-                            setEditForm(f => ({ ...f, adresse }));
-                            setEditCp(cp);
-                            setEditVille(ville);
-                          }}
-                          inputCls={inputCls}
-                        />
-                        <div className="grid grid-cols-2 gap-2 mt-2">
-                          <input
-                            className={inputCls}
-                            placeholder="Code postal"
-                            value={editCp}
-                            onChange={e => setEditCp(e.target.value)}
-                          />
-                          <input
-                            className={inputCls}
-                            placeholder="Ville"
-                            value={editVille}
-                            onChange={e => setEditVille(e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-xs text-gray-400 mb-1 block">Date</label>
-                          <input type="date" className={`${inputCls} min-h-[40px]`} value={toInputDate(editForm.date ?? "")} onChange={e => setEditForm(f => ({ ...f, date: fromInputDate(e.target.value) }))} />
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-400 mb-1 block">Heure</label>
-                          <input type="time" className={`${inputCls} min-h-[40px]`} value={editForm.heure ?? ""} onChange={e => setEditForm(f => ({ ...f, heure: e.target.value }))} />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-xs text-gray-400 mb-1 block">Prix unitaire (€)</label>
-                          <input className={inputCls} type="number" value={editUnit} onChange={e => applyEditPrice(e.target.value, editNb)} />
-                        </div>
-                        <div>
-                          <label className="text-xs text-gray-400 mb-1 block">Nombre</label>
-                          <div className="flex items-center gap-1">
-                            <button type="button" onClick={() => applyEditPrice(editUnit, String(Math.max(1, (parseInt(editNb) || 1) - 1)))} className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">–</button>
-                            <input className="w-12 text-center border border-gray-200 rounded-lg px-1 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" type="number" min={1} value={editNb} onChange={e => applyEditPrice(editUnit, e.target.value)} />
-                            <button type="button" onClick={() => applyEditPrice(editUnit, String((parseInt(editNb) || 1) + 1))} className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">+</button>
-                          </div>
-                        </div>
-                      </div>
-                      {(parseInt(editNb) || 1) > 1 && (
-                        <p className="text-xs text-gray-500 -mt-1">Total : <strong className="text-gray-800">{editForm.prix || 0} €</strong> ({editNb} × {editUnit || 0} €)</p>
-                      )}
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Statut</label>
-                        <select className={inputCls} value={editForm.statut ?? ""} onChange={e => setEditForm(f => ({ ...f, statut: e.target.value as Prestation["statut"] }))}>
-                          {STATUTS.map(s => <option key={s} value={s}>{s || "—"}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Prestataire</label>
-                        <select className={inputCls} value={editForm.prestataire ?? ""} onChange={e => setEditForm(f => ({ ...f, prestataire: e.target.value }))}>
-                          <option value="">— Aucun —</option>
-                          {prestataires.map(p => <option key={p.id} value={p.nom}>{p.nom}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Message client</label>
-                        <textarea className={inputCls} rows={2} value={editForm.message ?? ""} onChange={e => setEditForm(f => ({ ...f, message: e.target.value }))} placeholder="Message du client…" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Note interne</label>
-                        <textarea className={inputCls} rows={2} value={editForm.commentaire ?? ""} onChange={e => setEditForm(f => ({ ...f, commentaire: e.target.value }))} placeholder="Note interne…" />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-400 mb-2 block">Mode de paiement</label>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {[
-                            { label: "Espèces",           icon: "💵" },
-                            { label: "Virement bancaire",  icon: "🏦" },
-                            { label: "Lien de paiement",   icon: "🔗" },
-                            { label: "Chèque",             icon: "📄" },
-                            { label: "Carte sur place",    icon: "💳" },
-                            { label: "Avance immédiate", icon: "⚡" },
-                          ].map(({ label, icon }) => (
-                            <button key={label} type="button"
-                              onClick={() => setEditForm(f => ({ ...f, modePaiement: f.modePaiement === label ? undefined : label as Prestation["modePaiement"] }))}
-                              className={`px-2.5 py-2 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
-                                editForm.modePaiement === label
-                                  ? "bg-blue-600 text-white border-blue-600"
-                                  : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
-                              }`}>
-                              <span>{icon}</span>
-                              <span className="truncate">{label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <button
-                        onClick={saveEdit}
-                        disabled={editSaving}
-                        className="w-full py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
-                      >
-                        {editSaving ? "Enregistrement…" : "Enregistrer les modifications"}
-                      </button>
-                    </div>
-                  ) : (
-                    /* ── Mode affichage ── */
-                    <>
-                      {ev.clientId ? (
-                        <button onClick={() => setFicheClientId(ev.clientId)}
-                          className={`font-bold text-base mb-1 text-left hover:text-blue-600 transition-colors ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}
-                          title="Ouvrir la fiche client">
-                          {ev.prenom} {ev.nom}
-                        </button>
-                      ) : (
-                        <h3 className={`font-bold text-base mb-1 ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</h3>
-                      )}
+                  <div className="px-5 pt-3 pb-5">
                       <p className="text-sm text-gray-500 mb-3">
                         {ev.typePresta}
                         {ev.quantite && ev.quantite !== "1" && <span className="text-gray-700 font-medium"> — {ev.quantite}</span>}
@@ -1601,6 +1407,37 @@ export default function AgendaPage() {
                           </div>
                         );
                       })()}
+                      {/* ── Action principale selon le contexte du RDV ── */}
+                      {isArchived ? (
+                        <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-700 space-y-0.5">
+                          <p className="font-semibold">📦 {archiveReason || "RDV clôturé"}</p>
+                          <p className="text-xs text-gray-500">
+                            {ev.modePaiement ? `💳 ${ev.modePaiement}` : "💳 Paiement non renseigné"}
+                            {ev.prix && ev.prix !== "0" ? ` · ${ev.prix} €` : ""}
+                          </p>
+                        </div>
+                      ) : estPasse ? (
+                        <button type="button"
+                          onClick={() => { setArchiveEv(ev); setSelectedEvent(null); }}
+                          className="mb-3 w-full min-h-[48px] rounded-xl bg-green-600 text-white text-base font-semibold hover:bg-green-700 active:bg-green-800 transition-colors flex items-center justify-center gap-1.5">
+                          ✅ Clôturer ce RDV
+                        </button>
+                      ) : (rappelLien || missionLien) ? (
+                        <div className={`mb-3 grid gap-1.5 ${rappelLien && missionLien ? "grid-cols-2" : "grid-cols-1"}`}>
+                          {rappelLien && (
+                            <a href={rappelLien} target="_blank" rel="noopener noreferrer"
+                              className="min-h-[48px] rounded-xl bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 active:bg-sky-800 transition-colors flex items-center justify-center gap-1.5 px-2 text-center">
+                              🔔 Rappel WhatsApp
+                            </a>
+                          )}
+                          {missionLien && (
+                            <a href={missionLien} target="_blank" rel="noopener noreferrer"
+                              className="min-h-[48px] rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 active:bg-green-800 transition-colors flex items-center justify-center gap-1.5 px-2 text-center">
+                              📱 Envoyer la mission
+                            </a>
+                          )}
+                        </div>
+                      ) : null}
                       {/* ── Infos RDV : date / heure / prestataire / prix / statut ── */}
                       <div className="space-y-1.5 text-sm text-gray-700">
                         {([
@@ -1623,106 +1460,51 @@ export default function AgendaPage() {
 
                       {/* ── Messages : mission au prestataire + rappel J-1 au client ── */}
                       {!isArchived && (
-                        <div className="mt-4 border-t border-gray-100 pt-3 flex flex-col gap-2">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Messages</p>
-                        {/* ── WhatsApp prestataire : envoyer la mission (avec réponse directe) ── */}
-                        {ev.prestataire && (() => {
-                          const prestataireObj = prestataires.find(p => p.nom === ev.prestataire);
-                          const baseUrl   = typeof window !== "undefined" ? window.location.origin : "";
-                          const acceptUrl = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=accepter`;
-                          const refusUrl  = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=refuser`;
-                          const msg = (
-                            `Bonjour ${ev.prestataire} 👋,\n\nUne mission vous a été proposée chez KinouClean :\n\n` +
-                            `👤 Client : ${ev.prenom} ${ev.nom}\n` +
-                            `📞 Téléphone : ${ev.tel || "—"}\n` +
-                            `🧹 Prestation : ${ev.typePresta || "—"}\n` +
-                            `📍 Adresse : ${ev.adresse || "—"}\n` +
-                            `📅 Date : ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
-                            `💶 Prix : ${ev.prix && ev.prix !== "0" ? ev.prix + " €" : "À définir"}` +
-                            (ev.modePaiement ? `\n💳 Mode de paiement : ${ev.modePaiement}` : "") +
-                            (ev.message?.trim() ? `\n\n💬 Message client :\n${ev.message.trim()}` : "") +
-                            (ev.commentaire?.trim() ? `\n\n📝 Note interne :\n${ev.commentaire.trim()}` : "") +
-                            `\n\nMerci de répondre directement via ces liens :\n\n` +
-                            `✅ ACCEPTER la mission :\n${acceptUrl}\n\n` +
-                            `❌ REFUSER la mission :\n${refusUrl}\n\n` +
-                            `Votre réponse met à jour la fiche automatiquement 🙏`
-                          );
-                          // Pas de numéro enregistré pour ce prestataire → on l'indique au lieu de masquer.
-                          if (!prestataireObj?.tel) {
-                            return (
+                        <FicheSection id="messages" title="Messages">
+                          <div className="flex flex-col gap-2">
+                            {/* ── WhatsApp prestataire : envoyer la mission (avec réponse directe) ── */}
+                            {/* Pas de numéro enregistré pour ce prestataire → on l'indique au lieu de masquer. */}
+                            {ev.prestataire && (!prestataireObj?.tel ? (
                               <div className="w-full py-2 rounded-xl border border-dashed border-gray-200 text-gray-400 text-xs text-center px-2">
                                 📱 Ajoute un n° à <span className="font-medium">{ev.prestataire}</span> (fiche Prestataires) pour lui envoyer la mission
                               </div>
-                            );
-                          }
-                          const missionLien = waLien(prestataireObj.tel, msg);
-                          if (!missionLien) {
-                            return (
+                            ) : !missionLien ? (
                               <div className="w-full py-2 rounded-xl border border-dashed border-gray-200 text-gray-400 text-xs text-center px-2">
                                 📱 Le n° de <span className="font-medium">{ev.prestataire}</span> n&apos;est pas un mobile (06/07) : WhatsApp indisponible
                               </div>
-                            );
-                          }
-                          return (
-                            <a
-                              href={missionLien}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="w-full py-2 rounded-xl border border-green-200 text-green-700 text-sm font-medium hover:bg-green-50 transition-colors flex items-center justify-center gap-1.5"
-                            >
-                              📱 Envoyer la mission à {ev.prestataire}
-                            </a>
-                          );
-                        })()}
-                        {/* ── Rappel client : WhatsApp si numéro + copie toujours dispo ── */}
-                        {(() => {
-                          // Avance immédiate par défaut (≈90 % des clients) → on affiche
-                          // TOUJOURS le reste à charge (−50 %) dès qu'il y a un montant.
-                          // Message manuel : à retirer à la main dans les rares cas « crédit ».
-                          const prixNumR = parseFloat((ev.prix || "").replace(",", "."));
-                          const resteR = !isNaN(prixNumR) && prixNumR > 0 ? prixNumR / 2 : null;
-                          const fmtR = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-                          const rappelMsg =
-                            `Bonjour ${ev.prenom || ""},\n\n` +
-                            `Petit rappel de votre rendez-vous KinouClean 🙂\n\n` +
-                            `🧹 ${ev.typePresta || "Prestation KinouClean"}\n` +
-                            `📅 ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
-                            `📍 ${ev.adresse || "—"}\n` +
-                            (ev.prix && ev.prix !== "0" ? `💶 Montant : ${ev.prix} €\n` : "") +
-                            (resteR != null ? `💳 Reste à charge : ${fmtR(resteR)} €\n` : "") +
-                            (resteR != null ? `\nN'oubliez pas de finaliser votre inscription à l'avance immédiate.\n` : "") +
-                            `\nEn cas d'empêchement, merci de nous prévenir au plus tôt.\n\nÀ très bientôt,\nL'équipe KinouClean`;
-                          const rappelLien = waLien(ev.tel, rappelMsg);
-                          // RDV à venir (aujourd'hui inclus) → rappel WhatsApp en 1 geste.
-                          const rdvJour = frToDate(ev.date);
-                          const aVenir = !!rdvJour && rdvJour >= today;
-                          return (
-                            <div className="flex flex-col gap-2">
-                              {rappelLien && aVenir && (
-                                <a
-                                  href={rappelLien}
-                                  target="_blank" rel="noopener noreferrer"
-                                  className="w-full min-h-[40px] py-2 rounded-xl border border-sky-200 text-sky-700 text-sm font-medium hover:bg-sky-50 transition-colors flex items-center justify-center gap-1.5"
-                                >
-                                  🔔 Rappel WhatsApp à {ev.prenom}
-                                </a>
-                              )}
-                              <button
-                                onClick={() => navigator.clipboard.writeText(rappelMsg).then(() => { setRappelCopied(true); setTimeout(() => setRappelCopied(false), 2000); })}
-                                className={`w-full py-2 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${rappelCopied ? "bg-green-50 text-green-700 border-green-200" : "border-sky-200 text-sky-700 hover:bg-sky-50"}`}
+                            ) : (
+                              <a
+                                href={missionLien}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-full py-2 rounded-xl border border-green-200 text-green-700 text-sm font-medium hover:bg-green-50 transition-colors flex items-center justify-center gap-1.5"
                               >
-                                📋 {rappelCopied ? "Rappel copié !" : "Copier le message de rappel"}
-                              </button>
-                            </div>
-                          );
-                        })()}
-                        </div>
+                                📱 Envoyer la mission à {ev.prestataire}
+                              </a>
+                            ))}
+                            {/* ── Rappel client : WhatsApp si numéro (RDV à venir) + copie toujours dispo ── */}
+                            {rappelLien && aVenir && (
+                              <a
+                                href={rappelLien}
+                                target="_blank" rel="noopener noreferrer"
+                                className="w-full min-h-[40px] py-2 rounded-xl border border-sky-200 text-sky-700 text-sm font-medium hover:bg-sky-50 transition-colors flex items-center justify-center gap-1.5"
+                              >
+                                🔔 Rappel WhatsApp à {ev.prenom}
+                              </a>
+                            )}
+                            <button
+                              onClick={() => navigator.clipboard.writeText(rappelMsg).then(() => { setRappelCopied(true); setTimeout(() => setRappelCopied(false), 2000); })}
+                              className={`w-full py-2 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${rappelCopied ? "bg-green-50 text-green-700 border-green-200" : "border-sky-200 text-sky-700 hover:bg-sky-50"}`}
+                            >
+                              📋 {rappelCopied ? "Rappel copié !" : "Copier le message de rappel"}
+                            </button>
+                          </div>
+                        </FicheSection>
                       )}
 
                       {/* ── Contact client (email / WhatsApp) ── */}
                       {!isArchived && (
-                        <div className="mt-4 border-t border-gray-100 pt-3">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Contacter le client</p>
+                        <FicheSection id="contact" title="Contacter le client" defaultOpen={!estPasse}>
                           <EmailActions
                             prestationId={ev.row}
                             clientEmail={ev.email}
@@ -1736,12 +1518,11 @@ export default function AgendaPage() {
                             heure={ev.heure}
                             compact
                           />
-                        </div>
+                        </FicheSection>
                       )}
 
                       {/* ── Satisfaction + avis (modifiables même après archivage, pour les primes) ── */}
-                      <div className="mt-4 border-t border-gray-100 pt-3">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Satisfaction & avis</p>
+                      <FicheSection id="avis" title="Satisfaction & avis" defaultOpen={estPasse || isArchived}>
                         {/* Satisfaction + avis — modifiables manuellement, même après archivage (primes) */}
                         <div className="mb-2 rounded-xl border border-gray-100 p-2.5">
                           <div className="flex items-center justify-between gap-1 mb-2">
@@ -1814,7 +1595,7 @@ export default function AgendaPage() {
                         </button>
                       </div>
                     )}
-                      </div>
+                      </FicheSection>
 
                       {/* ── Mode de paiement (visible + modifiable même archivé) ── */}
                       {(() => {
@@ -1827,11 +1608,9 @@ export default function AgendaPage() {
                           { label: "Avance immédiate", icon: "⚡" },
                         ];
                         return (
-                          <div className="mt-4 border-t border-gray-100 pt-3">
-                            <div className="flex items-center justify-between mb-2">
-                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mode de paiement</p>
-                              {paymentSaving && <span className="text-[10px] text-blue-400">Enregistrement…</span>}
-                            </div>
+                          <FicheSection id="paiement" title="Mode de paiement"
+                            aside={paymentSaving ? <span className="text-[10px] text-blue-400 normal-case font-normal">Enregistrement…</span>
+                              : <span className="text-[11px] text-gray-500 normal-case font-medium truncate">{ev.modePaiement || "Non défini"}</span>}>
                             <div className="grid grid-cols-2 gap-1.5">
                               {PAYMENT_OPTIONS.map(({ label, icon }) => (
                                 <button key={label} type="button"
@@ -1847,16 +1626,13 @@ export default function AgendaPage() {
                                 </button>
                               ))}
                             </div>
-                          </div>
+                          </FicheSection>
                         );
                       })()}
 
                       {/* ── Fiscalité du client (pense-bête + adapte les relances) ── */}
                       {ev.clientId && (
-                        <div className="mt-4 border-t border-gray-100 pt-3">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                            Avantage fiscal du client
-                          </p>
+                        <FicheSection id="fiscal" title="Avantage fiscal du client">
                           <div className="grid grid-cols-3 gap-1.5">
                             {[
                               { val: "" as const,        label: "Aucun",           icon: "—"  },
@@ -1881,13 +1657,12 @@ export default function AgendaPage() {
                               💡 {fiscal === "avance" ? "Ses relances mentionnent l'avance immédiate (−50%)." : "Ses relances mentionnent le crédit d'impôt (−50%)."}
                             </p>
                           )}
-                        </div>
+                        </FicheSection>
                       )}
 
                       {/* ── Photos de l'intervention (prises par le prestataire) ── */}
                       {Array.isArray(ev.photos) && ev.photos.length > 0 && (
-                        <div className="mt-4 border-t border-gray-100 pt-3">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">📷 Photos de l&apos;intervention</p>
+                        <FicheSection id="photos" title="📷 Photos de l'intervention" defaultOpen>
                           {Array.from(new Set(ev.photos.map(p => p.article))).map(art => (
                             <div key={art} className="mb-2">
                               <p className="text-[11px] font-medium text-gray-600 mb-1">{art}</p>
@@ -1966,7 +1741,7 @@ export default function AgendaPage() {
                               </div>
                             );
                           })()}
-                        </div>
+                        </FicheSection>
                       )}
 
                       {/* ── Gestion du RDV : ajout, 2ème passage, puis actions sensibles en bas ── */}
@@ -2101,13 +1876,29 @@ export default function AgendaPage() {
                           </div>
                         )}
                       </div>
-                    </>
-                  )}
+                  </div>
                 </>
               );
             })()}
           </div>
         </div>
+      )}
+
+      {/* ── Modifier le RDV : formulaire unique (même que la page Prestations) ── */}
+      {editEv && (
+        <EditPrestationModal
+          prestation={editEv}
+          prestataires={prestataires}
+          onClose={() => setEditEv(null)}
+          onSaved={(row, updates) => {
+            // Fiche RDV gardée ouverte : MAJ immédiate puis données fraîches au rechargement.
+            setSelectedEvent(prev => prev && prev.row === row ? { ...prev, ...updates } as Prestation : prev);
+            refreshSelRef.current = row;
+            loadData();
+            toast.success("Modifications enregistrées");
+          }}
+          onClotured={() => { setSelectedEvent(null); loadData(); }}
+        />
       )}
 
       {/* ── Modal détail jour (vue mois) ─────────────────────────────── */}

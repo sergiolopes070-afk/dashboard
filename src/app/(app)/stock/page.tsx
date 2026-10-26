@@ -390,8 +390,51 @@ export default function StockPage() {
             <p className="font-medium">Aucun article en stock</p>
             <p className="text-sm mt-1">Clique sur « Nouvel article » pour commencer</p>
           </div>
-        ) : (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden overflow-x-auto">
+        ) : (<>
+          {/* Mobile : cartes (gros boutons −/+), même logique que la table */}
+          <div className="md:hidden space-y-2">
+            {filtered.map(i => {
+              const low = i.seuil > 0 && i.quantite <= i.seuil;
+              const a = autonomieSemaines(i);
+              return (
+                <div key={i.id} className={`bg-white rounded-2xl border shadow-sm p-3 ${low ? "border-red-200" : "border-gray-100"}`}>
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="font-semibold text-gray-900 break-words">{i.nom}</p>
+                        {Object.keys(i.conso || {}).length > 0 && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-semibold">auto</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400 truncate">{i.categorie}{i.notes ? ` · ${i.notes}` : ""}</p>
+                    </div>
+                    <button onClick={() => setModal(i)} aria-label={`Modifier ${i.nom}`}
+                      className="w-10 h-10 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 hover:text-blue-600 shrink-0"><Pencil size={16} /></button>
+                    <button onClick={() => remove(i.id)} disabled={deleting === i.id} aria-label={`Supprimer ${i.nom}`}
+                      className="w-10 h-10 flex items-center justify-center rounded-xl text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 shrink-0"><Trash2 size={16} /></button>
+                  </div>
+                  <div className="flex items-center gap-3 mt-2">
+                    <div className="flex-1 min-w-0">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-bold ${low ? "bg-red-100 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>
+                        {i.quantite} {i.unite}
+                        {low && <AlertTriangle size={13} />}
+                      </span>
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        {i.seuil > 0 ? `seuil ${i.seuil}` : "pas de seuil"}
+                        {a != null && <> · autonomie <span className={a < 2 ? "text-red-600 font-semibold" : "text-gray-600"}>{autonomieLabel(a)}</span></>}
+                        {i.prixUnitaire != null && ` · ${formatMontant(i.quantite * i.prixUnitaire, { decimales: 2 })}`}
+                      </p>
+                    </div>
+                    <button onClick={() => setMvt({ item: i, type: "sortie" })} aria-label={`Sortie de stock : ${i.nom}`}
+                      className="w-12 h-12 flex items-center justify-center rounded-xl bg-orange-50 text-orange-600 active:bg-orange-100 text-2xl font-bold shrink-0">−</button>
+                    <button onClick={() => setMvt({ item: i, type: "entree" })} aria-label={`Entrée de stock : ${i.nom}`}
+                      className="w-12 h-12 flex items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 active:bg-emerald-100 text-2xl font-bold shrink-0">+</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden overflow-x-auto">
             <table className="w-full text-sm min-w-[640px]">
               <thead className="bg-gray-50 border-b border-gray-100 text-gray-500">
                 <tr>
@@ -454,7 +497,7 @@ export default function StockPage() {
               </tbody>
             </table>
           </div>
-        )}
+        </>)}
       </div>
 
       {modal !== null && (

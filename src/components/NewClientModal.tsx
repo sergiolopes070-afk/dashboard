@@ -16,6 +16,7 @@ const SOURCES = [
   "Google",
   "Bouche à oreille",
   "Réseaux sociaux",
+  "Instagram",
   "Autre",
 ];
 
@@ -124,6 +125,72 @@ function AddressAutocomplete({ value, onChange, onSelect, className }: AddressAu
   );
 }
 
+// ─── Client existant (recherche globale /api/search) ─────────────────────────
+// Le POST /api/clients rattache déjà le RDV à la fiche existante (email, puis
+// 9 derniers chiffres du téléphone) : il suffit donc de pré-remplir ces champs.
+
+interface ClientSuggestion { clientId: string; label: string; tel: string; email: string; ville: string }
+interface ClientLie { id: string; label: string; tel: string; email: string; nbRdv: number | null }
+
+const chiffres9 = (s: string) => (s || "").replace(/\D/g, "").slice(-9);
+
+// « email · tel · adresse » (format du champ `sub` de /api/search) → morceaux.
+function parseSub(sub: string) {
+  const parts = (sub || "").split(" · ").map(p => p.trim()).filter(Boolean);
+  const email = parts.find(p => p.includes("@")) ?? "";
+  const tel = parts.find(p => /^[\d\s+.\-()]+$/.test(p) && p.replace(/\D/g, "").length >= 6) ?? "";
+  const adresse = parts.find(p => p !== email && p !== tel) ?? "";
+  const ville = /\b\d{5}\s+(.+)$/.exec(adresse)?.[1] ?? (adresse.includes(",") ? adresse.split(",").pop()!.trim() : "");
+  return { email, tel, ville };
+}
+
+// « 12 rue X, 75001 Paris » → { adresse, codePostal, ville } (sinon tout dans adresse).
+function splitAdresse(full: string) {
+  const m = /^(.*?)[,\s]*(\d{5})\s+(.+)$/.exec((full || "").trim());
+  if (!m) return { adresse: (full || "").trim(), codePostal: "", ville: "" };
+  return { adresse: m[1].trim().replace(/,$/, ""), codePostal: m[2], ville: m[3].trim() };
+}
+
+// Liste « Client existant ? » — dans le flux (pas en absolu) pour rester visible
+// dans le corps scrollable de la modale, y compris au clavier sur téléphone.
+function SuggestionsClients({ suggestions, loading, onChoisir, onIgnorer }: {
+  suggestions: ClientSuggestion[];
+  loading: boolean;
+  onChoisir: (s: ClientSuggestion) => void;
+  onIgnorer: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-blue-200 bg-blue-50/60 overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-blue-700">
+        <span className="flex items-center gap-1.5">
+          Client existant ?{loading && <Loader2 size={12} className="animate-spin" />}
+        </span>
+        <button type="button" onClick={onIgnorer} className="px-2 py-1 -mr-2 font-medium text-blue-600 hover:underline">
+          Non, nouveau client
+        </button>
+      </div>
+      <ul className="bg-white divide-y divide-gray-100">
+        {suggestions.map(s => (
+          <li key={s.clientId}>
+            <button type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => onChoisir(s)}
+              className="w-full min-h-[44px] flex items-center gap-2 px-3 py-2 text-left hover:bg-blue-50 transition-colors">
+              <User size={14} className="text-blue-500 flex-shrink-0" />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-medium text-gray-900 truncate">{s.label || "—"}</span>
+                <span className="block text-xs text-gray-500 truncate">
+                  {[s.tel, s.ville].filter(Boolean).join(" · ") || s.email || "—"}
+                </span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const inputCls =
@@ -213,6 +280,95 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
   const [emailSendState, setEmailSendState] = useState<"" | "sending" | "sent" | "error">("");
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  // ── Reconnaissance d'un client existant (nom/prénom ≥ 2 car., téléphone ≥ 4 chiffres) ──
+  const [clientLie, setClientLie]     = useState<ClientLie | null>(null);
+  const [rechClient, setRechClient]   = useState<{ champ: "nom" | "tel"; q: string } | null>(null);
+  const [suggestions, setSuggestions] = useState<ClientSuggestion[]>([]);
+  const [suggLoading, setSuggLoading] = useState(false);
+  const identiteRef = useRef<HTMLDivElement>(null);
+
+  // Saisie dans prénom / nom / téléphone → lance (avec debounce) la recherche.
+  const setIdentite = (k: "prenom" | "nom" | "tel", v: string) => {
+    set(k, v);
+    const next = { ...form, [k]: v };
+    setRechClient(k === "tel"
+      ? { champ: "tel", q: v }
+      : { champ: "nom", q: `${next.prenom} ${next.nom}`.trim() });
+  };
+
+  useEffect(() => {
+    if (!rechClient || clientLie) { setSuggestions([]); return; }
+    const { champ, q } = rechClient;
+    const ok = champ === "tel" ? q.replace(/\D/g, "").length >= 4 : q.trim().length >= 2;
+    if (!ok) { setSuggestions([]); return; }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => {
+      setSuggLoading(true);
+      fetch(`/api/search?q=${encodeURIComponent(champ === "tel" ? q.replace(/\D/g, "") : q)}`, { signal: ctrl.signal })
+        .then(r => (r.ok ? r.json() : []))
+        .then((rows: { type: string; label: string; sub: string; clientId?: string }[]) => {
+          setSuggestions((Array.isArray(rows) ? rows : [])
+            .filter(r => r.type === "client" && r.clientId)
+            .slice(0, 5)
+            .map(r => ({ clientId: r.clientId!, label: r.label, ...parseSub(r.sub) })));
+        })
+        .catch(() => { /* annulé ou réseau : on ignore */ })
+        .finally(() => setSuggLoading(false));
+    }, 300);
+    return () => { clearTimeout(timer); ctrl.abort(); };
+  }, [rechClient, clientLie]);
+
+  // Clic hors du bloc Identité → on ferme la liste.
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (identiteRef.current && !identiteRef.current.contains(e.target as Node)) setRechClient(null);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  const choisirClient = async (s: ClientSuggestion) => {
+    setRechClient(null);
+    setSuggestions([]);
+    const [p0, ...reste] = s.label.split(" ");
+    setClientLie({ id: s.clientId, label: s.label, tel: s.tel, email: s.email, nbRdv: null });
+    setForm(f => ({ ...f, prenom: p0 || f.prenom, nom: reste.join(" ") || f.nom, tel: s.tel || f.tel, email: s.email || f.email }));
+    try {
+      const r = await fetch(`/api/clients/${encodeURIComponent(s.clientId)}`);
+      if (!r.ok) return;
+      const c = await r.json() as { prenom?: string; nom?: string; tel?: string; email?: string; adresse?: string; prestations?: unknown[] };
+      const a = splitAdresse(c.adresse || "");
+      setForm(f => ({
+        ...f,
+        prenom    : c.prenom || f.prenom,
+        nom       : c.nom    || f.nom,
+        tel       : c.tel    || f.tel,
+        email     : c.email  || f.email,
+        adresse   : a.adresse    || f.adresse,
+        codePostal: a.codePostal || f.codePostal,
+        ville     : a.ville      || f.ville,
+      }));
+      setClientLie(l => l && l.id === s.clientId ? {
+        ...l,
+        label: `${c.prenom ?? ""} ${c.nom ?? ""}`.trim() || l.label,
+        tel  : c.tel   || l.tel,
+        email: c.email || l.email,
+        nbRdv: Array.isArray(c.prestations) ? c.prestations.length : null,
+      } : l);
+    } catch { /* pré-remplissage partiel déjà fait */ }
+  };
+
+  const detacherClient = () => {
+    setClientLie(null);
+    setForm(f => ({ ...f, prenom: "", nom: "", tel: "", email: "", adresse: "", codePostal: "", ville: "" }));
+  };
+
+  // Le RDV ne sera rattaché à la fiche que si l'email ou le téléphone correspond encore.
+  const lienValide = !!clientLie && (
+    (!!clientLie.email && form.email.trim().toLowerCase() === clientLie.email.trim().toLowerCase()) ||
+    (!!chiffres9(clientLie.tel) && chiffres9(form.tel) === chiffres9(clientLie.tel))
+  );
 
   // Champs adaptatifs pilotés par le schéma (src/lib/prestationSchema).
   const hasSchema = getSchema(form.typePresta).length > 0;
@@ -527,25 +683,51 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
 
           {/* Identité */}
           <Section icon={User} title="Identité">
+            <div ref={identiteRef} className="space-y-3">
+            {clientLie && (
+              <div className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${lienValide ? "bg-green-50 border-green-200 text-green-800" : "bg-amber-50 border-amber-200 text-amber-800"}`}>
+                <UserCheck size={16} className="mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">
+                    ✓ Client existant : {clientLie.label}
+                    {clientLie.nbRdv != null && <span className="font-normal"> ({clientLie.nbRdv} RDV)</span>}
+                  </p>
+                  {!lienValide && (
+                    <p className="text-xs mt-0.5">Email et téléphone différents de la fiche → une nouvelle fiche client sera créée.</p>
+                  )}
+                </div>
+                <button type="button" onClick={detacherClient} aria-label="Détacher le client existant"
+                  className="-my-1 -mr-1 w-9 h-9 flex items-center justify-center rounded-lg hover:bg-black/5 flex-shrink-0">
+                  <X size={15} />
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Prénom" required>
-                <input type="text" value={form.prenom} onChange={(e) => set("prenom", e.target.value)}
-                  className={inputCls} placeholder="Marie" />
+                <input type="text" value={form.prenom} onChange={(e) => setIdentite("prenom", e.target.value)}
+                  className={inputCls} placeholder="Marie" autoComplete="off" />
               </Field>
               <Field label="Nom" required>
-                <input type="text" value={form.nom} onChange={(e) => set("nom", e.target.value)}
-                  className={inputCls} placeholder="Dupont" />
+                <input type="text" value={form.nom} onChange={(e) => setIdentite("nom", e.target.value)}
+                  className={inputCls} placeholder="Dupont" autoComplete="off" />
               </Field>
             </div>
+            {rechClient?.champ === "nom" && !clientLie && suggestions.length > 0 && (
+              <SuggestionsClients suggestions={suggestions} loading={suggLoading} onChoisir={choisirClient} onIgnorer={() => setRechClient(null)} />
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Téléphone">
-                <input type="tel" value={form.tel} onChange={(e) => set("tel", e.target.value)}
-                  className={inputCls} placeholder="06 00 00 00 00" />
+                <input type="tel" value={form.tel} onChange={(e) => setIdentite("tel", e.target.value)}
+                  className={inputCls} placeholder="06 00 00 00 00" autoComplete="off" />
               </Field>
               <Field label="Email">
                 <input type="email" value={form.email} onChange={(e) => set("email", e.target.value)}
                   className={inputCls} placeholder="marie@exemple.com" />
               </Field>
+            </div>
+            {rechClient?.champ === "tel" && !clientLie && suggestions.length > 0 && (
+              <SuggestionsClients suggestions={suggestions} loading={suggLoading} onChoisir={choisirClient} onIgnorer={() => setRechClient(null)} />
+            )}
             </div>
             {/* « Statut client » retiré : jamais enregistré (VIP = étiquette sur la fiche client). */}
             <Field label="Source">

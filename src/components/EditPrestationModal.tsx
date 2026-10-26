@@ -4,7 +4,8 @@ import { X, Save, Loader2, MessageCircle, Archive, User, FileText, Download, Cam
 import EmailActions from "@/components/EmailActions";
 import PhotoLightbox from "@/components/PhotoLightbox";
 import ClotureModal from "@/components/ClotureModal";
-import { Prestation, Prestataire, StatutClient, StatutPresta, MODES_PAIEMENT, MODE_PAIEMENT_ICONS } from "@/lib/constants";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
+import { Prestation, Prestataire, StatutClient, StatutPresta, MODES_PAIEMENT, MODE_PAIEMENT_ICONS, TYPES_PRESTATION } from "@/lib/constants";
 
 interface EditPrestationModalProps {
   prestation: Prestation;
@@ -23,10 +24,18 @@ const STATUTS_CLIENT: StatutClient[] = [
   "TERMINÉ",
   "ANNULÉ",
   "PRESTATAIRE REFUSÉ – À RÉAFFECTER",
+  "PAYÉ",
   "",
 ];
 
 const STATUTS_PRESTA: StatutPresta[] = ["EN ATTENTE PRESTA", "ACCEPTÉ", "REFUSÉ", ""];
+
+// Adresse stockée « rue …, 75001 Paris » → rue / CP / ville séparés, pour ne pas
+// perdre ni dupliquer le CP et la ville à l'enregistrement (recombinés en « rue CP ville »).
+function splitAdresse(adresse: string): { rue: string; cp: string; ville: string } {
+  const m = (adresse || "").match(/^(.*?)[,\s]+(\d{5})\s+(.+)$/);
+  return m ? { rue: m[1], cp: m[2], ville: m[3] } : { rue: adresse || "", cp: "", ville: "" };
+}
 
 export default function EditPrestationModal({
   prestation,
@@ -51,7 +60,16 @@ export default function EditPrestationModal({
     envoyer     : prestation.envoyer,
     genDevis    : prestation.genDevis,
     commentaire : prestation.commentaire,
+    // Client & prestation (envoyés seulement s'ils changent : nom/tél/email/adresse modifient la fiche client)
+    prenom      : prestation.prenom || "",
+    nom         : prestation.nom || "",
+    tel         : prestation.tel || "",
+    email       : prestation.email || "",
+    typePresta  : prestation.typePresta || "",
+    message     : prestation.message || "",
   });
+  const [adrInit] = useState(() => splitAdresse(prestation.adresse));
+  const [adr, setAdr] = useState(adrInit);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<number | null>(null); // index photo ouverte
@@ -111,6 +129,18 @@ export default function EditPrestationModal({
         genDevis    : form.genDevis,
         commentaire : form.commentaire,
       };
+      // Champs client / prestation : uniquement si modifiés (évite de réécrire la fiche client).
+      const origines: Record<string, string> = {
+        prenom: prestation.prenom || "", nom: prestation.nom || "", tel: prestation.tel || "",
+        email: prestation.email || "", typePresta: prestation.typePresta || "", message: prestation.message || "",
+      };
+      (Object.keys(origines) as (keyof typeof origines)[]).forEach(k => {
+        const v = form[k as keyof typeof form] as string;
+        if (v !== origines[k]) updates[k] = v;
+      });
+      if (adr.rue !== adrInit.rue || adr.cp !== adrInit.cp || adr.ville !== adrInit.ville) {
+        updates.adresse = [adr.rue.trim(), adr.cp.trim(), adr.ville.trim()].filter(Boolean).join(" ");
+      }
       const res = await fetch("/api/prestations", {
         method : "PUT",
         headers: { "Content-Type": "application/json" },
@@ -198,6 +228,57 @@ export default function EditPrestationModal({
               {error}
             </div>
           )}
+
+          {/* ── Client & prestation ── */}
+          <fieldset className="space-y-3">
+            <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Client & prestation</legend>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Prénom</label>
+                <input value={form.prenom} onChange={(e) => setForm((f) => ({ ...f, prenom: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Nom</label>
+                <input value={form.nom} onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Téléphone</label>
+                <input type="tel" inputMode="tel" value={form.tel} onChange={(e) => setForm((f) => ({ ...f, tel: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Email</label>
+                <input type="email" inputMode="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Prestation</label>
+              <select value={form.typePresta} onChange={(e) => setForm((f) => ({ ...f, typePresta: e.target.value }))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+                <option value="">— Choisir —</option>
+                {form.typePresta && !TYPES_PRESTATION.includes(form.typePresta) && <option value={form.typePresta}>{form.typePresta}</option>}
+                {TYPES_PRESTATION.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Adresse</label>
+              <AddressAutocomplete
+                value={adr.rue}
+                onChange={(v) => setAdr((a) => ({ ...a, rue: v }))}
+                onSelect={(rue, cp, ville) => setAdr({ rue, cp, ville })}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+              />
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <input placeholder="Code postal" inputMode="numeric" value={adr.cp} onChange={(e) => setAdr((a) => ({ ...a, cp: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                <input placeholder="Ville" value={adr.ville} onChange={(e) => setAdr((a) => ({ ...a, ville: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+            </div>
+          </fieldset>
 
           {/* ── Devis ── */}
           <fieldset className="space-y-2">
@@ -395,8 +476,8 @@ export default function EditPrestationModal({
           {/* Détails */}
           <fieldset className="space-y-3">
             <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Détails</legend>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="col-span-2 sm:col-span-1">
                 <label className="block text-xs text-gray-500 mb-1">Prix total (€)</label>
                 <input
                   type="number"
@@ -413,7 +494,7 @@ export default function EditPrestationModal({
                   type="date"
                   value={toInputDate(form.date)}
                   onChange={(e) => setForm((f) => ({ ...f, date: fromInputDate(e.target.value) }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  className="w-full min-h-[40px] border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                 />
               </div>
               <div>
@@ -422,7 +503,7 @@ export default function EditPrestationModal({
                   type="time"
                   value={form.heure}
                   onChange={(e) => setForm((f) => ({ ...f, heure: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  className="w-full min-h-[40px] border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                 />
               </div>
             </div>
@@ -555,6 +636,20 @@ export default function EditPrestationModal({
             </label>
           </fieldset>
 
+          {/* Message du client */}
+          <fieldset>
+            <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              Message client
+            </legend>
+            <textarea
+              value={form.message}
+              onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
+              rows={2}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
+              placeholder="Message du client…"
+            />
+          </fieldset>
+
           {/* Commentaire */}
           <fieldset>
             <legend className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
@@ -607,7 +702,7 @@ export default function EditPrestationModal({
     </div>
     {cloture && (
       <ClotureModal
-        prestation={{ ...prestation, prix: form.prix, date: form.date, heure: form.heure }}
+        prestation={{ ...prestation, prenom: form.prenom, nom: form.nom, typePresta: form.typePresta, prix: form.prix, date: form.date, heure: form.heure }}
         onClose={onClose}
         onDone={(ids) => onClotured?.(ids)}
       />

@@ -112,7 +112,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div
         aria-live="polite"
-        className="fixed z-[100] bottom-4 right-4 flex flex-col gap-2 pointer-events-none [&>*]:pointer-events-auto"
+        className="fixed z-[100] bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-4 right-4 flex flex-col gap-2 pointer-events-none [&>*]:pointer-events-auto"
       >
         {items.map(item => <ToastCard key={item.id} item={item} onDismiss={dismiss} />)}
       </div>

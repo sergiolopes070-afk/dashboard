@@ -1,14 +1,12 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
-  Search, Phone, Mail, MapPin, UserPlus, Pencil, Wrench,
-  Clock, ChevronDown, ChevronUp, CheckCircle2, FileText,
-  MessageCircle, Send, AlertTriangle, Calendar, Trash2, Download, Archive, X, Star,
+  Search, Phone, Mail, UserPlus, Clock, MessageCircle, AlertTriangle, Calendar,
+  Trash2, Archive, X, Star, Copy, MoreHorizontal,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { SkeletonCards } from "@/components/Skeleton";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
-import ClientModal from "@/components/ClientModal";
 import { ClientFicheById } from "@/components/ClientFiche";
 import { useToast } from "@/components/Toast";
 import NewClientModal from "@/components/NewClientModal";
@@ -17,7 +15,7 @@ import AvanceBadge from "@/components/AvanceBadge";
 import { formatMontant } from "@/lib/finance";
 import { fetchJsonOk } from "@/lib/fetchOk";
 import { waMobile, waLien, waTexteAvis } from "@/lib/waMessages";
-import { Prestation, Prestataire, ClientNote, STATUT_COLORS, estAnnulation } from "@/lib/constants";
+import { Prestation, Prestataire, ClientNote, estAnnulation } from "@/lib/constants";
 
 const TAGS_PRESET = ["Régulier", "VIP", "Difficile", "Sensible", "Pro", "Fidèle"];
 const TAG_COLORS: Record<string, string> = {
@@ -80,37 +78,18 @@ function frTs(date: string, heure?: string): number {
 
 type Tri = "prestations" | "recents" | "rdv" | "nouveaux" | "sans";
 
-const NOTE_TYPES = [
-  { icon: "📞", label: "Appel" },
-  { icon: "💬", label: "Message" },
-  { icon: "📧", label: "Email" },
-  { icon: "📄", label: "Devis" },
-  { icon: "🤝", label: "Visite" },
-  { icon: "📌", label: "Note" },
-];
-
-function StatusBadge({ label }: { label: string }) {
-  if (!label) return null;
-  const cls = STATUT_COLORS[label] || "bg-gray-100 text-gray-600";
-  return (
-    <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${cls}`}>
-      {label}
-    </span>
-  );
-}
-
 function ConfirmBtns({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
   return (
     <span className="inline-flex items-center gap-1 ml-1">
       <button
         onClick={onConfirm}
-        className="px-2 py-0.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-colors"
+        className="min-h-[36px] px-3 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition-colors"
       >
         Supprimer
       </button>
       <button
         onClick={onCancel}
-        className="px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600 text-xs hover:bg-gray-200 transition-colors"
+        className="min-h-[36px] px-3 rounded-lg bg-gray-100 text-gray-600 text-xs hover:bg-gray-200 transition-colors"
       >
         Annuler
       </button>
@@ -118,321 +97,35 @@ function ConfirmBtns({ onConfirm, onCancel }: { onConfirm: () => void; onCancel:
   );
 }
 
-function ClientJournal({
-  notes,
-  onAdd,
-  onDelete,
-}: {
-  notes: ClientNote[];
-  onAdd: (texte: string, type: string) => void;
-  onDelete: (noteId: string) => void;
-}) {
-  const [texte, setTexte] = useState("");
-  const [type, setType]   = useState(NOTE_TYPES[0].icon);
-  const [confirmDel, setConfirmDel] = useState<string | null>(null);
-
-  const submit = () => {
-    if (!texte.trim()) return;
-    onAdd(texte, type);
-    setTexte("");
-  };
-
-  const fmtDate = (iso: string) => {
-    const d = new Date(iso);
-    return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }) +
-      " · " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-  };
-
-  return (
-    <div className="bg-blue-50/40 rounded-xl border border-blue-100 p-3">
-      <p className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-        <MessageCircle size={12} /> Journal de suivi
-      </p>
-
-      {/* Sélecteur de type */}
-      <div className="flex flex-wrap gap-1 mb-2">
-        {NOTE_TYPES.map(t => (
-          <button
-            key={t.icon}
-            onClick={() => setType(t.icon)}
-            className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
-              type === t.icon
-                ? "bg-blue-600 text-white border-blue-600"
-                : "bg-white text-gray-500 border-gray-200 hover:border-blue-300"
-            }`}
-          >
-            {t.icon} {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Input d'ajout */}
-      <div className="flex gap-2 mb-3">
-        <input
-          type="text"
-          value={texte}
-          onChange={e => setTexte(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
-          placeholder="Action menée (ex: relance téléphonique, devis envoyé…)"
-          className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-        />
-        <button
-          onClick={submit}
-          disabled={!texte.trim()}
-          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40"
-        >
-          <Send size={14} />
-        </button>
-      </div>
-
-      {/* Liste */}
-      {notes.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-2">
-          Aucune action enregistrée pour ce client
-        </p>
-      ) : (
-        <div className="space-y-1.5 max-h-56 overflow-y-auto">
-          {notes.map(n => (
-            <div key={n.id} className="group flex items-start gap-2 bg-white rounded-lg px-2.5 py-1.5 border border-gray-100">
-              <span className="text-sm shrink-0">{n.type || "📌"}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-800 break-words">{n.texte}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">{fmtDate(n.date)}</p>
-              </div>
-              {confirmDel === n.id ? (
-                <div className="flex items-center gap-1 shrink-0">
-                  <button onClick={() => { onDelete(n.id); setConfirmDel(null); }} className="text-red-600 text-xs font-semibold">Oui</button>
-                  <button onClick={() => setConfirmDel(null)} className="text-gray-400 text-xs">Non</button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setConfirmDel(n.id)}
-                  className="text-gray-300 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100 transition-all shrink-0"
-                >
-                  <Trash2 size={12} />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+// Mail de confirmation d'un RDV À VENIR (mailto) — proposé uniquement s'il y a un prochain RDV.
+function mailConfirmationRdv(c: { prenom: string; email: string }, rdv: PrestaC): string {
+  const details = [
+    rdv.typePresta ? `  • Prestation : ${rdv.typePresta}${rdv.quantite ? ` (x${rdv.quantite})` : ""}` : "",
+    rdv.adresse    ? `  • Adresse    : ${rdv.adresse}` : "",
+    rdv.date       ? `  • Date       : ${rdv.date}${rdv.heure ? ` à ${rdv.heure}` : ""}` : "",
+    rdv.prix       ? `  • Montant    : ${rdv.prix} €` : "",
+  ].filter(Boolean).join("\n");
+  const body = [
+    `Bonjour ${c.prenom},`,
+    ``,
+    `Nous avons bien enregistré votre demande et vous remercions de votre confiance.`,
+    ``,
+    `Voici le récapitulatif de votre rendez-vous :`,
+    ``,
+    details,
+    ``,
+    `Pour toute question ou modification, n'hésitez pas à nous contacter — nous sommes à votre entière disposition.`,
+    ``,
+    `Nous nous réjouissons de vous accueillir prochainement et vous souhaitons une excellente journée.`,
+    ``,
+    `À très bientôt,`,
+    ``,
+    `L'équipe KinouClean`,
+  ].join("\n");
+  const subject = encodeURIComponent("Confirmation de votre rendez-vous – KinouClean");
+  return `mailto:${c.email}?subject=${subject}&body=${encodeURIComponent(body)}`;
 }
 
-function CopyAvisLink({ clientId, clientName, prestation }: { clientId: string; clientName: string; prestation?: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    const params = new URLSearchParams({ nom: clientName });
-    if (prestation) params.set("prestation", prestation);
-    const url = `${window.location.origin}/avis/${clientId}?${params.toString()}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-  return (
-    <button
-      onClick={handleCopy}
-      className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
-        copied
-          ? "bg-green-50 text-green-700 border-green-200"
-          : "bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100"
-      }`}
-    >
-      <Star size={12} className={copied ? "text-green-500" : "text-yellow-500"} />
-      {copied ? "Lien copié !" : "Copier lien avis"}
-    </button>
-  );
-}
-
-function CopyMsgBtn({ msg }: { msg: string }) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(msg).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-  return (
-    <button
-      onClick={handleCopy}
-      className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
-        copied
-          ? "bg-green-50 text-green-700 border-green-200"
-          : "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-      }`}
-    >
-      <MessageCircle size={12} />
-      {copied ? "Message copié !" : "Copier message fin de prestation"}
-    </button>
-  );
-}
-
-function PrestationRow({
-  p,
-  onDelete,
-  onDevisGenerated,
-  onArchive,
-}: {
-  p: PrestaC;
-  onDelete: (id: string) => void;
-  onDevisGenerated: () => void;
-  onArchive: (ids: string[], label: string) => void;
-}) {
-  const [confirmDel, setConfirmDel] = useState(false);
-  const [generatingDevis, setGeneratingDevis] = useState(false);
-
-  const handleGenerateDevis = async () => {
-    setGeneratingDevis(true);
-    try {
-      const url = `/api/devis/${p.row}`;
-      // Ouvrir dans un nouvel onglet (le PDF sera servi et devis_genere = true côté serveur)
-      window.open(url, "_blank");
-      // Rafraîchir pour mettre à jour le badge "Devis disponible"
-      setTimeout(onDevisGenerated, 1500);
-    } finally {
-      setGeneratingDevis(false);
-    }
-  };
-
-  return (
-    <div className="bg-gray-50 rounded-xl p-3 space-y-2">
-      {/* Ligne 1 : type + date + prix + poubelle */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          {p.typePresta && (
-            <span className="text-xs font-semibold text-gray-700 bg-white border border-gray-200 px-2 py-0.5 rounded-lg">
-              {p.typePresta}
-              {p.quantite ? ` · ${p.quantite}` : ""}
-            </span>
-          )}
-          {p.date && (
-            <span className="flex items-center gap-1 text-xs text-gray-500">
-              <Calendar size={11} />
-              {p.date}{p.heure ? ` à ${p.heure}` : ""}
-            </span>
-          )}
-          {p.archived && (
-            <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">📦 Archivé</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {p.prix && (
-            <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-lg">
-              {formatMontant(parseFloat(p.prix) || 0)}
-            </span>
-          )}
-          {!p.archived && (
-            <button
-              onClick={() => onArchive([p.row], `${p.typePresta} – ${p.date || "?"}`)}
-              className="p-1 rounded-lg hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-colors"
-              title="Archiver cette prestation"
-            >
-              <Archive size={13} />
-            </button>
-          )}
-          {!confirmDel ? (
-            <button
-              onClick={() => setConfirmDel(true)}
-              className="p-1 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
-              title="Supprimer cette prestation"
-            >
-              <Trash2 size={13} />
-            </button>
-          ) : (
-            <ConfirmBtns
-              onConfirm={() => onDelete(p.row)}
-              onCancel={() => setConfirmDel(false)}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* Ligne 2 : statuts */}
-      {(p.statut || p.statutPresta) && (
-        <div className="flex flex-wrap gap-1">
-          {p.statut && <StatusBadge label={p.statut} />}
-          {p.statutPresta && <StatusBadge label={p.statutPresta} />}
-        </div>
-      )}
-
-      {/* Ligne 3 : prestataire */}
-      {p.prestataire ? (
-        <div className="flex items-center gap-1.5 text-xs text-gray-600">
-          <Wrench size={11} className="text-gray-400" />
-          <span className="font-medium">{p.prestataire}</span>
-        </div>
-      ) : (
-        <div className="flex items-center gap-1.5 text-xs text-amber-600">
-          <AlertTriangle size={11} />
-          <span>Aucun prestataire affecté</span>
-        </div>
-      )}
-
-      {/* Ligne 4 : actions menées */}
-      <div className="flex flex-wrap items-center gap-2 pt-1">
-        {p.envoyer === "OUI" && (
-          <span className="flex items-center gap-1 text-xs text-blue-600">
-            <CheckCircle2 size={12} />Email client envoyé
-          </span>
-        )}
-        {p.rappel === "OUI" && (
-          <span className="flex items-center gap-1 text-xs text-purple-600">
-            <Send size={12} />Rappel J-1 envoyé
-          </span>
-        )}
-        {p.lienWA && (
-          <a
-            href={p.lienWA}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-green-600 hover:underline"
-          >
-            <MessageCircle size={12} />WhatsApp prestataire
-          </a>
-        )}
-        {/* Devis : voir PDF existant OU générer */}
-        {p.devisPDF ? (
-          <a
-            href={p.devisPDF}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-indigo-600 hover:underline"
-          >
-            <FileText size={12} />Voir devis PDF
-          </a>
-        ) : p.genDevis === "FAIT" ? (
-          <a
-            href={`/api/devis/${p.row}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-indigo-600 hover:underline"
-          >
-            <FileText size={12} />Voir devis PDF
-          </a>
-        ) : null}
-        {/* Bouton générer (toujours disponible) */}
-        <button
-          onClick={handleGenerateDevis}
-          disabled={generatingDevis}
-          className="flex items-center gap-1 text-xs text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-1 rounded-lg transition-colors disabled:opacity-50"
-        >
-          <Download size={11} />
-          {generatingDevis ? "..." : p.genDevis === "FAIT" || p.devisPDF ? "Re-générer" : "Générer devis"}
-        </button>
-      </div>
-
-      {/* Adresse prestation si différente */}
-      {p.adresse && (
-        <p className="flex items-center gap-1.5 text-xs text-gray-400">
-          <MapPin size={11} />
-          {p.adresse}
-        </p>
-      )}
-    </div>
-  );
-}
 
 export default function ClientsPage() {
   const toast = useToast();
@@ -453,7 +146,7 @@ export default function ClientsPage() {
   const [search, setSearch]           = useState(() =>
     typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("q") || "") : ""
   );
-  const [modal, setModal]             = useState<{ mode: "add" | "edit"; client?: Client } | null>(null);
+  const [modal, setModal]             = useState<"add" | null>(null);
   // Fiche client : TOUJOURS la version complète (ClientFicheById), quelle que soit l'entrée.
   // Ouverture directe d'une fiche depuis la recherche globale (?fiche=<clientId>).
   // Lu dans un effet (côté client uniquement) — pas dans un initialiseur useState,
@@ -472,11 +165,12 @@ export default function ClientsPage() {
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
     }
   }, []);
-  const [expanded, setExpanded]       = useState<Set<string>>(new Set());
+  // Menu « ⋯ » ouvert (une carte à la fois) : tags, avis, fusion, archivage, suppressions.
+  const [menuKey, setMenuKey]         = useState<string | null>(null);
   const [confirmClientDel, setConfirmClientDel] = useState<string | null>(null);
   // Clôture (archivage) d'une prestation ou de toutes celles d'un client → ClotureModal
   const [archiveModal, setArchiveModal] = useState<{ prestations: PrestaC[]; label: string } | null>(null);
-  const [tagEditKey, setTagEditKey]   = useState<string | null>(null);
+  const [confirmPrestaDel, setConfirmPrestaDel] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -639,15 +333,6 @@ export default function ClientsPage() {
     setSelectedMerge(new Set());
   }
 
-  const toggleExpanded = (key: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
   const handleDeletePrestation = async (id: string) => {
     try {
       await fetchJsonOk("/api/prestations", "DELETE", { id });
@@ -682,33 +367,6 @@ export default function ClientsPage() {
     }
   };
 
-  const persistNotes = async (c: Client, notes: ClientNote[]) => {
-    // Optimistic update
-    const previous = c.notes;
-    setData(prev => prev.map(x => x.clientId === c.clientId ? { ...x, notes } : x));
-    try {
-      await fetchJsonOk("/api/clients", "PATCH", { clientId: c.clientId, notes });
-    } catch (e) {
-      setData(prev => prev.map(x => x.clientId === c.clientId ? { ...x, notes: previous } : x)); // rollback
-      toast.error(`Note non enregistrée : ${e instanceof Error ? e.message : "Erreur"}`);
-    }
-  };
-
-  const handleAddNote = (c: Client, texte: string, type: string) => {
-    if (!texte.trim() || !c.clientId) return;
-    const note: ClientNote = {
-      id: crypto.randomUUID(),
-      date: new Date().toISOString(),
-      texte: texte.trim(),
-      type,
-    };
-    persistNotes(c, [note, ...(c.notes ?? [])]);
-  };
-
-  const handleDeleteNote = (c: Client, noteId: string) => {
-    persistNotes(c, (c.notes ?? []).filter(n => n.id !== noteId));
-  };
-
   return (
     <div className="flex flex-col min-h-screen">
       <Topbar
@@ -732,7 +390,7 @@ export default function ClientsPage() {
               />
             </div>
             <button
-              onClick={() => setModal({ mode: "add" })}
+              onClick={() => setModal("add")}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
             >
               <UserPlus size={15} />
@@ -801,299 +459,187 @@ export default function ClientsPage() {
         {loading && data.length === 0 ? (
           <SkeletonCards count={6} />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
             {filtered.slice(0, nbVisibles).map((c) => {
               const key = c.clientId || c.email || `${c.nom}-${c.prenom}-${c.tel}`;
-              const isExpanded = expanded.has(key);
-              const isConfirmingDel = confirmClientDel === key;
+              const menuOuvert = menuKey === key;
               const actives = c.prestations.filter((p) => !p.archived);
-              const nbArchivees = c.prestations.length - actives.length;
               const unassigned = actives.filter((p) => !p.prestataire).length;
-              const hasDevis = c.prestations.some((p) => p.devisPDF || p.genDevis === "FAIT");
-              const lastPrestataire = [...c.prestations].reverse().find((p) => p.prestataire)?.prestataire;
+              const wa = waMobile(c.tel);
+              const selected = !!c.clientId && selectedMerge.has(c.clientId);
+              const nbRdv = c.prestations.length;
 
               return (
-                <div key={key} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                  {/* En-tête carte */}
-                  <div className="p-4 sm:p-5">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <button
-                          onClick={() => c.clientId && setFicheById(c.clientId)}
-                          className="font-semibold text-gray-900 hover:text-blue-600 transition-colors text-left"
-                          title="Ouvrir la fiche complète"
-                        >
-                          {c.prenom} {c.nom}
-                        </button>
-                        <span className="ml-1.5 align-middle"><AvanceBadge tel={c.tel} email={c.email} prenom={c.prenom} nom={c.nom} /></span>
-                        {c.prixManquant && <span className="ml-1.5 align-middle text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200" title="Une prestation n'a pas de prix">Prix manquant</span>}
-                        {!c.reel && <span className="ml-1.5 align-middle text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500" title="Aucune prestation réalisée (vide ou annulée)">Sans prestation réalisée</span>}
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {c.prestations.length} prestation{c.prestations.length > 1 ? "s" : ""}
-                          {nbArchivees > 0 ? ` · dont ${nbArchivees} archivée${nbArchivees > 1 ? "s" : ""}` : ""}
-                        </p>
-                        {/* Tags */}
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {(c.tags ?? []).map(tag => (
-                            <span
-                              key={tag}
-                              className={`text-xs px-2 py-0.5 rounded-full font-medium ${TAG_COLORS[tag] ?? "bg-gray-100 text-gray-600"}`}
-                            >
-                              {tag}
-                            </span>
+                <div key={key} className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${selected ? "border-amber-400 ring-2 ring-amber-200" : "border-gray-100"}`}>
+                  {/* Ligne compacte : tap = fiche unifiée */}
+                  <div className="flex items-center gap-1.5 p-2.5 sm:p-3">
+                    <button
+                      type="button"
+                      onClick={() => c.clientId && setFicheById(c.clientId)}
+                      className="flex-1 min-w-0 min-h-[44px] text-left rounded-xl px-1.5 py-1 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                      title="Ouvrir la fiche complète"
+                    >
+                      <span className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-semibold text-gray-900 truncate max-w-full">{c.prenom} {c.nom}</span>
+                        <AvanceBadge tel={c.tel} email={c.email} prenom={c.prenom} nom={c.nom} />
+                        {c.prixManquant && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200" title="Une prestation n'a pas de prix">Prix manquant</span>}
+                        {!c.reel && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500" title="Aucune prestation réalisée (vide ou annulée)">Sans prestation réalisée</span>}
+                        {unassigned > 0 && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700">
+                            <Clock size={10} />{unassigned} à affecter
+                          </span>
+                        )}
+                      </span>
+                      <span className="flex items-center gap-x-2 gap-y-0.5 flex-wrap mt-0.5 text-xs">
+                        <span className="font-bold text-green-700">{formatMontant(c.totalCA)}</span>
+                        <span className="text-gray-400">{nbRdv} RDV</span>
+                        {c.prochain ? (
+                          <span className="inline-flex items-center gap-1 font-semibold text-blue-700">
+                            <Calendar size={11} />{c.prochain.date}{c.prochain.heure ? ` ${c.prochain.heure}` : ""}
+                          </span>
+                        ) : c.derniere ? (
+                          <span className="text-gray-400">Dernier : {c.derniere}</span>
+                        ) : null}
+                      </span>
+                      {c.tags.length > 0 && (
+                        <span className="flex flex-wrap gap-1 mt-1">
+                          {c.tags.map(tag => (
+                            <span key={tag} className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${TAG_COLORS[tag] ?? "bg-gray-100 text-gray-600"}`}>{tag}</span>
                           ))}
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setTagEditKey(tagEditKey === key ? null : key); }}
-                            className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-400 hover:bg-gray-200 transition-colors"
-                            title="Gérer les tags"
-                          >
-                            {tagEditKey === key ? "✕" : "+"}
-                          </button>
-                        </div>
-                        {tagEditKey === key && (
-                          <div className="flex flex-wrap gap-1 mt-1.5 p-2 bg-gray-50 rounded-xl border border-gray-100">
-                            {TAGS_PRESET.map(tag => (
-                              <button
-                                key={tag}
-                                onClick={(e) => { e.stopPropagation(); handleToggleTag(c, tag); }}
-                                className={`text-xs px-2 py-0.5 rounded-full transition-colors ${
-                                  (c.tags ?? []).includes(tag)
-                                    ? (TAG_COLORS[tag] ?? "bg-gray-200 text-gray-700") + " font-semibold"
-                                    : "bg-white border border-gray-200 text-gray-500 hover:border-gray-300"
-                                }`}
-                              >
-                                {(c.tags ?? []).includes(tag) ? "✓ " : ""}{tag}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        {c.clientId && (
-                          <label className="flex items-center p-1 cursor-pointer" title="Sélectionner pour fusionner">
-                            <input
-                              type="checkbox"
-                              checked={selectedMerge.has(c.clientId)}
-                              onChange={() => toggleMergeSel(c.clientId)}
-                              className="w-4 h-4 accent-amber-500"
-                            />
-                          </label>
-                        )}
-                        <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-1 rounded-lg">
-                          {formatMontant(c.totalCA)}
                         </span>
-                        <button
-                          onClick={() => setModal({ mode: "edit", client: c })}
-                          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                          title="Modifier ce client"
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        {actives.length > 0 && (
-                          <button
-                            onClick={() => {
-                              setArchiveModal({ prestations: actives, label: `${c.prenom} ${c.nom}` });
-                            }}
-                            className="p-1.5 rounded-lg hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-colors"
-                            title="Archiver ce client"
-                          >
-                            <Archive size={14} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setConfirmClientDel(isConfirmingDel ? null : key)}
-                          className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
-                          title="Supprimer ce client"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Confirmation suppression client */}
-                    {isConfirmingDel && (
-                      <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between gap-2">
-                        <p className="text-xs text-red-700 font-medium">
-                          Supprimer ce client et toutes ses prestations ?
-                        </p>
-                        <ConfirmBtns
-                          onConfirm={() => handleDeleteClient(c)}
-                          onCancel={() => setConfirmClientDel(null)}
-                        />
-                      </div>
+                      )}
+                    </button>
+                    {c.tel && (
+                      <a href={`tel:${c.tel}`} aria-label={`Appeler ${c.prenom} ${c.nom}`} title="Appeler"
+                        className="w-10 h-10 shrink-0 flex items-center justify-center rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 active:bg-blue-200 transition-colors">
+                        <Phone size={17} />
+                      </a>
                     )}
-
-                    {/* Coordonnées */}
-                    <div className="space-y-1.5">
-                      {c.tel && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <a href={`tel:${c.tel}`} className="flex items-center gap-2 min-h-[40px] text-sm text-gray-600 hover:text-gray-900">
-                            <Phone size={13} className="text-gray-400" />{c.tel}
-                          </a>
-                          {waMobile(c.tel) && (
-                            <a href={`https://wa.me/${waMobile(c.tel)}`} target="_blank" rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors">
-                              <MessageCircle size={13} />WhatsApp
-                            </a>
-                          )}
-                        </div>
-                      )}
-                      {c.email && (() => {
-                        // Récap de RDV : le prochain RDV s'il y en a un, sinon la dernière prestation
-                        const last = c.prochain ?? c.latest ?? c.prestations[c.prestations.length - 1];
-                        const details = [
-                          last?.typePresta ? `  • Prestation : ${last.typePresta}${last.quantite ? ` (x${last.quantite})` : ""}` : "",
-                          last?.adresse    ? `  • Adresse    : ${last.adresse}` : "",
-                          last?.date       ? `  • Date       : ${last.date}${last.heure ? ` à ${last.heure}` : ""}` : "",
-                          last?.prix       ? `  • Montant    : ${last.prix} €` : "",
-                        ].filter(Boolean).join("\n");
-                        const body = [
-                          `Bonjour ${c.prenom},`,
-                          ``,
-                          `Nous avons bien enregistré votre demande et vous remercions de votre confiance.`,
-                          ``,
-                          `Voici le récapitulatif de votre rendez-vous :`,
-                          ``,
-                          details,
-                          ``,
-                          `Pour toute question ou modification, n'hésitez pas à nous contacter — nous sommes à votre entière disposition.`,
-                          ``,
-                          `Nous nous réjouissons de vous accueillir prochainement et vous souhaitons une excellente journée.`,
-                          ``,
-                          `À très bientôt,`,
-                          ``,
-                          `L'équipe KinouClean`,
-                        ].join("\n");
-                        const subject = encodeURIComponent("Confirmation de votre rendez-vous – KinouClean");
-                        return (
-                          <div className="flex items-center gap-2">
-                            <Mail size={13} className="text-gray-400 flex-shrink-0" />
-                            <span className="text-sm text-gray-500 truncate flex-1">{c.email}</span>
-                            <a
-                              href={`mailto:${c.email}?subject=${subject}&body=${encodeURIComponent(body)}`}
-                              className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors whitespace-nowrap"
-                              title="Ouvrir dans votre application mail"
-                            >
-                              <Send size={11} />
-                              Envoyer un mail
-                            </a>
-                          </div>
-                        );
-                      })()}
-                      {c.adresse && (
-                        <p className="flex items-center gap-2 text-sm text-gray-500">
-                          <MapPin size={13} className="text-gray-400 flex-shrink-0" />
-                          <span className="truncate">{c.adresse}</span>
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Résumé rapide */}
-                    <div className="mt-3 pt-3 border-t border-gray-50 space-y-1.5">
-                      {c.prochain && (
-                        <p className="flex items-center gap-1.5 text-xs font-semibold text-blue-700">
-                          <Calendar size={12} />
-                          Prochain RDV : {c.prochain.date}{c.prochain.heure ? ` à ${c.prochain.heure}` : ""}
-                          {c.prochain.typePresta ? ` · ${c.prochain.typePresta}` : ""}
-                        </p>
-                      )}
-                      {lastPrestataire && (
-                        <p className="flex items-center gap-1.5 text-xs text-gray-500">
-                          <Wrench size={12} className="text-gray-400" />
-                          {lastPrestataire}
-                        </p>
-                      )}
-                      {unassigned > 0 && (
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                          <Clock size={11} />
-                          {unassigned} mission{unassigned > 1 ? "s" : ""} à affecter
-                        </span>
-                      )}
-                      {hasDevis && (
-                        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
-                          <FileText size={11} />
-                          Devis disponible
-                        </span>
-                      )}
-                      {(c.notes?.length ?? 0) > 0 && (
-                        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
-                          <MessageCircle size={11} />
-                          {c.notes.length} suivi{c.notes.length > 1 ? "s" : ""}
-                        </span>
-                      )}
-                      {c.derniere && (
-                        <p className="text-xs text-gray-400">
-                          Dernière intervention : {c.derniere}
-                        </p>
-                      )}
-                      {c.creeLe && (
-                        <p className="text-xs text-gray-400">
-                          Fiche créée le {new Date(c.creeLe).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}
-                        </p>
-                      )}
-                    </div>
+                    {wa && (
+                      <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer" aria-label={`WhatsApp ${c.prenom} ${c.nom}`} title="WhatsApp"
+                        className="w-10 h-10 shrink-0 flex items-center justify-center rounded-xl bg-green-50 text-green-600 hover:bg-green-100 active:bg-green-200 transition-colors">
+                        <MessageCircle size={17} />
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => { setMenuKey(menuOuvert ? null : key); setConfirmClientDel(null); setConfirmPrestaDel(null); }}
+                      aria-label="Plus d'actions" aria-expanded={menuOuvert} title="Plus d'actions"
+                      className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-xl transition-colors ${menuOuvert ? "bg-gray-200 text-gray-700" : "text-gray-400 hover:bg-gray-100"}`}
+                    >
+                      <MoreHorizontal size={18} />
+                    </button>
                   </div>
 
-                  {/* Lien avis + WhatsApp fin de prestation */}
-                  {c.clientId && (
-                    <div className="mt-3 pt-3 border-t border-gray-50 flex flex-wrap items-center gap-2">
-                      <CopyAvisLink
-                        clientId={c.clientId}
-                        clientName={`${c.prenom} ${c.nom}`}
-                        prestation={c.latest?.typePresta}
-                      />
-                      {(() => {
-                        const last = c.latest;
-                        const avisUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/avis/${c.clientId}?nom=${encodeURIComponent(`${c.prenom} ${c.nom}`)}${last?.typePresta ? `&prestation=${encodeURIComponent(last.typePresta)}` : ""}`;
-                        const msg = waTexteAvis({ prenom: c.prenom, prestation: last?.typePresta, lien: avisUrl });
-                        const lien = waLien(c.tel, msg);
-                        return (<>
-                          {lien && (
-                            <a href={lien} target="_blank" rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 active:bg-green-800 transition-colors">
-                              <MessageCircle size={13} />Demander un avis sur WhatsApp
-                            </a>
-                          )}
-                          <CopyMsgBtn msg={msg} />
-                        </>);
-                      })()}
-                    </div>
-                  )}
+                  {/* Menu « ⋯ » : actions absentes de la fiche unifiée (tags, avis WhatsApp,
+                      mail de confirmation, fusion, archivage, suppressions). */}
+                  {menuOuvert && (
+                    <div className="border-t border-gray-100 bg-gray-50/60 p-3 space-y-3">
+                      {/* Tags */}
+                      <div>
+                        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Tags</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {TAGS_PRESET.map(tag => {
+                            const on = c.tags.includes(tag);
+                            return (
+                              <button key={tag} type="button" onClick={() => handleToggleTag(c, tag)}
+                                className={`min-h-[36px] text-xs px-3 rounded-full transition-colors ${
+                                  on ? (TAG_COLORS[tag] ?? "bg-gray-200 text-gray-700") + " font-semibold" : "bg-white border border-gray-200 text-gray-500 hover:border-gray-300"
+                                }`}>
+                                {on ? "✓ " : ""}{tag}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
 
-                  {/* Bouton déplier */}
-                  <button
-                    onClick={() => toggleExpanded(key)}
-                    className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-gray-50 hover:bg-gray-100 text-xs text-gray-500 font-medium transition-colors border-t border-gray-100"
-                  >
-                    {isExpanded ? (
-                      <><ChevronUp size={13} />Masquer les prestations</>
-                    ) : (
-                      <><ChevronDown size={13} />Voir toutes les prestations ({c.prestations.length})</>
-                    )}
-                  </button>
+                      {/* Actions */}
+                      <div className="flex flex-wrap gap-2">
+                        {c.clientId && (() => {
+                          const last = c.latest;
+                          const avisUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/avis/${c.clientId}?nom=${encodeURIComponent(`${c.prenom} ${c.nom}`)}${last?.typePresta ? `&prestation=${encodeURIComponent(last.typePresta)}` : ""}`;
+                          const msg = waTexteAvis({ prenom: c.prenom, prestation: last?.typePresta, lien: avisUrl });
+                          const lien = waLien(c.tel, msg);
+                          return (<>
+                            {lien && (
+                              <a href={lien} target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 active:bg-green-800 transition-colors">
+                                <Star size={13} />Demander un avis (WhatsApp)
+                              </a>
+                            )}
+                            <button type="button"
+                              onClick={() => navigator.clipboard.writeText(msg).then(() => toast.success("Message d'avis copié"))}
+                              className="inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs font-medium hover:bg-gray-50 transition-colors">
+                              <Copy size={13} />Copier le message d&apos;avis
+                            </button>
+                          </>);
+                        })()}
+                        {c.email && c.prochain && (
+                          <a href={mailConfirmationRdv(c, c.prochain)}
+                            className="inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-lg bg-white border border-blue-200 text-blue-700 text-xs font-medium hover:bg-blue-50 transition-colors"
+                            title="Ouvrir dans votre application mail">
+                            <Mail size={13} />Mail de confirmation du RDV
+                          </a>
+                        )}
+                        {c.clientId && (
+                          <label className="inline-flex items-center gap-2 min-h-[40px] px-3 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs font-medium cursor-pointer">
+                            <input type="checkbox" checked={selected} onChange={() => toggleMergeSel(c.clientId)} className="w-4 h-4 accent-amber-500" />
+                            Sélectionner pour fusion
+                          </label>
+                        )}
+                        {actives.length > 0 && (
+                          <button type="button"
+                            onClick={() => setArchiveModal({ prestations: actives, label: `${c.prenom} ${c.nom}` })}
+                            className="inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-lg bg-white border border-amber-200 text-amber-700 text-xs font-medium hover:bg-amber-50 transition-colors">
+                            <Archive size={13} />Archiver le client
+                          </button>
+                        )}
+                      </div>
 
-                  {/* Détail des prestations + journal */}
-                  {isExpanded && (
-                    <div className="p-4 space-y-3 border-t border-gray-100 bg-white">
-                      {c.clientId && (
-                        <ClientJournal
-                          notes={c.notes ?? []}
-                          onAdd={(texte, type) => handleAddNote(c, texte, type)}
-                          onDelete={(noteId) => handleDeleteNote(c, noteId)}
-                        />
+                      {/* Prestations : archivage / suppression unitaire (absents de la fiche) */}
+                      {c.prestations.length > 0 && (
+                        <div>
+                          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Gérer les prestations</p>
+                          <div className="space-y-1">
+                            {c.prestations.map(p => (
+                              <div key={p.row} className="flex items-center gap-1.5 bg-white rounded-lg border border-gray-100 pl-2.5 pr-1 py-1">
+                                <span className="flex-1 min-w-0 text-xs text-gray-700 truncate">
+                                  {p.typePresta || "Prestation"} · {p.date || "?"}{p.prix ? ` · ${p.prix} €` : ""}
+                                  {p.archived ? " · 📦" : p.statut === "ANNULÉ" ? " · annulé" : ""}
+                                </span>
+                                {confirmPrestaDel === p.row ? (
+                                  <ConfirmBtns onConfirm={() => { setConfirmPrestaDel(null); handleDeletePrestation(p.row); }} onCancel={() => setConfirmPrestaDel(null)} />
+                                ) : (<>
+                                  {!p.archived && (
+                                    <button type="button" onClick={() => setArchiveModal({ prestations: [p], label: `${c.prenom} ${c.nom}` })}
+                                      aria-label="Archiver cette prestation" title="Archiver cette prestation"
+                                      className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:bg-amber-50 hover:text-amber-600 transition-colors">
+                                      <Archive size={14} />
+                                    </button>
+                                  )}
+                                  <button type="button" onClick={() => setConfirmPrestaDel(p.row)}
+                                    aria-label="Supprimer cette prestation" title="Supprimer cette prestation"
+                                    className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+                                    <Trash2 size={14} />
+                                  </button>
+                                </>)}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       )}
-                      {c.prestations.length === 0 ? (
-                        <p className="text-xs text-gray-400 text-center py-2">Aucune prestation</p>
+
+                      {/* Suppression client */}
+                      {confirmClientDel === key ? (
+                        <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between gap-2">
+                          <p className="text-xs text-red-700 font-medium">Supprimer ce client et toutes ses prestations ?</p>
+                          <ConfirmBtns onConfirm={() => handleDeleteClient(c)} onCancel={() => setConfirmClientDel(null)} />
+                        </div>
                       ) : (
-                        c.prestations.map((p) => (
-                          <PrestationRow
-                            key={p.row}
-                            p={p}
-                            onDelete={handleDeletePrestation}
-                            onDevisGenerated={load}
-                            onArchive={(ids) => setArchiveModal({ prestations: c.prestations.filter(x => ids.includes(x.row)), label: `${c.prenom} ${c.nom}` })}
-                          />
-                        ))
+                        <button type="button" onClick={() => setConfirmClientDel(key)}
+                          className="inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-lg text-red-600 text-xs font-medium hover:bg-red-50 transition-colors">
+                          <Trash2 size={13} />Supprimer le client
+                        </button>
                       )}
                     </div>
                   )}
@@ -1116,7 +662,7 @@ export default function ClientsPage() {
 
       {/* Barre flottante de fusion manuelle */}
       {selectedMerge.size >= 2 && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 bg-amber-500 text-white rounded-full shadow-2xl pl-5 pr-2.5 py-2.5 flex items-center gap-3">
+        <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:bottom-5 left-1/2 -translate-x-1/2 z-40 bg-amber-500 text-white rounded-full shadow-2xl pl-5 pr-2.5 py-2.5 flex items-center gap-3">
           <span className="text-sm font-medium">{selectedMerge.size} fiches sélectionnées</span>
           <button
             onClick={mergeSelected}
@@ -1139,17 +685,9 @@ export default function ClientsPage() {
         />
       )}
 
-      {modal && modal.mode === "add" && (
+      {modal === "add" && (
         <NewClientModal
           prestataires={prestataires}
-          onClose={() => setModal(null)}
-          onSaved={load}
-        />
-      )}
-      {modal && modal.mode === "edit" && (
-        <ClientModal
-          mode="edit"
-          client={modal.client}
           onClose={() => setModal(null)}
           onSaved={load}
         />
