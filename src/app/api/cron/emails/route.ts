@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { getSetting, getGmailTransporter, ACCROCHE, buildRelanceHtml } from "@/lib/mailer";
+import { getGmailTransporter, ACCROCHE, buildRelanceHtml } from "@/lib/mailer";
 import { getSettingJSON } from "@/lib/settings";
 import { importInbox } from "@/lib/inbox";
 import { scanAvanceInscrits } from "@/lib/avanceInscrits";
+import { executerRelancesAuto, finaliserRelancesAuto } from "@/lib/prospectRelance";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -151,6 +152,7 @@ function buildAvisHtml(d: { prenom: string; typePresta: string; lien: string }):
 
 // ─────────────────────────────────────────────────────────────────────────────
 export async function GET(req: Request) {
+  const debutMs = Date.now();
   const auth = authorize(req);
   if (!auth.ok) return NextResponse.json({ error: auth.reason }, { status: 401 });
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
@@ -188,28 +190,17 @@ export async function GET(req: Request) {
     catch (e) { avanceScan = { erreur: e instanceof Error ? e.message : "scan avance échoué" }; }
   }
 
-  // Clôture auto des prospects relancés sans réponse : 3 jours après la DERNIÈRE
-  // relance → statut PERDU (archivé, récupérable). Jamais les convertis/déjà perdus.
-  let prospectsClotures: unknown = "non exécuté (simulation)";
-  if (mode !== "simulation") {
-    try {
-      const suivi = await getSettingJSON<Record<string, { relanceDate?: string }>>("prospects_suivi", {});
-      const limite = Date.now() - 3 * 24 * 3600 * 1000;
-      const aClore = Object.entries(suivi)
-        .filter(([, s]) => s?.relanceDate && new Date(s.relanceDate).getTime() < limite)
-        .map(([id]) => id);
-      let clotures = 0;
-      if (aClore.length) {
-        const { data: rows } = await supabase.from("prospects").select("id, statut").in("id", aClore);
-        const ids = (rows || []).filter(r => !["CONVERTI", "PERDU"].includes(r.statut as string)).map(r => r.id as string);
-        if (ids.length) {
-          const { data } = await supabase.from("prospects").update({ statut: "PERDU", updated_at: new Date().toISOString() }).in("id", ids).select("id");
-          clotures = data?.length ?? 0;
-        }
-      }
-      prospectsClotures = { candidats: aClore.length, clotures };
-    } catch (e) { prospectsClotures = { erreur: e instanceof Error ? e.message : "clôture prospects échouée" }; }
-  }
+  // Relances AUTOMATIQUES des prospects (R1 J+2, R2 J+5, R3 J+9, pas le dimanche,
+  // clôture PERDU 3 j après R3, arrêt si le prospect a répondu) — voir
+  // src/lib/prospectRelance.ts. Simulation = liste seulement ; test = non exécuté.
+  // Remplace l'ancienne règle (clôture 3 j après la dernière relance quel que soit
+  // le niveau). Budget temps : on garde de la marge sous maxDuration (60 s).
+  let relancesProspects: unknown;
+  try {
+    const rp = await executerRelancesAuto({ mode, deadline: debutMs + 45_000 });
+    await finaliserRelancesAuto(rp);
+    relancesProspects = rp;
+  } catch (e) { relancesProspects = { erreur: e instanceof Error ? e.message : "relances prospects échouées" }; }
 
   const { data, error } = await supabase
     .from("prestations")
@@ -427,7 +418,7 @@ export async function GET(req: Request) {
     ),
     inboxImport,
     avanceScan,
-    prospectsClotures,
+    relancesProspects,
   };
 
   console.log("[CRON emails]", mode, "|", report.resume);

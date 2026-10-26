@@ -582,6 +582,58 @@ export default function ConfigurationPage() {
                   );
                 })()}
               </div>
+
+              {/* Relances automatiques des prospects (cron du matin) */}
+              {(() => {
+                const actif = settings.relances_auto_actif !== "false";
+                let dernier: { le?: string; envoyees?: unknown[]; reponses?: unknown[]; clotures?: unknown[]; plafond?: unknown[]; erreurs?: string[]; dimanche?: boolean } | null = null;
+                try { dernier = settings.relances_auto_dernier ? JSON.parse(settings.relances_auto_dernier) : null; } catch { dernier = null; }
+                return (
+                  <div className="mt-3 bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-800 text-sm">Relances automatiques des prospects</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {actif
+                            ? "Actives — chaque matin, les relances dues partent toutes seules."
+                            : "En pause — aucune relance automatique n'est envoyée (les relances manuelles restent possibles)."}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={actif}
+                        onClick={async () => {
+                          if (actif && !confirm("Mettre en pause TOUTES les relances automatiques des prospects ?")) return;
+                          try {
+                            await save({ relances_auto_actif: actif ? "false" : "true" });
+                            toast.success(actif ? "Relances automatiques mises en pause" : "Relances automatiques réactivées");
+                          } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
+                        }}
+                        className={`relative shrink-0 w-12 h-7 rounded-full transition-colors ${actif ? "bg-emerald-500" : "bg-gray-300"}`}
+                      >
+                        <span className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${actif ? "translate-x-5" : ""}`} />
+                      </button>
+                    </div>
+                    <ul className="text-xs text-gray-500 space-y-0.5 list-disc pl-4">
+                      <li>Démarrage = envoi du devis (ou, à défaut, de la demande d&apos;infos) — les nouveaux leads ne sont jamais contactés tout seuls.</li>
+                      <li>Relance R1 à J+2, R2 à J+5, R3 à J+9 (jamais le dimanche : reportée au lundi).</li>
+                      <li>Arrêt dès que le prospect répond par email (détecté dans Gmail) → il revient dans « Aujourd&apos;hui ».</li>
+                      <li>Clôture (Perdu) 3 jours après R3 sans réponse. Plafond : 30 emails par jour.</li>
+                      <li>Désactivable prospect par prospect depuis sa fiche.</li>
+                    </ul>
+                    {dernier?.le && (
+                      <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                        Dernier passage : {new Date(dernier.le).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })}
+                        {" — "}{dernier.envoyees?.length ?? 0} envoyée(s), {dernier.reponses?.length ?? 0} réponse(s), {dernier.clotures?.length ?? 0} clôture(s)
+                        {(dernier.plafond?.length ?? 0) > 0 && `, ${dernier.plafond!.length} bloquée(s) par le plafond`}
+                        {dernier.dimanche && " (dimanche : pas d'envoi)"}
+                        {(dernier.erreurs?.length ?? 0) > 0 && <span className="block text-amber-700 mt-1">⚠️ {dernier.erreurs!.join(" · ")}</span>}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </section>
 
             {/* Connexion site → prospects (webhook) */}

@@ -17,6 +17,7 @@ import { Prestataire, ClientNote, TYPES_PRESTATION } from "@/lib/constants";
 import { ClientFicheById } from "@/components/ClientFiche";
 import DevisExternes, { DevisExterne, fmtDevisDate } from "@/components/DevisExternes";
 import { isoParis } from "@/lib/dateParis";
+import { etatAuto, libelleEtatAuto, jjmmIso, prochainPassage, EtatAuto } from "@/lib/prospectRelanceCadence";
 
 // Formatage FR compact pour le pense-bête d'import.
 function fmtImportDateTime(iso: string): string {
@@ -64,10 +65,14 @@ interface Prospect {
   besoins?: Besoin[]; // prestations souhaitées (type + détails + prix), pré-remplit la conversion
   suivi?: Suivi;      // suivi commercial : devis envoyé + relances
   dejaClient?: { id: string; nom: string } | null; // fiche client existante (même email / tél.), calculé côté serveur
+  autoGlobal?: boolean; // interrupteur global « Relances automatiques » (Configuration)
 }
 
 // Suivi commercial d'un prospect (stocké dans settings/prospects_suivi).
-interface Suivi { devisEnvoye?: boolean; devisDate?: string; devisNum?: string; relanceNiveau?: number; relanceDate?: string; relanceDates?: string[]; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number; infoRelanceDates?: string[] }
+interface Suivi { devisEnvoye?: boolean; devisDate?: string; devisNum?: string; relanceNiveau?: number; relanceDate?: string; relanceDates?: string[]; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number; infoRelanceDates?: string[]; autoRelance?: boolean; autoStop?: string; reponduLe?: string; dernierEnvoiIso?: string }
+
+// État des relances automatiques d'un prospect (même calcul que le cron).
+const etatAutoDe = (p: Prospect): EtatAuto => etatAuto(p, p.suivi, { global: p.autoGlobal !== false, today: isoParis(0) });
 
 // Une prestation souhaitée notée sur le prospect (même forme que les articles client).
 // `details` = valeurs structurées des champs intelligents (tissu, places…), pour
@@ -527,11 +532,20 @@ function JournalEchanges({ commentaires, pending, suivi, onAdd, onDelete, onRepr
   const [toutVoir, setToutVoir] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const evts = useMemo(() => [
-    ...commentaires.map(c => evenementNote(c)),
-    ...pending.map(c => evenementNote(c, true)),
-    ...evenementsAuto(suivi),
-  ].sort((a, b) => b.tri - a.tri), [commentaires, pending, suivi]);
+  const evts = useMemo(() => {
+    // Une relance envoyée par le cron a déjà sa note « 🤖 Relance R2 envoyée
+    // automatiquement » : on n'affiche pas en double la ligne tirée du suivi.
+    const dejaNotees = new Set<string>();
+    for (const c of commentaires) {
+      const m = c.texte.match(/^🤖 Relance R(\d) envoyée automatiquement( \(demande d'infos\))?/);
+      if (m) dejaNotees.add(`auto-${(m[2] ? 5 : 1) + Number(m[1])}`);
+    }
+    return [
+      ...commentaires.map(c => evenementNote(c)),
+      ...pending.map(c => evenementNote(c, true)),
+      ...evenementsAuto(suivi).filter(e => !dejaNotees.has(e.key)),
+    ].sort((a, b) => b.tri - a.tri);
+  }, [commentaires, pending, suivi]);
   const LIMITE = 6;
   const visibles = toutVoir ? evts : evts.slice(0, LIMITE);
 
@@ -673,7 +687,7 @@ function ProspectModal({
     setDraft(x => ({ ...x, prix: u > 0 ? String(Number((u * n).toFixed(2))) : "" }));
   };
   const [draftStatut, setDraftStatut] = useState<string>(prospect.statut); // statut choisi, en attente de validation
-  const [actionBusy, setActionBusy] = useState<"" | "devis" | "relance" | "avance" | "infos" | "relance_infos">("");
+  const [actionBusy, setActionBusy] = useState<"" | "devis" | "relance" | "avance" | "infos" | "relance_infos" | "auto">("");
   const toast = useToast();
   const [devisExt, setDevisExt] = useState<DevisExterne[]>([]); // devis externes (pour « dernier email »)
   // Dernier état connu (pour les écritures asynchrones enchaînées du journal).
@@ -757,6 +771,23 @@ function ProspectModal({
       setP(prev => ({ ...prev, suivi: d.suivi }));
       onUpdated({ id: p.id, suivi: d.suivi });
       toast.success(value ? "Avance immédiate activée" : "Avance immédiate retirée");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
+    finally { setActionBusy(""); }
+  }
+
+  // Relances automatiques (activées par défaut, suivi.autoRelance !== false) — aucun email envoyé.
+  async function setAuto(value: boolean) {
+    setActionBusy("auto");
+    try {
+      const res = await fetch(`/api/prospects/${p.id}/relance`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_auto", value }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur");
+      setP(prev => ({ ...prev, suivi: d.suivi }));
+      onUpdated({ id: p.id, suivi: d.suivi });
+      toast.success(value ? "Relances automatiques activées" : "Relances automatiques désactivées pour ce prospect");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
     finally { setActionBusy(""); }
   }
@@ -1134,6 +1165,28 @@ function ProspectModal({
           {isActive && (
             <RelanceRapide dateRelance={p.dateRelance} statut={p.statut} saving={saving} onSet={reprogrammer} />
           )}
+
+          {/* Relances automatiques (cron du matin) : interrupteur + prochaine échéance */}
+          {(() => {
+            const autoOn = p.suivi?.autoRelance !== false;
+            const etat = etatAutoDe(p);
+            const repondu = etat.etat === "reponse";
+            return (
+              <div className={`rounded-xl border p-3 flex items-center gap-3 ${repondu ? "bg-emerald-50 border-emerald-200" : "border-gray-200"}`}>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-800">🤖 Relances automatiques</p>
+                  <p className={`text-xs mt-0.5 ${repondu ? "text-emerald-700 font-medium" : etat.etat === "programmee" ? "text-blue-700" : "text-gray-500"}`}>
+                    Prochaine relance auto : {libelleEtatAuto(etat)}
+                  </p>
+                </div>
+                <button type="button" role="switch" aria-checked={autoOn} aria-label="Relances automatiques"
+                  disabled={actionBusy !== ""} onClick={() => setAuto(!autoOn)}
+                  className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-60 ${autoOn ? "bg-emerald-500" : "bg-gray-300"}`}>
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${autoOn ? "translate-x-5" : ""}`} />
+                </button>
+              </div>
+            );
+          })()}
 
           {/* Journal des échanges — remonté juste sous la relance (accès sans scroller) */}
           <JournalEchanges
@@ -1988,6 +2041,7 @@ export default function ProspectsPage() {
               const rang = rangRelance(p, ref);
               const hasRelanceTomorrow = jourIso(p.dateRelance) === ref.t1;
               const last = dernierEmail(p.suivi, []);
+              const auto = etatAutoDe(p);
               // En-têtes « En retard / Aujourd'hui / Nouveaux leads » dans l'onglet Aujourd'hui (si non vides).
               const enSections = filterRelance === "urgent" && !search.trim();
               const section = enSections && (i === 0 || rangRelance(sorted[i - 1], ref) !== rang) ? SECTIONS_URGENT[rang] : undefined;
@@ -2028,6 +2082,14 @@ export default function ProspectsPage() {
                       <StatutBadge statut={p.statut} small />
                       {p.dejaClient && p.statut !== "CONVERTI" && (
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700" title={`Déjà client : ${p.dejaClient.nom}`}>Déjà client</span>
+                      )}
+                      {auto.etat === "reponse" && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700" title="Réponse email détectée — relances automatiques arrêtées">📩 A répondu</span>
+                      )}
+                      {auto.etat === "programmee" && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap" title={`Relance automatique : ${libelleEtatAuto(auto)}`}>
+                          🤖 R{auto.niveau} le {jjmmIso(prochainPassage(auto.date, ref.t0))}
+                        </span>
                       )}
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
