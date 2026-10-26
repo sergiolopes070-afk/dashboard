@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
-import { getSettingJSON, setSettingRaw } from "@/lib/settings";
+import { getSettingJSON, majSettingJSON } from "@/lib/settings";
 import { getInscrits, estInscrit } from "@/lib/avanceInscrits";
 import {
   getGmailTransporter, buildRelanceHtml, ACCROCHE,
@@ -22,9 +22,6 @@ type Etat = Record<string, EtatPresta>;
 
 async function lireEtat(): Promise<Etat> {
   return getSettingJSON<Etat>(ETAT_KEY, {});
-}
-async function ecrireEtat(etat: Etat): Promise<string | null> {
-  return setSettingRaw(ETAT_KEY, JSON.stringify(etat));
 }
 async function lireFiscal(clientId: string): Promise<string | undefined> {
   const m = await getSettingJSON<Record<string, string>>("fiscal_clients", {});
@@ -125,10 +122,14 @@ export async function POST(req: Request) {
       html: buildRelanceHtml({ prenom, typePresta, prix: String(p.prix ?? ""), niveau: 1, fiscal }),
     });
 
-    const etat = await lireEtat();
-    etat[prestationId] = { ...(etat[prestationId] ?? {}), relance: 1, relanceStart: new Date().toISOString() };
-    const errEtat = await ecrireEtat(etat);
-    if (errEtat) return NextResponse.json({ error: `Email envoyé mais suivi non enregistré : ${errEtat}` }, { status: 500 });
+    // Relecture fraîche juste avant l'écriture, refus si illisible (jamais de {} de repli réécrit).
+    try {
+      await majSettingJSON<Etat>(ETAT_KEY, {}, etat => {
+        etat[prestationId] = { ...(etat[prestationId] ?? {}), relance: 1, relanceStart: new Date().toISOString() };
+      });
+    } catch (e) {
+      return NextResponse.json({ error: `Email envoyé mais suivi non enregistré : ${e instanceof Error ? e.message : String(e)}` }, { status: 500 });
+    }
 
     return NextResponse.json({ success: true, sentTo: email, type, relance: 1 });
   } catch (e: unknown) {

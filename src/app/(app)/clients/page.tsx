@@ -15,6 +15,7 @@ import NewClientModal from "@/components/NewClientModal";
 import ClotureModal from "@/components/ClotureModal";
 import AvanceBadge from "@/components/AvanceBadge";
 import { formatMontant } from "@/lib/finance";
+import { fetchJsonOk } from "@/lib/fetchOk";
 import { Prestation, Prestataire, ClientNote, STATUT_COLORS, estAnnulation } from "@/lib/constants";
 
 const TAGS_PRESET = ["Régulier", "VIP", "Difficile", "Sensible", "Pro", "Fidèle"];
@@ -499,7 +500,8 @@ export default function ClientsPage() {
       const ps = c.prestations ?? [];
       // CA : tout l'historique, sauf les archivages pour annulation (même règle que la fiche)
       const totalCA = ps
-        .filter(p => !(p.archived && estAnnulation(p.archiveReason)))
+        // + hors RDV actifs au statut ANNULÉ (même règle que finance.ts : une annulation ne compte jamais)
+        .filter(p => !(p.archived && estAnnulation(p.archiveReason)) && !(!p.archived && p.statut === "ANNULÉ"))
         .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
       // Dernière prestation effectuée = date passée la plus récente (comparaison chronologique)
       const passees = ps.filter(p => { const t = frTs(p.date, p.heure); return t > 0 && t <= now; });
@@ -638,22 +640,22 @@ export default function ClientsPage() {
   };
 
   const handleDeletePrestation = async (id: string) => {
-    await fetch("/api/prestations", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
+    try {
+      await fetchJsonOk("/api/prestations", "DELETE", { id });
+    } catch (e) {
+      toast.error(`Suppression impossible : ${e instanceof Error ? e.message : "Erreur"}`);
+    }
     load();
   };
 
   const handleDeleteClient = async (c: Client) => {
     const clientId = c.clientId;
     if (!clientId) return;
-    await fetch("/api/clients", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId }),
-    });
+    try {
+      await fetchJsonOk("/api/clients", "DELETE", { clientId });
+    } catch (e) {
+      toast.error(`Suppression du client impossible : ${e instanceof Error ? e.message : "Erreur"}`);
+    }
     setConfirmClientDel(null);
     load();
   };
@@ -663,21 +665,24 @@ export default function ClientsPage() {
     const next = current.includes(tag) ? current.filter(t => t !== tag) : [...current, tag];
     // Optimistic update
     setData(prev => prev.map(x => x.clientId === c.clientId ? { ...x, tags: next } : x));
-    await fetch("/api/clients", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: c.clientId, tags: next }),
-    });
+    try {
+      await fetchJsonOk("/api/clients", "PATCH", { clientId: c.clientId, tags: next });
+    } catch (e) {
+      setData(prev => prev.map(x => x.clientId === c.clientId ? { ...x, tags: current } : x)); // rollback
+      toast.error(`Tag non enregistré : ${e instanceof Error ? e.message : "Erreur"}`);
+    }
   };
 
   const persistNotes = async (c: Client, notes: ClientNote[]) => {
     // Optimistic update
+    const previous = c.notes;
     setData(prev => prev.map(x => x.clientId === c.clientId ? { ...x, notes } : x));
-    await fetch("/api/clients", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: c.clientId, notes }),
-    });
+    try {
+      await fetchJsonOk("/api/clients", "PATCH", { clientId: c.clientId, notes });
+    } catch (e) {
+      setData(prev => prev.map(x => x.clientId === c.clientId ? { ...x, notes: previous } : x)); // rollback
+      toast.error(`Note non enregistrée : ${e instanceof Error ? e.message : "Erreur"}`);
+    }
   };
 
   const handleAddNote = (c: Client, texte: string, type: string) => {

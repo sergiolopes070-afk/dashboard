@@ -19,7 +19,8 @@
 // Dates de période au format ISO "AAAA-MM-JJ", bornes incluses.
 // ============================================================
 
-import { Prestation, Depense, estAnnulation } from "./constants";
+import { Prestation, Depense, estAnnulation, STATUT_ANNULE } from "./constants";
+import { isoParis } from "./dateParis";
 
 // ─── Dates ───────────────────────────────────────────────────────────────────
 
@@ -83,8 +84,9 @@ export function caRealise(archive: Prestation[], debut?: string, fin?: string): 
  * CA prévu : prestations NON archivées dont la date est aujourd'hui ou plus tard
  * (hors statut ANNULÉ). Chiffre séparé, jamais ajouté au CA réalisé.
  */
-export function caPrevu(prestations: Prestation[], aPartirDe: string = isoLocal()): { ca: number; nb: number } {
-  const liste = prestations.filter(p => p.statut !== "ANNULÉ" && frDateToIso(p.date) >= aPartirDe && !!frDateToIso(p.date));
+// Défaut = aujourd'hui à PARIS (sur le serveur UTC, isoLocal() donnait la veille entre 0 h et 2 h).
+export function caPrevu(prestations: Prestation[], aPartirDe: string = isoParis()): { ca: number; nb: number } {
+  const liste = prestations.filter(p => p.statut !== STATUT_ANNULE && frDateToIso(p.date) >= aPartirDe && !!frDateToIso(p.date));
   return { ca: liste.reduce((s, p) => s + prixPresta(p), 0), nb: liste.length };
 }
 

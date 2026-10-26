@@ -6,7 +6,7 @@
 // choix « Avance immédiate » du prospect (suivi.avanceImmediate, défaut = true).
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from "./supabase";
-import { getSettingJSON, setSettingRaw, getSettingRaw } from "./settings";
+import { setSettingRaw, lireSettingJSONStrict, majSettingJSON } from "./settings";
 import { buildDevisHtml, numeroDevis, dateFr, dateFrPlus, prestationPhrase, calcTotaux, lignesProspect, normaliserRemise, DevisLigne, DevisData, DevisRemise } from "./devisKinou";
 
 export type ProspectDevis = {
@@ -42,17 +42,17 @@ export async function buildProspectDevis(id: string): Promise<Result> {
   }
 
   // Numéro stable + dispositif (avance par défaut, sauf si décoché).
+  // Lecture stricte : suivi illisible → pas de devis (sinon nouveau numéro / avance faussés).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const suiviAll = await getSettingJSON<Record<string, any>>("prospects_suivi", {});
+  const suiviAll = await lireSettingJSONStrict<Record<string, any>>("prospects_suivi", {});
+  if (!suiviAll) return { ok: false, error: "Suivi des prospects momentanément illisible — réessaie dans un instant.", status: 503 };
   const cur = suiviAll[id] || {};
   const avance = cur.avanceImmediate !== false; // undefined ⇒ true
   let num: string = cur.devisNum;
   if (!num) {
-    const c = parseInt((await getSettingRaw("devis_counter")) || "0", 10) || 0;
-    num = numeroDevis(c + 1);
-    await setSettingRaw("devis_counter", String(c + 1));
-    suiviAll[id] = { ...cur, devisNum: num };
-    await setSettingRaw("prospects_suivi", JSON.stringify(suiviAll));
+    const attrib = await attribuerNumeroDevis(id);
+    if ("error" in attrib) return { ok: false, error: `Numéro de devis non attribué : ${attrib.error}`, status: 503 };
+    num = attrib.num;
   }
 
   // Réduction éventuelle (suivi.remise) — mêmes totaux que le HTML / PDF.
@@ -94,4 +94,31 @@ export async function buildProspectDevis(id: string): Promise<Result> {
       },
     },
   };
+}
+
+// Attribue un numéro KC-AAAAMMJJ-NNN au prospect (sans migration DB : compteur
+// dans settings/devis_counter). Pas d'atomicité SQL possible ici, donc on réduit
+// la fenêtre de course : relecture juste avant l'écriture, saut des numéros déjà
+// présents dans le suivi, résultat de chaque écriture vérifié, et le suivi n'est
+// complété que si aucun numéro n'a été posé entre-temps pour ce prospect.
+async function attribuerNumeroDevis(id: string): Promise<{ num: string } | { error: string }> {
+  const compteur = await lireSettingJSONStrict<number>("devis_counter", 0);
+  if (compteur == null) return { error: "compteur illisible" };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const suivi = await lireSettingJSONStrict<Record<string, any>>("prospects_suivi", {});
+  if (!suivi) return { error: "suivi illisible" };
+  if (suivi[id]?.devisNum) return { num: suivi[id].devisNum as string }; // posé entre-temps
+  const pris = new Set(Object.values(suivi).map(s => s?.devisNum).filter(Boolean));
+  let c = (parseInt(String(compteur), 10) || 0) + 1;
+  while (pris.has(numeroDevis(c))) c++;
+  const errC = await setSettingRaw("devis_counter", String(c));
+  if (errC) return { error: errC };
+  let num = numeroDevis(c);
+  try {
+    await majSettingJSON<Record<string, any>>("prospects_suivi", {}, all => { // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (all[id]?.devisNum) num = all[id].devisNum; // un autre appel a gagné : on garde le sien
+      else all[id] = { ...(all[id] || {}), devisNum: num };
+    });
+  } catch (e) { return { error: e instanceof Error ? e.message : String(e) }; }
+  return { num };
 }

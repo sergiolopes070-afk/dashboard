@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getGmailTransporter, buildRappelMessage, sendRappelEmail } from "@/lib/mailer";
-import { getSettingJSON, getSettingRaw, setSettingRaw } from "@/lib/settings";
+import { getSettingJSON, getSettingRaw, setSettingRaw, lireSettingJSONStrict, majSettingJSON } from "@/lib/settings";
 import { getInscrits, estInscrit } from "@/lib/avanceInscrits";
 import {
   isWhatsAppConfigured, sendWhatsAppTemplate, normaliserMobileWA, masquerTel, whatsAppErrorText,
   WA_TEMPLATE_CLIENT, WA_TEMPLATE_PRESTA, WA_TEMPLATE_LANG,
 } from "@/lib/whatsapp";
+import { STATUT_ANNULE } from "@/lib/constants";
 import { listeWhatsAppDuJour, waSectionHtml, waSectionTexte, waTitreResume, waVueJson, WaLigneJour } from "@/lib/waAEnvoyerServeur";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cron quotidien (veille) : pour les RDV du LENDEMAIN —
@@ -46,26 +48,42 @@ function getCronSecret(): string | undefined {
   return undefined;
 }
 
-// Ce cron n'envoie QU'À l'équipe (AUTH_EMAIL), jamais aux clients. Le risque
-// d'un déclenchement falsifié se limite donc à un email interne en double :
-// on accepte l'en-tête `x-vercel-cron` pour garantir le rappel quotidien de 18h,
-// même si la variable Vercel n'est pas nommée exactement CRON_SECRET.
-// (Le cron des relances clients, lui, exige le secret — voir /api/cron/emails.)
-//
-// WhatsApp, lui, écrit aux CLIENTS : comme /api/cron/emails, l'en-tête seul
-// (falsifiable) n'autorise l'envoi réel que dans la fenêtre du cron planifié
-// (17:00 UTC ±1 h) ; en dehors → simulation (liste seulement, aucun appel Meta).
-const CRON_HEURE_UTC = 17;
+// Ce cron écrit à l'équipe, aux prestataires ET aux clients (email + WhatsApp).
+// Secret valide (Bearer CRON_SECRET injecté par Vercel, ou ?key=) → tous les droits.
+// L'en-tête `x-vercel-cron` seul (falsifiable) reste accepté pour ne pas casser
+// le cron si la variable Vercel n'est pas nommée exactement CRON_SECRET, mais il
+// n'autorise l'envoi (emails ET WhatsApp) que dans la fenêtre du cron planifié
+// (17:00 UTC l’hiver, 16:00 l’été : de 15:30 à 18:30) ; en dehors → lecture seule (JSON, rien n'est envoyé).
+// Les anti-doublons par date cible empêchent de toute façon un 2e envoi le même jour.
+const FENETRE_CRON_UTC = { debut: 15 * 60 + 30, fin: 18 * 60 + 30 }; // minutes depuis 00:00 UTC
 function authorize(req: Request): { ok: boolean; envoiAutorise: boolean; waReel: boolean } {
   const secret = getCronSecret();
   const key = new URL(req.url).searchParams.get("key");
   const auth = req.headers.get("authorization");
   if (secret && (key === secret || auth === `Bearer ${secret}`)) return { ok: true, envoiAutorise: true, waReel: true };
   if (req.headers.get("x-vercel-cron")) {
-    const h = new Date().getUTCHours();
-    return { ok: true, envoiAutorise: true, waReel: h >= CRON_HEURE_UTC - 1 && h <= CRON_HEURE_UTC + 1 };
+    const now = new Date();
+    const m = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const dansLaFenetre = m >= FENETRE_CRON_UTC.debut && m <= FENETRE_CRON_UTC.fin;
+    return { ok: true, envoiAutorise: dansLaFenetre, waReel: dansLaFenetre };
   }
   return { ok: false, envoiAutorise: false, waReel: false };
+}
+
+// ─── Anti-doublons par date cible (réglages JSON « clé_AAAA-MM-JJ » → true) ───
+// Relus FRAIS et réécrits juste après CHAQUE envoi réussi : un plantage (ou un
+// timeout) en cours de route ne provoque pas de renvoi au passage suivant.
+function purgerGarde(g: Record<string, boolean>) {
+  // Entrées de plus de 10 jours supprimées pour que le réglage ne gonfle pas.
+  const limite = new Date(); limite.setDate(limite.getDate() - 10);
+  const limiteIso = limite.toISOString().slice(0, 10);
+  for (const k of Object.keys(g)) { const d = k.split("_").pop() || ""; if (d < limiteIso) delete g[k]; }
+}
+async function marquerGarde(reglage: string, cles: string[]): Promise<string | null> {
+  try {
+    await majSettingJSON<Record<string, boolean>>(reglage, {}, g => { purgerGarde(g); for (const k of cles) g[k] = true; });
+    return null;
+  } catch (e) { return e instanceof Error ? e.message : String(e); }
 }
 
 // Date de demain au format YYYY-MM-DD, en fuseau Europe/Paris.
@@ -117,13 +135,16 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabase
     .from("prestations")
-    .select("id, type_prestation, heure_intervention, adresse, date_intervention, prix, mode_paiement, client_id, prestataire_id, clients(prenom, nom, tel, email), prestataires(nom, email, tel_wa)")
+    .select("id, statut, type_prestation, heure_intervention, adresse, date_intervention, prix, mode_paiement, client_id, prestataire_id, clients(prenom, nom, tel, email), prestataires(nom, email, tel_wa)")
     .eq("archive", false)
     .not("date_intervention", "is", null);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // RDV annulés exclus (statut ANNULÉ non encore archivé) : ni rappel client, ni
+  // mission prestataire, ni ligne dans le récap. (Les annulations archivées sont
+  // déjà écartées par archive = false.)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rows: any[] = (data || []).filter(p => String(p.date_intervention).slice(0, 10) === demainISO);
+  const rows: any[] = (data || []).filter(p => String(p.date_intervention).slice(0, 10) === demainISO && p.statut !== STATUT_ANNULE);
 
   // Avance immédiate : préférences fiscales + inscrits détectés (pour le reste à charge).
   const fiscalMap = await getSettingJSON<Record<string, string>>("fiscal_clients", {});
@@ -164,14 +185,14 @@ export async function GET(req: Request) {
   // ── Rappel de la veille pour chaque PRESTATAIRE (ses missions de demain) ──
   // Regroupe les RDV de demain par prestataire ayant un email. SANS prix.
   type Mission = { heure: string; presta: string; adresse: string; client: string; tel: string };
-  type PrestaGrp = { nom: string; email: string; missions: Mission[] };
+  type PrestaGrp = { cle: string; nom: string; email: string; missions: Mission[] };
   const prestaGrp = new Map<string, PrestaGrp>();
   for (const p of rows) {
     const pr = Array.isArray(p.prestataires) ? (p.prestataires[0] || {}) : (p.prestataires || {});
     const email = (pr?.email || "").trim();
     if (!email) continue; // pas d'email prestataire → pas de rappel
     const key = (p.prestataire_id || email) as string;
-    const g: PrestaGrp = prestaGrp.get(key) || { nom: pr?.nom || "", email, missions: [] };
+    const g: PrestaGrp = prestaGrp.get(key) || { cle: key, nom: pr?.nom || "", email, missions: [] };
     const c = Array.isArray(p.clients) ? (p.clients[0] || {}) : (p.clients || {});
     g.missions.push({
       heure  : p.heure_intervention ? String(p.heure_intervention).slice(0, 5) : "",
@@ -195,7 +216,9 @@ export async function GET(req: Request) {
     : !waConfigure ? "non_configure"
     : test ? "test"
     : droits.waReel ? "reel" : "simulation";
-  const waGuard = waMode === "desactive" ? {} : await getSettingJSON<Record<string, boolean>>("whatsapp_rappels_envoye", {});
+  // Lecture stricte : anti-doublon illisible → aucun envoi WhatsApp (voir guardKo).
+  const waGuardLu = waMode === "desactive" ? {} : await lireSettingJSONStrict<Record<string, boolean>>("whatsapp_rappels_envoye", {});
+  const waGuard: Record<string, boolean> = waGuardLu ?? {};
   const waItems: WaItem[] = [];
   if (waMode !== "desactive") {
     const dateL = dateLettres(demainISO);
@@ -281,11 +304,7 @@ export async function GET(req: Request) {
   // inclure le résultat. Anti-doublon écrit après chaque succès.
   // (En simulation, les messages restent « a_envoyer » : liste seulement.)
   if (waMode === "reel") {
-    // Purge des entrées de plus de 10 jours (le réglage ne gonfle pas).
-    const limite = new Date(); limite.setDate(limite.getDate() - 10);
-    const limiteIso = limite.toISOString().slice(0, 10);
-    for (const k of Object.keys(waGuard)) { const d = k.split("_").pop() || ""; if (d < limiteIso) delete waGuard[k]; }
-    let guardKo: string | null = null;
+    let guardKo: string | null = waGuardLu ? null : "lecture impossible";
     for (const it of waItems) {
       if (it.statut !== "a_envoyer" || !it.tel) continue;
       // Anti-doublon illisible/inscriptible → on s'arrête plutôt que risquer un double envoi.
@@ -294,8 +313,8 @@ export async function GET(req: Request) {
         await sendWhatsAppTemplate(it.tel, it.template, WA_TEMPLATE_LANG, it.params);
         it.statut = "envoye";
         for (const k of it.cles) waGuard[k] = true;
-        // Écrit tout de suite : un plantage plus loin ne provoquera pas de renvoi.
-        guardKo = await setSettingRaw("whatsapp_rappels_envoye", JSON.stringify(waGuard)).catch(e => String(e));
+        // Écrit tout de suite (relecture fraîche) : un plantage plus loin ne provoquera pas de renvoi.
+        guardKo = await marquerGarde("whatsapp_rappels_envoye", it.cles);
       } catch (e) {
         it.statut = "erreur";
         it.raison = whatsAppErrorText(e);
@@ -405,8 +424,15 @@ export async function GET(req: Request) {
   } catch { /* on continue quand même vers les prestataires */ }
 
   // ── Email à CHAQUE prestataire : ses missions de demain (SANS prix) ──
+  // Anti-doublon par prestataire + date (settings/rappel_presta_envoye), écrit après chaque envoi.
+  const erreursGarde: string[] = [];
+  const prestaGuard = await lireSettingJSONStrict<Record<string, boolean>>("rappel_presta_envoye", {});
+  let prestaGuardKo: string | null = prestaGuard ? null : "lecture impossible";
   let prestaEnvoyes = 0;
   for (const g of prestaRappels) {
+    const gkey = `${g.cle}_${demainISO}`;
+    if (prestaGuardKo) break;              // anti-doublon indisponible → on s'arrête
+    if (prestaGuard![gkey]) continue;      // déjà prévenu pour cette date
     const lignesP = g.missions.map(m => `
       <tr><td style="padding:12px 16px;border-bottom:1px solid #eef0f4;">
         <div style="font-size:15px;font-weight:bold;color:#1C3557;">${m.heure ? m.heure + " · " : ""}${m.presta || "Prestation"}</div>
@@ -436,18 +462,23 @@ export async function GET(req: Request) {
         text: texteP, html: htmlP,
       });
       prestaEnvoyes++;
+      prestaGuardKo = await marquerGarde("rappel_presta_envoye", [gkey]);
     } catch { /* on continue avec les autres prestataires */ }
   }
+  if (prestaGuardKo) erreursGarde.push(`Emails prestataires interrompus : anti-doublon indisponible (${prestaGuardKo})`);
 
   // ── Email récapitulatif AUTOMATIQUE au CLIENT (la veille) ──
   // « N'oubliez pas votre rendez-vous » + reste à charge si avance immédiate.
   // Garde anti-doublon par client+date (settings/rappel_client_envoye).
-  const guard = await getSettingJSON<Record<string, boolean>>("rappel_client_envoye", {});
+  // Lecture stricte + écriture après CHAQUE envoi réussi (illisible → aucun envoi).
+  const guard = await lireSettingJSONStrict<Record<string, boolean>>("rappel_client_envoye", {});
+  let clientGuardKo: string | null = guard ? null : "lecture impossible";
   let clientEnvoyes = 0;
   for (const g of Array.from(groupes.values())) {
+    if (clientGuardKo) break;
     if (!g.email) continue;
     const gkey = `${g.clientId || g.tel || g.email}_${demainISO}`;
-    if (guard[gkey]) continue;
+    if (guard![gkey]) continue;
     const heure = g.heures.slice().sort()[0] || "";
     const avance = g.avanceMode || fiscalMap[g.clientId] === "avance" || !!estInscrit(inscritsList, g.tel, g.email);
     try {
@@ -456,16 +487,13 @@ export async function GET(req: Request) {
         adresse: g.adresse, date: frDate(demainISO), heure,
         prix: g.montant > 0 ? String(g.montant) : "", modePaiement: "", avanceInscrit: avance,
       });
-      if (ok) { guard[gkey] = true; clientEnvoyes++; }
+      if (ok) {
+        guard![gkey] = true; clientEnvoyes++;
+        clientGuardKo = await marquerGarde("rappel_client_envoye", [gkey]);
+      }
     } catch { /* on continue avec les autres clients */ }
   }
-  // Purge des entrées de plus de 10 jours pour que le réglage ne gonfle pas.
-  try {
-    const limite = new Date(); limite.setDate(limite.getDate() - 10);
-    const limiteIso = limite.toISOString().slice(0, 10);
-    for (const k of Object.keys(guard)) { const d = k.split("_").pop() || ""; if (d < limiteIso) delete guard[k]; }
-    await setSettingRaw("rappel_client_envoye", JSON.stringify(guard));
-  } catch { /* non bloquant */ }
+  if (clientGuardKo) erreursGarde.push(`Emails clients interrompus : anti-doublon indisponible (${clientGuardKo})`);
 
-  return NextResponse.json({ demain: demainISO, nbRappels: rappels.length, ownerEnvoyeA: ownerOk ? dest : null, prestaEnvoyes, clientEnvoyes, whatsapp: waResume, whatsappProspects: waProspectsVue });
+  return NextResponse.json({ demain: demainISO, nbRappels: rappels.length, ownerEnvoyeA: ownerOk ? dest : null, prestaEnvoyes, clientEnvoyes, whatsapp: waResume, whatsappProspects: waProspectsVue, ...(erreursGarde.length ? { erreurs: erreursGarde } : {}) });
 }

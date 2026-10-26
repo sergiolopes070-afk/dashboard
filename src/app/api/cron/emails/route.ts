@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getGmailTransporter, ACCROCHE, buildRelanceHtml } from "@/lib/mailer";
-import { getSettingJSON } from "@/lib/settings";
+import { getSettingJSON, lireSettingJSONStrict, majSettingJSON } from "@/lib/settings";
 import { importInbox } from "@/lib/inbox";
 import { scanAvanceInscrits } from "@/lib/avanceInscrits";
 import { executerRelancesAuto, finaliserRelancesAuto } from "@/lib/prospectRelance";
@@ -105,15 +105,22 @@ const ETAT_KEY = "emails_auto_etat";
 type EtatPresta = { relance?: number; relanceStart?: string; avisEnvoye?: boolean; avisAnnule?: boolean };
 type Etat = Record<string, EtatPresta>;
 
-async function lireEtat(): Promise<Etat> {
-  return getSettingJSON<Etat>(ETAT_KEY, {});
+// Lecture stricte : `null` si illisible (on n'envoie alors rien, faute d'anti-doublon).
+async function lireEtat(): Promise<Etat | null> {
+  return lireSettingJSONStrict<Etat>(ETAT_KEY, {});
 }
 
-async function ecrireEtat(etat: Etat): Promise<string | null> {
-  if (!supabase) return "Supabase non configuré";
-  const { error } = await supabase.from("settings").upsert({ key: ETAT_KEY, value: JSON.stringify(etat) }, { onConflict: "key" });
-  return error ? error.message : null;
+// Écriture PROGRESSIVE : relecture fraîche puis modification ciblée, juste après
+// chaque envoi réussi (un arrêt brutal après sendMail ne fait plus renvoyer le
+// même email le lendemain). Renvoie un message d'erreur ou null.
+async function majEtat(maj: (e: Etat) => void): Promise<string | null> {
+  try { await majSettingJSON<Etat>(ETAT_KEY, {}, maj); return null; }
+  catch (e) { return e instanceof Error ? e.message : String(e); }
 }
+
+// Budget temps : on arrête d'envoyer avant maxDuration (60 s) pour ne jamais être
+// tué entre un envoi et l'écriture de son anti-doublon.
+const BUDGET_ENVOI_MS = 52_000;
 
 // (Transporteur Gmail + templates de relance : voir src/lib/mailer.ts, partagés
 //  avec la route de déclenchement manuel /api/emails/action.)
@@ -210,8 +217,12 @@ export async function GET(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // État anti-doublon (aucune colonne à créer : stocké dans `settings`).
-  const etat = await lireEtat();
-  let etatModifie = false;
+  // Illisible → simulation de fait pour les relances (rien n'est envoyé ni écrit).
+  const etatLu = await lireEtat();
+  const etat: Etat = etatLu ?? {};
+  const purges: string[] = [];
+  // Raison d'arrêt des envois (anti-doublon indisponible, budget temps épuisé…).
+  let arretEnvois: string | null = etatLu ? null : "suivi anti-doublon illisible — aucune relance envoyée";
 
   // ── Nettoyage auto + diagnostic des relances suivies ───────────────────────
   // À chaque passage, on vérifie l'état réel (SANS filtre archive) de chaque
@@ -239,7 +250,7 @@ export async function GET(req: Request) {
           : ["CONFIRMÉ", "PAYÉ", "TERMINÉ", "ANNULÉ"].includes(r.statut) ? `statut ${r.statut}`
           : null;
         // Purge des séquences définitivement terminées (archivée / supprimée).
-        if (!r || r.archive) { delete etat[id]; etatModifie = true; }
+        if (!r || r.archive) { delete etat[id]; purges.push(id); }
         diagCles.push({
           id, niveau: etat[id]?.relance ?? null,
           existe: !!r, archive: r?.archive ?? null, aDate: !!(r?.date_intervention),
@@ -273,6 +284,9 @@ export async function GET(req: Request) {
   }
 
   for (const p of rows) {
+    if (!arretEnvois && mode !== "simulation" && Date.now() - debutMs > BUDGET_ENVOI_MS) {
+      arretEnvois = "budget temps épuisé — reprise au prochain passage";
+    }
     const client = Array.isArray(p.clients) ? (p.clients[0] || {}) : (p.clients || {});
     const nom    = `${client.prenom || ""} ${client.nom || ""}`.trim() || "(client sans nom)";
     const email  = client.email || null;
@@ -327,6 +341,8 @@ export async function GET(req: Request) {
             aEnvoyer.push({ ...info, bloque: "pas d'email" });
           } else if (mode === "simulation") {
             aEnvoyer.push(info);
+          } else if (arretEnvois) {
+            aEnvoyer.push({ ...info, bloque: arretEnvois });
           } else {
             const dest = mode === "test" ? testEmail! : email;
             try {
@@ -338,7 +354,12 @@ export async function GET(req: Request) {
               });
               if (mode === "reel") {
                 etat[p.id] = { ...(etat[p.id] ?? {}), relance: cible };
-                etatModifie = true;
+                // Écrit TOUT DE SUITE ; en échec → on arrête (risque de renvoi demain).
+                const errEtat = await majEtat(e => { e[p.id] = { ...(e[p.id] ?? {}), relance: cible }; });
+                if (errEtat) {
+                  arretEnvois = `sauvegarde du suivi anti-doublon impossible : ${errEtat}`;
+                  erreurs.push({ ...info, erreur: `Envoyé mais ${arretEnvois}` });
+                }
               }
               envoyes.push({ ...info, envoyeA: dest });
             } catch (e: unknown) {
@@ -362,6 +383,8 @@ export async function GET(req: Request) {
           demandeAvis.push({ ...info, bloque: !email ? "pas d'email" : "client sans id" });
         } else if (mode === "simulation") {
           demandeAvis.push(info);
+        } else if (arretEnvois) {
+          demandeAvis.push({ ...info, bloque: arretEnvois });
         } else {
           const dest = mode === "test" ? testEmail! : email;
           const lienParams = new URLSearchParams({ nom });
@@ -376,7 +399,8 @@ export async function GET(req: Request) {
             });
             if (mode === "reel") {
               etat[p.id] = { ...(etat[p.id] ?? {}), avisEnvoye: true };
-              etatModifie = true;
+              const errEtat = await majEtat(e => { e[p.id] = { ...(e[p.id] ?? {}), avisEnvoye: true }; });
+              if (errEtat) arretEnvois = `sauvegarde du suivi anti-doublon impossible : ${errEtat}`;
             }
             avisEnvoyes.push({ ...info, envoyeA: dest });
           } catch (e: unknown) {
@@ -387,11 +411,13 @@ export async function GET(req: Request) {
     }
   }
 
-  // Persiste l'état anti-doublon (une seule écriture, en fin de traitement).
-  if (etatModifie) {
-    const errEtat = await ecrireEtat(etat);
-    if (errEtat) erreurs.push({ erreur: `Sauvegarde du suivi anti-doublon impossible : ${errEtat}` });
+  // Les envois sont déjà persistés un par un ; reste la purge des séquences
+  // terminées (relecture fraîche, jamais en simulation ni sur un état illisible).
+  if (purges.length && etatLu && mode !== "simulation") {
+    const errEtat = await majEtat(e => { for (const id of purges) delete e[id]; });
+    if (errEtat) erreurs.push({ erreur: `Purge du suivi anti-doublon impossible : ${errEtat}` });
   }
+  if (arretEnvois && mode !== "simulation") erreurs.push({ erreur: `Envois interrompus : ${arretEnvois}` });
 
   const report = {
     mode:

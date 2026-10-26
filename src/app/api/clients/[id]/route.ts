@@ -3,11 +3,9 @@ import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { insertPrestationForClient } from "@/lib/sheets";
 import { getInscrits, estInscrit } from "@/lib/avanceInscrits";
+import { estAnnulation, STATUT_ANNULE } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
-
-const CANCELLATION_REASONS = ["Annulation client", "Client injoignable", "Doublon"];
-const isCancelled = (r: string | null) => CANCELLATION_REASONS.some(c => (r || "").startsWith(c));
 
 function isoToFr(s: string | null): string {
   if (!s) return "";
@@ -65,8 +63,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     stripePaymentUrl: p.stripe_payment_url || "",
   }));
 
+  // Annulations exclues (règles partagées, constants.ts) : archivées avec un motif
+  // d'annulation, ou statut ANNULÉ pas encore archivé.
   const totalCA = rows
-    .filter(p => !(p.archive && isCancelled(p.archive_reason)))
+    .filter(p => !(p.archive && estAnnulation(p.archive_reason)) && p.statut !== STATUT_ANNULE)
     .reduce((s, p) => s + (parseFloat(p.prix) || 0), 0);
 
   // Dernière intervention = date passée (ou du jour) la plus récente — comparée en

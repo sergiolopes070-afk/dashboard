@@ -12,6 +12,7 @@ import Topbar from "@/components/Topbar";
 import { useAvanceInscrits } from "@/components/AvanceBadge";
 import { matchInscrit } from "@/lib/avanceMatch";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
+import { fetchJsonOk } from "@/lib/fetchOk";
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const PALETTE = [
@@ -731,14 +732,12 @@ export default function AgendaPage() {
   async function quickCancel(evRow: string) {
     setCancelling(true);
     try {
-      await fetch("/api/archive", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: evRow, reason: "Annulation client", modePaiement: "" }),
-      });
+      await fetchJsonOk("/api/archive", "PATCH", { id: evRow, reason: "Annulation client", modePaiement: "" });
       setSelectedEvent(null);
       setCancelConfirm(false);
       loadData();
+    } catch (e) {
+      toast.error(`Annulation non enregistrée : ${e instanceof Error ? e.message : "Erreur"}`);
     } finally {
       setCancelling(false);
     }
@@ -748,15 +747,14 @@ export default function AgendaPage() {
   async function updatePaymentMode(evRow: string, newMode: string) {
     setPaymentSaving(true);
     try {
-      await fetch("/api/prestations", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ row: evRow, updates: { modePaiement: newMode } }),
-      });
+      // L'UI n'est mise à jour qu'après confirmation du serveur (rien à annuler en cas d'échec)
+      await fetchJsonOk("/api/prestations", "PUT", { row: evRow, updates: { modePaiement: newMode } });
       setPrestations(prev => prev.map(p =>
         p.row === evRow ? { ...p, modePaiement: newMode as Prestation["modePaiement"] } : p
       ));
       setSelectedEvent(prev => prev ? { ...prev, modePaiement: newMode as Prestation["modePaiement"] } : prev);
+    } catch (e) {
+      toast.error(`Mode de paiement non enregistré : ${e instanceof Error ? e.message : "Erreur"}`);
     } finally {
       setPaymentSaving(false);
     }
@@ -1319,7 +1317,12 @@ export default function AgendaPage() {
                                   message: ev.message, commentaire: ev.commentaire,
                                   modePaiement: ev.modePaiement,
                                 });
-                                setEditCp(""); setEditVille("");
+                                // Pré-remplit CP/ville depuis l'adresse stockée (« rue …, 75001 Paris ») pour ne pas les perdre/dupliquer
+                                const mAdr = (ev.adresse || "").match(/^(.*?)[,\s]+(\d{5})\s+(.+)$/);
+                                if (mAdr) {
+                                  setEditForm(f => ({ ...f, adresse: mAdr[1] }));
+                                  setEditCp(mAdr[2]); setEditVille(mAdr[3]);
+                                } else { setEditCp(""); setEditVille(""); }
                                 setEditUnit(ev.prix || ""); setEditNb("1");
                                 setEditMode(true);
                               }}

@@ -55,6 +55,8 @@ export const MOTIF_TERMINEE = "Prestation terminée";
 export const MOTIFS_ANNULATION = ["Annulation client", "Client injoignable", "Doublon"];
 export const MOTIFS_ARCHIVAGE = ["Annulation client", MOTIF_TERMINEE, "Client injoignable", "Doublon"];
 export const estAnnulation = (motif?: string | null) => MOTIFS_ANNULATION.some(m => (motif || "").startsWith(m));
+// Statut d'un RDV annulé pas (encore) archivé : exclu des rappels, du CA prévu…
+export const STATUT_ANNULE: StatutClient = "ANNULÉ";
 
 export const MODE_PAIEMENT_ICONS: Record<string, string> = {
   "Espèces"          : "💵",

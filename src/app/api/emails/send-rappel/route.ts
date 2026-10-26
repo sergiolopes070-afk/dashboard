@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { sendRappelEmail } from "@/lib/mailer";
-import { getSettingJSON, setSettingRaw } from "@/lib/settings";
+import { getSettingJSON, majSettingJSON } from "@/lib/settings";
 import { getInscrits, estInscrit } from "@/lib/avanceInscrits";
 
 export const dynamic = "force-dynamic";
@@ -58,11 +58,12 @@ export async function POST(req: Request) {
     if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
     // Mémorise l'envoi (pour afficher le bouton en vert, comme la confirmation).
     try {
+      // Relecture fraîche + refus si illisible (un {} de repli effacerait tout le suivi).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const etat = await getSettingJSON<Record<string, any>>("emails_auto_etat", {});
-      etat[prestationId] = { ...(etat[prestationId] ?? {}), rappelEnvoye: true, rappelDate: new Date().toISOString() };
-      await setSettingRaw("emails_auto_etat", JSON.stringify(etat));
-    } catch { /* l'envoi a réussi ; le suivi n'est pas bloquant */ }
+      await majSettingJSON<Record<string, any>>("emails_auto_etat", {}, etat => {
+        etat[prestationId] = { ...(etat[prestationId] ?? {}), rappelEnvoye: true, rappelDate: new Date().toISOString() };
+      });
+    } catch (e) { console.error("[emails_auto_etat]", e); /* l'envoi a réussi ; le suivi n'est pas bloquant */ }
     return NextResponse.json({ success: true, email });
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur d'envoi" }, { status: 500 });

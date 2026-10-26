@@ -95,16 +95,18 @@ export function remiseAppliqueeProspect(besoins: unknown, budget: unknown, typeP
 const eur = (n: number) => new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + " €";
 const esc = (s: string) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+// Dates du devis à l'heure de PARIS (le serveur Vercel tourne en UTC : entre 0 h
+// et 2 h, getDate() donnait la veille).
+const isoParisDe = (d: Date) => d.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" }); // AAAA-MM-JJ
+
 // Numéro de devis KC-AAAAMMJJ-NNN
 export function numeroDevis(compteur: number, d = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const j = String(d.getDate()).padStart(2, "0");
-  return `KC-${y}${m}${j}-${String(compteur).padStart(3, "0")}`;
+  return `KC-${isoParisDe(d).replace(/-/g, "")}-${String(compteur).padStart(3, "0")}`;
 }
 
 export function dateFr(d = new Date()): string {
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  const [y, m, j] = isoParisDe(d).split("-");
+  return `${j}/${m}/${y}`;
 }
 export function dateFrPlus(days: number, d = new Date()): string {
   const x = new Date(d); x.setDate(x.getDate() + days); return dateFr(x);

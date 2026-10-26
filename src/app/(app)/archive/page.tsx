@@ -12,6 +12,8 @@ import NewClientModal from "@/components/NewClientModal";
 import { ClientFicheById } from "@/components/ClientFiche";
 import { Prestation, Prestataire, estAnnulation, PAIEMENTS_CLOTURE } from "@/lib/constants";
 import { caRealise, estRealisee, prixPresta, formatMontant } from "@/lib/finance";
+import { useToast } from "@/components/Toast";
+import { fetchJsonOk } from "@/lib/fetchOk";
 
 // ─── Étoiles ────────────────────────────────────────────────────────────────
 
@@ -520,14 +522,15 @@ export default function ArchivePage() {
   const [reprogrammer, setReprogrammer] = useState<Prestation | null>(null);
   const [filterIssue, setFilterIssue]   = useState<"toutes" | "terminees" | "annulees">("toutes");
   const [ficheClientId, setFicheClientId] = useState<string | null>(null);
+  const toast = useToast();
 
   const handleDelete = async (id: string) => {
-    await fetch("/api/archive", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    setData(prev => prev.filter(p => p.row !== id));
+    try {
+      await fetchJsonOk("/api/archive", "DELETE", { id });
+      setData(prev => prev.filter(p => p.row !== id));
+    } catch (e) {
+      toast.error(`Suppression impossible : ${e instanceof Error ? e.message : "Erreur"}`);
+    }
   };
 
   const load = useCallback(async () => {

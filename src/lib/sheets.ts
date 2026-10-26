@@ -2,7 +2,8 @@ import { supabase } from "./supabase";
 import { Prestation, Prestataire, Depense, ModePaiement } from "./constants";
 import { getEntite, resolveEntite, Entite, ENTITE_OVERRIDE_KEY } from "./entite";
 import { getSettingJSON } from "./settings";
-import { caRealise, caPrevu, estRealisee, prixPresta } from "./finance";
+import { caRealise, caPrevu, estRealisee, prixPresta, frDateToIso } from "./finance";
+import { isoParis } from "./dateParis";
 import { joursEntre } from "./indispos";
 import { telCle } from "./avanceMatch";
 
@@ -691,15 +692,13 @@ export async function getDashboardStats() {
     getNouveauxProspects(),
   ]);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // « Aujourd'hui » à PARIS (le serveur tourne en UTC : setHours(0) décalait le jour
+  // entre 0 h et 2 h), comparé en ISO AAAA-MM-JJ.
+  const todayIso = isoParis();
 
   const upcoming = prestations.filter((p) => {
-    if (!p.date) return false;
-    const parts = p.date.split("/");
-    if (parts.length !== 3) return false;
-    const d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
-    return d >= today && ["EMAIL ENVOYÉ", "CONFIRMÉ"].includes(p.statut);
+    const iso = frDateToIso(p.date);
+    return !!iso && iso >= todayIso && ["EMAIL ENVOYÉ", "CONFIRMÉ"].includes(p.statut);
   });
 
   const toReassign   = prestations.filter((p) => p.statut === "PRESTATAIRE REFUSÉ – À RÉAFFECTER");
