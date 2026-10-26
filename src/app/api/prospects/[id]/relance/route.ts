@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { getSettingJSON, setSettingRaw } from "@/lib/settings";
 import { sendProspectRelanceEmail, sendDevisEmail, sendProspectInfosEmail } from "@/lib/mailer";
+import { remiseAppliqueeProspect } from "@/lib/devisKinou";
 import { buildProspectDevis } from "@/lib/prospectDevis";
 import { frParis, isoParis } from "@/lib/dateParis";
 import { prochaineRelanceApresEnvoi } from "@/lib/prospectRelance";
@@ -15,6 +16,8 @@ export const maxDuration = 60; // génération PDF (Chromium) incluse
 // settings/prospects_suivi (aucune colonne DB à créer).
 //   POST { action: "devis_envoye" }       → ENVOIE le devis par email (devis joint), marque envoyé + date, statut → CONTACTÉ.
 //   POST { action: "set_avance", value }   → active/désactive l'avance immédiate (défaut : activée).
+//   POST { action: "set_remise", remise }  → applique ({ type: "pct"|"eur", valeur, libelle? }) ou
+//                                            retire (null) la réduction du devis. Aucun email.
 //   POST { action: "relance" }             → envoie la relance suivante (1→2→3), statut → RELANCÉ.
 //   POST { action: "set_auto", value }     → active/désactive les relances AUTOMATIQUES (aucun email).
 //   POST { action: "wa_envoye", etape }    → note qu'un message WhatsApp (lien wa.me) a été envoyé
@@ -49,7 +52,7 @@ async function traiter(req: Request, { params }: { params: { id: string } }) {
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
 
   const { id } = params;
-  const body = await req.json() as { action?: string; value?: boolean; unmark?: boolean; etape?: string };
+  const body = await req.json() as { action?: string; value?: boolean; unmark?: boolean; etape?: string; remise?: unknown };
   const { action } = body;
 
   const all = await getSettingJSON<Record<string, Suivi>>(SUIVI_KEY, {});
@@ -66,6 +69,35 @@ async function traiter(req: Request, { params }: { params: { id: string } }) {
     const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(all));
     if (errSet) return NextResponse.json({ error: errSet }, { status: 500 });
     return NextResponse.json({ suivi: all[id] });
+  }
+
+  // Applique / retire la réduction du devis (impacte le devis HTML/PDF + le mail). Aucun email.
+  if (action === "set_remise") {
+    let remise: { type: "pct" | "eur"; valeur: number; libelle?: string } | null = null;
+    if (body.remise != null) {
+      const r = body.remise as { type?: unknown; valeur?: unknown; libelle?: unknown };
+      const type = r.type === "pct" || r.type === "eur" ? r.type : null;
+      const valeur = Math.round(Number(r.valeur) * 100) / 100;
+      if (!type || !Number.isFinite(valeur)) return NextResponse.json({ error: "Réduction invalide" }, { status: 400 });
+      if (type === "pct" && (valeur < 1 || valeur > 50)) return NextResponse.json({ error: "La réduction doit être comprise entre 1 % et 50 %." }, { status: 400 });
+      if (type === "eur") {
+        if (!(valeur > 0)) return NextResponse.json({ error: "Le montant de la réduction doit être supérieur à 0 €." }, { status: 400 });
+        const built = await buildProspectDevis(id);
+        if (!built.ok) return NextResponse.json({ error: built.error }, { status: built.status });
+        const sousTotal = built.devis.remise?.sousTotalTTC ?? built.devis.totalTTC;
+        if (valeur >= sousTotal) return NextResponse.json({ error: `La réduction doit être inférieure au total du devis (${sousTotal.toFixed(2).replace(".", ",")} €).` }, { status: 400 });
+      }
+      const libelle = typeof r.libelle === "string" ? r.libelle.trim().slice(0, 60) : "";
+      remise = { type, valeur, ...(libelle ? { libelle } : {}) };
+    }
+    // Relecture : buildProspectDevis a pu écrire le numéro de devis entre-temps.
+    const fresh = await getSettingJSON<Record<string, Suivi>>(SUIVI_KEY, {});
+    const freshCur: Suivi = { ...(fresh[id] || {}) };
+    if (remise) freshCur.remise = remise; else delete freshCur.remise;
+    fresh[id] = freshCur;
+    const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(fresh));
+    if (errSet) return NextResponse.json({ error: errSet }, { status: 500 });
+    return NextResponse.json({ suivi: fresh[id] });
   }
 
   // Active / désactive les relances AUTOMATIQUES pour ce prospect (aucun email envoyé).
@@ -125,7 +157,7 @@ async function traiter(req: Request, { params }: { params: { id: string } }) {
       prenom: dv.prospect.prenom, nom: dv.prospect.nom, genre: dv.prospect.genre,
       prestation: dv.prestation, prestationVous: dv.prestationVous,
       totalTTC: dv.totalTTC, rac: dv.rac, avance: dv.avance,
-      devisHtml: dv.html, num: dv.num, pdf,
+      devisHtml: dv.html, num: dv.num, pdf, remise: dv.remise,
     });
     if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
 
@@ -157,7 +189,7 @@ async function traiter(req: Request, { params }: { params: { id: string } }) {
     const ok = await sendProspectRelanceEmail(p.email as string, niveau, {
       prenom: (p.prenom as string) || "", nom: (p.nom as string) || "", genre: (p.genre as string) || "",
       prestation, devisDate: cur.devisDate, prix,
-    });
+    }, remiseAppliqueeProspect(besoins, p.budget, (p.type_presta as string) || "", cur.remise));
     if (!ok) return NextResponse.json({ error: "Gmail non connecté (Configuration → Connexion Gmail)." }, { status: 503 });
 
     const relanceDates = [...(cur.relanceDates || [])]; relanceDates[niveau - 1] = todayFr;
@@ -223,7 +255,8 @@ async function traiter(req: Request, { params }: { params: { id: string } }) {
     let ok = false; let suiviNext: Suivi; let libelle: string;
     if (cur.devisEnvoye) {
       const niveau = Math.min((cur.relanceNiveau || 0) + 1, 3);
-      ok = await sendProspectRelanceEmail(p.email as string, niveau, { prenom, nom, genre, prestation: typePresta, devisDate: cur.devisDate, prix });
+      ok = await sendProspectRelanceEmail(p.email as string, niveau, { prenom, nom, genre, prestation: typePresta, devisDate: cur.devisDate, prix },
+        remiseAppliqueeProspect(besoins, p.budget, (p.type_presta as string) || "", cur.remise));
       const relanceDates = [...(cur.relanceDates || [])]; relanceDates[niveau - 1] = todayFr;
       suiviNext = { ...cur, relanceNiveau: niveau, relanceDate: maintenant, relanceDates, dernierEnvoiIso: maintenant };
       libelle = `Relance devis R${niveau}`;

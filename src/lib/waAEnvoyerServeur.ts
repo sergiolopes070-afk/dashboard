@@ -38,7 +38,7 @@ export async function listeWhatsAppDuJour(today: string = jourParis()): Promise<
     indexClients(),
   ]);
   if (error) throw new Error(`Lecture prospects : ${error.message}`);
-  let suiviAll: Record<string, WaSuivi & { devisNum?: string; devisDate?: string }> = {};
+  let suiviAll: Record<string, WaSuivi & { devisNum?: string; devisDate?: string; remise?: unknown }> = {}; // remise → R3 WhatsApp (waDonneesProspect)
   try { suiviAll = rawSuivi ? JSON.parse(rawSuivi) : {}; } catch { throw new Error("Lecture du suivi prospects impossible"); }
 
   const out: WaLigneJour[] = [];

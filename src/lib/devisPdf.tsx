@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React from "react";
 import { Document, Page, View, Text, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
-import { DevisData, mapLigne, formatEuro, cassepropre } from "./devisKinou";
+import { DevisData, mapLigne, formatEuro, cassepropre, calcTotaux } from "./devisKinou";
 
 const NAVY = "#1a2942";
 const NAVY2 = "#16223a";
@@ -65,6 +65,14 @@ const s = StyleSheet.create({
   totSub: { borderTopWidth: 1, borderTopColor: "#eef1f5" },
   totTtc: { backgroundColor: NAVY, borderRadius: 5, marginTop: 4, paddingVertical: 7 },
   totTtcTxt: { color: "#fff", fontFamily: "Times-Bold", fontSize: 12 },
+  remTxt: { color: "#047857", fontFamily: "Helvetica-Bold" },
+
+  // Économie (réduction)
+  ecoWrap: { flexDirection: "row", justifyContent: "flex-end", marginTop: 8 },
+  eco: { width: "56%", backgroundColor: "#ecfdf5", borderWidth: 1, borderColor: "#a7f3d0", borderRadius: 6, paddingVertical: 7, paddingHorizontal: 10, alignItems: "center" },
+  ecoTxt: { color: "#047857", fontSize: 10.5 },
+  ecoStrong: { fontFamily: "Helvetica-Bold", fontSize: 12 },
+  ecoSub: { color: "#059669", fontSize: 8, marginTop: 2 },
 
   // Dispositif (avance / crédit)
   aici: { marginHorizontal: 30, marginTop: 12, backgroundColor: "#eef3fb", borderWidth: 1, borderColor: "#c5d5ee", borderRadius: 7, paddingHorizontal: 14, paddingVertical: 10 },
@@ -95,18 +103,18 @@ function DevisDoc({ data }: { data: DevisData }) {
   const dispositif = data.dispositif || "avance";
   const lignes = data.lignes.filter(l => l.prixTTC > 0);
 
-  let totalHT = 0, totalTTC = 0;
   const rows = lignes.map(l => {
     const qte = l.qte && l.qte > 0 ? l.qte : 1;
     const ttc = l.prixTTC;
     const ht = ttc / 1.1;
-    totalHT += ht; totalTTC += ttc;
     const puHT = ht / qte;
     const { libelle, chip, description } = mapLigne(l.typePresta, l.detail || "");
     return { libelle, chip, description, qte, puHT, ht };
   });
-  const tva = totalTTC - totalHT;
-  const rac = totalTTC * 0.5;
+  // Totaux partagés avec le HTML (réduction incluse) : HT/TVA/rac sur le total réduit.
+  const T = calcTotaux(lignes, data.remise);
+  const { totalHT, tva, totalTTC, rac } = T;
+  const aRemise = T.remise > 0;
 
   const clientNom = data.client.nom ? cassepropre(data.client.nom) : "Client";
   const clientAdresse = data.client.adresse || "Adresse : à confirmer";
@@ -198,17 +206,37 @@ function DevisDoc({ data }: { data: DevisData }) {
           {/* Totaux */}
           <View style={s.totalsWrap}>
             <View style={s.totals}>
-              <View style={[s.totRow, s.totSub]}>
-                <Text>Total HT</Text><Text>{formatEuro(totalHT)}</Text>
+              {aRemise ? (
+                <>
+                  <View style={[s.totRow, s.totSub]}>
+                    <Text>Sous-total TTC</Text><Text>{formatEuro(T.sousTotalTTC)}</Text>
+                  </View>
+                  <View style={s.totRow}>
+                    <Text style={s.remTxt}>{T.libelle}</Text><Text style={s.remTxt}>- {formatEuro(T.remise)}</Text>
+                  </View>
+                </>
+              ) : null}
+              <View style={aRemise ? s.totRow : [s.totRow, s.totSub]}>
+                <Text>{aRemise ? "Total HT après réduction" : "Total HT"}</Text><Text>{formatEuro(totalHT)}</Text>
               </View>
               <View style={s.totRow}>
                 <Text>TVA 10 %</Text><Text>{formatEuro(tva)}</Text>
               </View>
               <View style={[s.totRow, s.totTtc]}>
-                <Text style={s.totTtcTxt}>Total TTC</Text><Text style={s.totTtcTxt}>{formatEuro(totalTTC)}</Text>
+                <Text style={s.totTtcTxt}>{aRemise ? "Total TTC après réduction" : "Total TTC"}</Text><Text style={s.totTtcTxt}>{formatEuro(totalTTC)}</Text>
               </View>
             </View>
           </View>
+
+          {/* Économie réalisée (réduction) — pas d'emoji : polices PDF standard */}
+          {aRemise ? (
+            <View style={s.ecoWrap} wrap={false}>
+              <View style={s.eco}>
+                <Text style={s.ecoTxt}>Vous économisez <Text style={s.ecoStrong}>{formatEuro(T.remise)}</Text></Text>
+                <Text style={s.ecoSub}>soit {formatEuro(rac)} au lieu de {formatEuro(T.racSansRemise)} {dispositif === "credit" ? "après crédit d'impôt" : "après Avance Immédiate"}</Text>
+              </View>
+            </View>
+          ) : null}
         </View>
 
         {/* Dispositif fiscal */}

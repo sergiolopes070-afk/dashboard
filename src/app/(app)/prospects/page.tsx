@@ -19,6 +19,7 @@ import DevisExternes, { DevisExterne, fmtDevisDate } from "@/components/DevisExt
 import { isoParis } from "@/lib/dateParis";
 import { etatAuto, libelleEtatAuto, jjmmIso, prochainPassage, EtatAuto } from "@/lib/prospectRelanceCadence";
 import { waAEnvoyer, waMessage, waLien, waLibelle, waDonneesProspect, WaEtape } from "@/lib/waMessages";
+import { montantRemise, type DevisRemise } from "@/lib/devisKinou";
 
 // Formatage FR compact pour le pense-bête d'import.
 function fmtImportDateTime(iso: string): string {
@@ -70,7 +71,7 @@ interface Prospect {
 }
 
 // Suivi commercial d'un prospect (stocké dans settings/prospects_suivi).
-interface Suivi { devisEnvoye?: boolean; devisDate?: string; devisNum?: string; relanceNiveau?: number; relanceDate?: string; relanceDates?: string[]; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number; infoRelanceDates?: string[]; autoRelance?: boolean; autoStop?: string; reponduLe?: string; dernierEnvoiIso?: string; waEnvois?: Record<string, string> }
+interface Suivi { devisEnvoye?: boolean; devisDate?: string; devisNum?: string; relanceNiveau?: number; relanceDate?: string; relanceDates?: string[]; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number; infoRelanceDates?: string[]; autoRelance?: boolean; autoStop?: string; reponduLe?: string; dernierEnvoiIso?: string; waEnvois?: Record<string, string>; remise?: DevisRemise }
 
 // État des relances automatiques d'un prospect (même calcul que le cron).
 const etatAutoDe = (p: Prospect): EtatAuto => etatAuto(p, p.suivi, { global: p.autoGlobal !== false, today: isoParis(0) });
@@ -285,6 +286,14 @@ function StatutBadge({ statut, small }: { statut: string; small?: boolean }) {
 const toNum = (s?: string) => parseFloat(String(s ?? "").replace(",", ".")) || 0;
 const nbOf  = (s?: string) => Math.max(1, parseInt(String(s ?? "")) || 1);
 const fmtEur = (n: number) => String(Number(n.toFixed(2)));
+// Montant FR pour l'affichage : 370 → « 370 € », 33.3 → « 33,30 € ».
+const eurFr = (n: number) => {
+  const r = Math.round(n * 100) / 100;
+  const dec = Number.isInteger(r) ? 0 : 2;
+  return new Intl.NumberFormat("fr-FR", { minimumFractionDigits: dec, maximumFractionDigits: dec }).format(r) + " €";
+};
+// Badge court d'une réduction : « −10 % » / « −30 € ».
+const remiseCourte = (r: DevisRemise) => r.type === "pct" ? `−${String(r.valeur).replace(".", ",")} %` : `−${eurFr(r.valeur)}`;
 
 interface LigneSaisie { id: number; typePresta: string; details: Record<string, string>; resume: string; unit: string; nb: string }
 let ligneSeq = 0;
@@ -741,7 +750,11 @@ function ProspectModal({
     setDraft(x => ({ ...x, prix: u > 0 ? String(Number((u * n).toFixed(2))) : "" }));
   };
   const [draftStatut, setDraftStatut] = useState<string>(prospect.statut); // statut choisi, en attente de validation
-  const [actionBusy, setActionBusy] = useState<"" | "devis" | "relance" | "avance" | "infos" | "relance_infos" | "auto">("");
+  const [actionBusy, setActionBusy] = useState<"" | "devis" | "relance" | "avance" | "infos" | "relance_infos" | "auto" | "remise">("");
+  // Panneau « Appliquer une réduction » (devis) : saisie locale avant enregistrement.
+  const [remiseOpen, setRemiseOpen] = useState(false);
+  const [remiseType, setRemiseType] = useState<"pct" | "eur">("pct");
+  const [remiseVal, setRemiseVal] = useState("10");
   const toast = useToast();
   const [devisExt, setDevisExt] = useState<DevisExterne[]>([]); // devis externes (pour « dernier email »)
   // Dernier état connu (pour les écritures asynchrones enchaînées du journal).
@@ -845,6 +858,42 @@ function ProspectModal({
   // Avance immédiate activée par défaut (suivi.avanceImmediate !== false).
   const avanceActive = p.suivi?.avanceImmediate !== false;
 
+  // ── Réduction sur le devis (suivi.remise) — même calcul que le devis HTML/PDF ──
+  const remiseActive = p.suivi?.remise && p.suivi.remise.valeur > 0 ? p.suivi.remise : null;
+  const sousTotalDevis = (() => {
+    const t = (p.besoins || []).reduce((acc, b) => acc + toNum(b.prix), 0);
+    return t > 0 ? t : toNum(p.budget);
+  })();
+  const remiseSaisie: DevisRemise | null = (() => {
+    const v = parseFloat(remiseVal.replace(",", "."));
+    return v > 0 ? { type: remiseType, valeur: Math.round(v * 100) / 100 } : null;
+  })();
+  const remiseSaisieErreur = !remiseSaisie ? "Indique une valeur."
+    : remiseSaisie.type === "pct" && (remiseSaisie.valeur < 1 || remiseSaisie.valeur > 50) ? "Entre 1 % et 50 %."
+    : remiseSaisie.type === "eur" && remiseSaisie.valeur >= sousTotalDevis ? `Doit être inférieure à ${eurFr(sousTotalDevis)}.`
+    : "";
+  function ouvrirRemise() {
+    if (remiseActive) { setRemiseType(remiseActive.type); setRemiseVal(String(remiseActive.valeur).replace(".", ",")); }
+    else { setRemiseType("pct"); setRemiseVal("10"); }
+    setRemiseOpen(o => !o);
+  }
+  async function enregistrerRemise(remise: DevisRemise | null) {
+    setActionBusy("remise");
+    try {
+      const res = await fetch(`/api/prospects/${p.id}/relance`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_remise", remise }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur");
+      setP(prev => ({ ...prev, suivi: d.suivi }));
+      onUpdated({ id: p.id, suivi: d.suivi });
+      setRemiseOpen(false);
+      toast.success(remise ? `Réduction ${remiseCourte(remise)} appliquée au devis` : "Réduction retirée du devis");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
+    finally { setActionBusy(""); }
+  }
+
   async function setAvance(value: boolean) {
     setActionBusy("avance");
     try {
@@ -900,7 +949,7 @@ function ProspectModal({
 
   async function envoyerDevis() {
     const dest = p.email || "(aucun email)";
-    if (!confirm(`Envoyer le DEVIS par email à ${p.prenom} ${p.nom} (${dest}) ?\n\nLe devis sera joint au message${avanceActive ? ", avec l'explication de l'avance immédiate (−50 %)" : ""}.`)) return;
+    if (!confirm(`Envoyer le DEVIS par email à ${p.prenom} ${p.nom} (${dest}) ?\n\nLe devis sera joint au message${avanceActive ? ", avec l'explication de l'avance immédiate (−50 %)" : ""}${remiseActive ? `, réduction ${remiseCourte(remiseActive)} incluse` : ""}.`)) return;
     setActionBusy("devis");
     try {
       const res = await fetch(`/api/prospects/${p.id}/relance`, {
@@ -1340,6 +1389,65 @@ function ProspectModal({
               {actionBusy === "avance" && <Loader2 size={14} className="animate-spin text-emerald-600" />}
             </button>
 
+            {/* Réduction sur le devis (ligne globale dans les totaux, le client voit son économie) */}
+            <button type="button" onClick={ouvrirRemise} disabled={actionBusy !== "" || !(sousTotalDevis > 0)}
+              title={sousTotalDevis > 0 ? "Appliquer une réduction sur le devis" : "Ajoute d'abord une prestation souhaitée avec son prix"}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-sm transition-all disabled:opacity-50 ${
+                remiseActive ? "bg-emerald-50 border-emerald-300" : "bg-white border-gray-200 hover:bg-gray-50"
+              }`}>
+              <span className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${remiseActive ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-600"}`}>%</span>
+              <span className="flex-1 text-left">
+                {remiseActive ? (
+                  <>
+                    <span className="font-semibold text-emerald-800">Réduction {remiseCourte(remiseActive)} appliquée</span>
+                    <span className="block text-[11px] text-gray-500 mt-0.5">
+                      {eurFr(sousTotalDevis)} → {eurFr(sousTotalDevis - montantRemise(sousTotalDevis, remiseActive))} · le client économise {eurFr(montantRemise(sousTotalDevis, remiseActive))}
+                    </span>
+                  </>
+                ) : <span className="font-semibold text-gray-700">Appliquer une réduction</span>}
+              </span>
+              {actionBusy === "remise" ? <Loader2 size={14} className="animate-spin text-emerald-600" /> : <span className="text-[11px] text-gray-400">{remiseOpen ? "fermer" : remiseActive ? "modifier" : ""}</span>}
+            </button>
+
+            {remiseOpen && (() => {
+              const m = remiseSaisie && !remiseSaisieErreur ? montantRemise(sousTotalDevis, remiseSaisie) : 0;
+              const chipCls = (on: boolean) => `min-h-[40px] px-3 rounded-lg border text-sm font-semibold transition-colors ${on ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"}`;
+              return (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 space-y-2.5">
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[5, 10, 15, 20].map(v => (
+                      <button key={v} type="button" onClick={() => { setRemiseType("pct"); setRemiseVal(String(v)); }}
+                        className={chipCls(remiseType === "pct" && parseFloat(remiseVal.replace(",", ".")) === v)}>−{v} %</button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="text" inputMode="decimal" value={remiseVal} onChange={e => setRemiseVal(e.target.value)}
+                      placeholder={remiseType === "pct" ? "ex. 12" : "ex. 30"} aria-label="Valeur de la réduction"
+                      className="flex-1 min-w-0 h-10 bg-white border border-gray-200 rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                    <div className="flex rounded-lg border border-gray-200 overflow-hidden shrink-0">
+                      {(["pct", "eur"] as const).map(t => (
+                        <button key={t} type="button" onClick={() => setRemiseType(t)}
+                          className={`w-11 h-10 text-sm font-semibold ${remiseType === t ? "bg-emerald-600 text-white" : "bg-white text-gray-600"}`}>{t === "pct" ? "%" : "€"}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <p className={`text-sm ${remiseSaisieErreur ? "text-amber-700" : "text-gray-700"}`}>
+                    {remiseSaisieErreur ? `⚠️ ${remiseSaisieErreur}` : (
+                      <>Sous-total {eurFr(sousTotalDevis)} → <span className="text-emerald-700 font-semibold">−{eurFr(m)}</span> → <strong>{eurFr(sousTotalDevis - m)}</strong></>
+                    )}
+                  </p>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => remiseSaisie && enregistrerRemise(remiseSaisie)} disabled={actionBusy !== "" || !!remiseSaisieErreur}
+                      className="flex-1 min-h-[40px] rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">Appliquer</button>
+                    {remiseActive && (
+                      <button type="button" onClick={() => enregistrerRemise(null)} disabled={actionBusy !== ""}
+                        className="min-h-[40px] px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50">Retirer la réduction</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             {(() => {
               const hasPrice = !!(p.besoins && p.besoins.some(b => parseFloat(String(b.prix || "").replace(",", ".")) > 0)) || parseFloat(String(p.budget || "").replace(",", ".")) > 0;
               const canSend = hasPrice && !!p.email;
@@ -1371,7 +1479,8 @@ function ProspectModal({
                     disabled={!hasPrice}
                     title={hasPrice ? "Aperçu du devis en PDF (identique à la pièce jointe)" : "Ajoute d'abord une prestation souhaitée avec son prix"}
                     className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-sm font-medium hover:bg-amber-100 disabled:opacity-50 transition-colors">
-                    <FileText size={15} /> Aperçu du devis (PDF)
+                    <FileText size={15} /> <span className="flex-1 text-left">Aperçu du devis (PDF)</span>
+                    {remiseActive && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Réduction {remiseCourte(remiseActive)} appliquée</span>}
                   </button>
                 </>
               );
@@ -1534,12 +1643,20 @@ function ProspectModal({
                     </div>
                   );
                 })}
-                {p.besoins.length > 1 && p.besoins.some(b => toNum(b.prix) > 0) && (
-                  <div className="flex items-center justify-between text-sm px-1 pt-0.5">
-                    <span className="text-gray-500">Total</span>
-                    <strong className="text-gray-900">{fmtEur(p.besoins.reduce((s, b) => s + toNum(b.prix), 0))} €</strong>
-                  </div>
-                )}
+                {(p.besoins.length > 1 || remiseActive) && p.besoins.some(b => toNum(b.prix) > 0) && (() => {
+                  const tot = p.besoins!.reduce((s, b) => s + toNum(b.prix), 0);
+                  const m = remiseActive ? montantRemise(tot, remiseActive) : 0;
+                  return (
+                    <div className="flex items-center justify-between gap-2 text-sm px-1 pt-0.5 flex-wrap">
+                      <span className="text-gray-500 flex items-center gap-1.5">Total
+                        {m > 0 && remiseActive && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Réduction {remiseCourte(remiseActive)} appliquée</span>}
+                      </span>
+                      {m > 0
+                        ? <span><span className="text-gray-400 line-through mr-1.5">{eurFr(tot)}</span><strong className="text-emerald-700">{eurFr(tot - m)}</strong></span>
+                        : <strong className="text-gray-900">{fmtEur(tot)} €</strong>}
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               <p className="text-xs text-gray-400">Aucune prestation notée. Ajoute ce que le prospect souhaite (canapé, matelas, chaises…), avec les détails et le prix.</p>

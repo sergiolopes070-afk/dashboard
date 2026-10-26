@@ -14,6 +14,7 @@
 import { ImapFlow } from "imapflow";
 import { supabase } from "./supabase";
 import { getSetting, sendProspectRelanceEmail, sendProspectInfosEmail, sendPatronNotif } from "./mailer";
+import { remiseAppliqueeProspect } from "./devisKinou";
 import { getSettingRaw, setSettingRaw } from "./settings";
 import { isoParis, frParis } from "./dateParis";
 import { telCle, emailCle } from "./avanceMatch";
@@ -281,7 +282,8 @@ export async function executerRelancesAuto(opts: { mode: "simulation" | "test" |
       const prix = (besoins[0]?.prix as string) || (row.budget as string) || "";
       const n = e.niveau;
       const ok = e.piste === "devis"
-        ? await sendProspectRelanceEmail(c.email, n, { prenom, nom, genre, prestation: typePresta, devisDate: s.devisDate, prix })
+        ? await sendProspectRelanceEmail(c.email, n, { prenom, nom, genre, prestation: typePresta, devisDate: s.devisDate, prix },
+            remiseAppliqueeProspect(besoins, row.budget, (row.type_presta as string) || "", s.remise))
         : await sendProspectInfosEmail(c.email, n, { prenom, nom, genre, typePresta });
       if (!ok) throw new Error("Gmail non connecté");
       restant--;

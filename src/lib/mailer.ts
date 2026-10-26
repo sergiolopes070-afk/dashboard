@@ -375,10 +375,16 @@ export const PROSPECT_RELANCE_OBJET: Record<number, string> = {
   3: "Votre devis KinouClean — une offre pour vous décider 🎁",
 };
 
-export function buildProspectRelanceHtml(niveau: number, d: { prenom?: string; nom?: string; genre?: string; prestation: string; devisDate?: string; prix?: string }): string {
+// Réduction déjà appliquée au devis (TTC) — voir remiseAppliqueeProspect (devisKinou).
+// Si présente, R3 rappelle l'économie au lieu d'offrir −10 %.
+export type RemiseRelance = { montant: number; sousTotal: number; total: number; libelle: string };
+export const PROSPECT_RELANCE_OBJET_REMISE = "Votre devis KinouClean — votre réduction vous attend 🎁";
+const eurRelance = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(".", ",")) + " €";
+
+export function buildProspectRelanceHtml(niveau: number, d: { prenom?: string; nom?: string; genre?: string; prestation: string; devisDate?: string; prix?: string }, remise?: RemiseRelance): string {
   const presta = d.prestation ? ` pour votre projet de <strong>${d.prestation.toLowerCase()}</strong>` : "";
   const prixNum = parseFloat((d.prix || "").replace(",", "."));
-  const remise = !isNaN(prixNum) && prixNum > 0 ? prixNum * 0.9 : null;
+  const prixOffre = !isNaN(prixNum) && prixNum > 0 ? prixNum * 0.9 : null;
   const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
   let intro = "";
@@ -387,10 +393,18 @@ export function buildProspectRelanceHtml(niveau: number, d: { prenom?: string; n
     intro = `Votre devis${presta} est prêt et reste à votre disposition. Souhaitez-vous que nous réservions votre créneau d'intervention ?`;
   } else if (niveau === 2) {
     intro = `Nous revenons vers vous concernant le devis${presta}${d.devisDate ? ` que nous vous avons transmis le <strong>${d.devisDate}</strong>` : ""}. Il arrive qu'un message passe inaperçu — n'hésitez pas à nous recontacter, nous serions ravis de vous accompagner.`;
+  } else if (remise && remise.montant > 0) {
+    // Une réduction est DÉJÀ appliquée au devis : pas de −10 % supplémentaire,
+    // on rappelle l'économie accordée.
+    intro = `Nous revenons une dernière fois vers vous concernant votre devis${presta}. Pour rappel, une réduction de <strong>${eurRelance(remise.montant)}</strong> est déjà appliquée à votre devis : <strong>${eurRelance(remise.total)}</strong> au lieu de ${eurRelance(remise.sousTotal)}.`;
+    bloc = `<table width="100%" cellpadding="0" cellspacing="0" style="background:#ECFDF5;border-radius:10px;padding:16px 18px;margin:0 0 18px;"><tr><td style="font-size:15px;color:#047857;line-height:1.6;text-align:center;">
+      🎁 <strong>Votre réduction : −${eurRelance(remise.montant)}</strong><br/>Votre prestation à <strong>${eurRelance(remise.total)}</strong> au lieu de ${eurRelance(remise.sousTotal)}.<br/>
+      <span style="font-size:12px;color:#059669;">Il vous suffit de nous recontacter pour réserver votre créneau.</span>
+    </td></tr></table>`;
   } else {
     intro = `Nous revenons une dernière fois vers vous concernant votre devis${presta}. Pour vous aider à vous décider, nous avons le plaisir de vous proposer une offre :`;
     bloc = `<table width="100%" cellpadding="0" cellspacing="0" style="background:#ECFDF5;border-radius:10px;padding:16px 18px;margin:0 0 18px;"><tr><td style="font-size:15px;color:#047857;line-height:1.6;text-align:center;">
-      🎁 <strong>Offre spéciale : −10 %</strong>${remise != null ? `<br/>Votre prestation à <strong>${fmt(remise)} €</strong> au lieu de ${fmt(prixNum)} €.` : ""}<br/>
+      🎁 <strong>Offre spéciale : −10 %</strong>${prixOffre != null ? `<br/>Votre prestation à <strong>${fmt(prixOffre)} €</strong> au lieu de ${fmt(prixNum)} €.` : ""}<br/>
       <span style="font-size:12px;color:#059669;">Offre valable quelques jours — il vous suffit de nous recontacter pour en profiter.</span>
     </td></tr></table>`;
   }
@@ -409,13 +423,13 @@ export function buildProspectRelanceHtml(niveau: number, d: { prenom?: string; n
     <p style="font-size:15px;color:#4B5563;line-height:1.6;margin:0;">Bien cordialement,<br/><strong>L'équipe KinouClean</strong></p>`);
 }
 
-export async function sendProspectRelanceEmail(to: string, niveau: number, d: { prenom?: string; nom?: string; genre?: string; prestation: string; devisDate?: string; prix?: string }): Promise<boolean> {
+export async function sendProspectRelanceEmail(to: string, niveau: number, d: { prenom?: string; nom?: string; genre?: string; prestation: string; devisDate?: string; prix?: string }, remise?: RemiseRelance): Promise<boolean> {
   const gmail = await getGmailTransporter();
   if (!gmail) return false;
   await gmail.transporter.sendMail({
     from: `"KinouClean" <${gmail.user}>`, to,
-    subject: PROSPECT_RELANCE_OBJET[niveau] ?? PROSPECT_RELANCE_OBJET[1],
-    html: buildProspectRelanceHtml(niveau, d),
+    subject: niveau >= 3 && remise && remise.montant > 0 ? PROSPECT_RELANCE_OBJET_REMISE : (PROSPECT_RELANCE_OBJET[niveau] ?? PROSPECT_RELANCE_OBJET[1]),
+    html: buildProspectRelanceHtml(niveau, d, remise),
   });
   return true;
 }
@@ -505,6 +519,8 @@ export function salutation(genre?: string, nom?: string): string {
 export function buildDevisEmail(d: {
   prenom: string; nom: string; genre?: string; prestation: string; prestationVous: boolean;
   totalTTC: number; rac: number; avance: boolean;
+  // Réduction appliquée au devis (optionnelle) : totalTTC / rac sont déjà réduits.
+  remise?: { montant: number; sousTotalTTC: number; racSansRemise: number };
 }): { objet: string; html: string } {
   const de = d.prestationVous ? d.prestation : `votre ${d.prestation}`;
   // Objet volontairement générique : un devis peut comporter plusieurs lignes
@@ -513,10 +529,15 @@ export function buildDevisEmail(d: {
   const ttc = eurNombre(d.totalTTC);
   const rac = eurNombre(d.rac);
   const P = (txt: string) => `<p style="font-size:15px;color:#374151;line-height:1.75;margin:0 0 16px;">${txt}</p>`;
+  // Une ligne courte si une réduction est appliquée (même vert que l'offre −10 % des relances).
+  const eco = d.remise && d.remise.montant > 0
+    ? `<p style="font-size:15px;color:#047857;line-height:1.75;margin:0 0 16px;">🎁 Une réduction de <strong>${eurNombre(d.remise.montant)} €</strong> est appliquée à votre devis (${eurNombre(d.totalTTC)} € TTC au lieu de ${eurNombre(d.remise.sousTotalTTC)} €).</p>`
+    : "";
 
   const corpsAvance = `
     ${P(`Merci pour votre demande. Vous trouverez ci-joint votre devis pour le nettoyage en profondeur de ${de}.`)}
     ${P(`Votre reste à charge est de <strong>${rac} €</strong>.`)}
+    ${eco}
     ${P(`Le montant total est de ${ttc} € TTC, mais grâce à l'Avance Immédiate de l'URSSAF, vous n'en payez que la moitié, soit ${rac} €. L'idée est simple : ce type de service vous donne droit à un crédit d'impôt de 50 %. Au lieu d'attendre un an pour le récupérer sur votre déclaration, l'État verse cette moitié tout de suite, directement à KinouClean. Vous ne déboursez donc que ${rac} €, sans rien avancer et sans aucun remboursement à attendre.`)}
     ${P("En pratique, c'est rapide :")}
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;"><tr><td style="font-size:15px;color:#374151;line-height:1.75;padding-left:4px;">
@@ -528,6 +549,7 @@ export function buildDevisEmail(d: {
   const corpsSansAvance = `
     ${P(`Merci pour votre demande. Vous trouverez ci-joint votre devis pour le nettoyage en profondeur de ${de}.`)}
     ${P(`Le montant total de la prestation est de <strong>${ttc} € TTC</strong>. Le paiement se fait à la fin de l'intervention, jamais en avance.`)}
+    ${eco}
     ${P("Indiquez-moi votre adresse et le créneau qui vous conviendrait le mieux, et je vous réserve le rendez-vous.")}`;
 
   const html = shell(`
@@ -543,6 +565,7 @@ export function buildDevisEmail(d: {
 export async function sendDevisEmail(to: string, d: {
   prenom: string; nom: string; genre?: string; prestation: string; prestationVous: boolean;
   totalTTC: number; rac: number; avance: boolean; devisHtml: string; num: string; pdf?: Buffer;
+  remise?: { montant: number; sousTotalTTC: number; racSansRemise: number };
 }): Promise<boolean> {
   const gmail = await getGmailTransporter();
   if (!gmail) return false;

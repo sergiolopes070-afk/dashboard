@@ -12,7 +12,7 @@
 //   "devis-0"  devis envoyé par email     "devis-R1..R3" relances devis
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { cassepropre } from "./devisKinou";
+import { cassepropre, remiseAppliqueeProspect, RemiseAppliquee } from "./devisKinou";
 import { versJour, jourParis, jjmmIso } from "./prospectRelanceCadence";
 
 export type WaEtape = "infos-0" | "infos-R1" | "infos-R2" | "infos-R3" | "devis-0" | "devis-R1" | "devis-R2" | "devis-R3";
@@ -28,6 +28,7 @@ export interface WaDonnees {
   devisNum?: string;     // ex. « D-2026-042 »
   prix?: string;         // ex. « 120 » ou « 120,50 »
   devisDate?: string;    // JJ/MM/AAAA (date d'envoi du devis)
+  remise?: RemiseAppliquee; // réduction DÉJÀ appliquée au devis → R3 la rappelle (pas de −10 %)
 }
 
 // ─── Numéro WhatsApp (mobiles français uniquement) ────────────────────────────
@@ -102,6 +103,12 @@ function corps(etape: WaEtape, d: WaDonnees): string {
         "Nous restons à votre disposition pour fixer une date qui vous convient 🙂";
     }
     case "devis-R3": {
+      const r = d.remise && d.remise.montant > 0 ? d.remise : null;
+      if (r) {
+        return `Dernière relance concernant votre devis${d.devisNum ? ` n° ${d.devisNum}` : ""}, envoyé par email. ` +
+          `Pour rappel, une réduction de ${fmt(r.montant)} € est déjà appliquée à votre devis : ${fmt(r.total)} € au lieu de ${fmt(r.sousTotal)} € 🎁\n\n` +
+          "Répondez simplement ici pour réserver votre créneau.";
+      }
       const p = prixNum(d);
       return `Dernière relance concernant ${votreDevis(d)}, envoyé par email. ` +
         `Pour vous aider à vous décider, nous vous offrons -10 %${p != null ? ` : ${fmt(p * 0.9)} € au lieu de ${fmt(p)} €` : ""} 🎁\n\n` +
@@ -160,13 +167,17 @@ export function waAEnvoyer(
 // Données de rédaction depuis un prospect (forme /api/prospects).
 export function waDonneesProspect(p: {
   genre?: string; prenom?: string; nom?: string; typePresta?: string; budget?: string;
-  besoins?: { typePresta?: string; prix?: string }[]; suivi?: { devisNum?: string; devisDate?: string };
-}): WaDonnees {
+  besoins?: { typePresta?: string; prix?: string; quantite?: unknown; nombre?: unknown }[];
+  suivi?: { devisNum?: string; devisDate?: string; remise?: unknown };
+}, remise?: RemiseAppliquee): WaDonnees {
   const b = Array.isArray(p.besoins) ? p.besoins[0] : undefined;
   return {
     genre: p.genre, prenom: p.prenom, nom: p.nom,
     prestation: b?.typePresta || p.typePresta || "",
     prix: b?.prix || p.budget || "",
     devisNum: p.suivi?.devisNum, devisDate: p.suivi?.devisDate,
+    // Réduction déjà appliquée (suivi.remise) : explicite, sinon recalculée depuis
+    // les besoins — mêmes montants que le devis (calcTotaux).
+    remise: remise ?? remiseAppliqueeProspect(p.besoins, p.budget, p.typePresta, p.suivi?.remise),
   };
 }

@@ -7,14 +7,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from "./supabase";
 import { getSettingJSON, setSettingRaw, getSettingRaw } from "./settings";
-import { buildDevisHtml, numeroDevis, dateFr, dateFrPlus, prestationPhrase, DevisLigne, DevisData } from "./devisKinou";
+import { buildDevisHtml, numeroDevis, dateFr, dateFrPlus, prestationPhrase, calcTotaux, lignesProspect, normaliserRemise, DevisLigne, DevisData, DevisRemise } from "./devisKinou";
 
 export type ProspectDevis = {
   html: string;        // devis complet prêt à imprimer / joindre (aperçu HTML)
   data: DevisData;     // données brutes du devis (pour le rendu PDF natif)
   num: string;         // numéro KC-AAAAMMJJ-NNN
-  totalTTC: number;
-  rac: number;         // reste à charge = TTC × 50 %
+  totalTTC: number;    // APRÈS réduction éventuelle
+  rac: number;         // reste à charge = TTC (réduit) × 50 %
+  remise?: { libelle: string; montant: number; sousTotalTTC: number; racSansRemise: number }; // si réduction
   prestation: string;  // phrase courte (« canapé d'angle ») ou « vos textiles »
   prestationVous: boolean; // true si la phrase commence par « vos » (accord « de … »)
   avance: boolean;     // dispositif avance immédiate retenu
@@ -22,8 +23,6 @@ export type ProspectDevis = {
 };
 
 type Result = { ok: true; devis: ProspectDevis } | { ok: false; error: string; status: number };
-
-const toNum = (v: unknown) => parseFloat(String(v ?? "").replace(",", ".").replace(/[^\d.]/g, ""));
 
 export async function buildProspectDevis(id: string): Promise<Result> {
   if (!supabase) return { ok: false, error: "Supabase non configuré", status: 503 };
@@ -34,25 +33,10 @@ export async function buildProspectDevis(id: string): Promise<Result> {
     .eq("id", id).single();
   if (!p) return { ok: false, error: "Prospect introuvable", status: 404 };
 
-  // Lignes du devis à partir des prestations souhaitées (prix TTC > 0).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const besoins: any[] = Array.isArray(p.besoins) ? p.besoins : [];
-  // Un besoin : `quantite` = DESCRIPTION (taille, places… ex. « 2 places (140×190) »),
-  // `nombre` = nombre d'articles identiques, `prix` = prix TOTAL de la ligne (déjà
-  // multiplié). Le nombre va dans `qte` → colonne Qté et prix unitaire justes du PDF.
-  // Anciens besoins sans `nombre` : 1 (on ne sait pas s'ils avaient été multipliés).
-  let lignes: DevisLigne[] = besoins
-    .map(b => ({
-      typePresta: b.typePresta as string,
-      detail    : typeof b.quantite === "string" ? b.quantite : "",
-      qte       : Math.max(1, parseInt(String(b.nombre ?? "1"), 10) || 1),
-      prixTTC   : toNum(b.prix),
-    }))
-    .filter(l => l.prixTTC > 0);
-  if (lignes.length === 0) {
-    const prix = toNum(p.budget);
-    if (prix > 0) lignes = [{ typePresta: (p.type_presta as string) || "Prestation", prixTTC: prix }];
-  }
+  // Lignes du devis à partir des prestations souhaitées (prix TTC > 0) — voir
+  // lignesProspect (devisKinou) : `quantite` = description, `nombre` = Qté,
+  // `prix` = prix TOTAL de la ligne ; à défaut, une ligne au budget.
+  const lignes: DevisLigne[] = lignesProspect(p.besoins, p.budget, (p.type_presta as string) || "");
   if (lignes.length === 0) {
     return { ok: false, error: "Aucune prestation avec un prix. Ajoute une prestation souhaitée AVEC son prix avant de générer le devis.", status: 400 };
   }
@@ -71,8 +55,11 @@ export async function buildProspectDevis(id: string): Promise<Result> {
     await setSettingRaw("prospects_suivi", JSON.stringify(suiviAll));
   }
 
-  const totalTTC = lignes.reduce((s, l) => s + l.prixTTC, 0);
-  const rac = totalTTC * 0.5;
+  // Réduction éventuelle (suivi.remise) — mêmes totaux que le HTML / PDF.
+  const remise: DevisRemise | null = normaliserRemise(cur.remise);
+  const T = calcTotaux(lignes, remise);
+  const totalTTC = T.totalTTC;
+  const rac = T.rac;
   const prestation = lignes.length === 1
     ? prestationPhrase(lignes[0].typePresta, lignes[0].detail || "")
     : "vos textiles";
@@ -90,6 +77,7 @@ export async function buildProspectDevis(id: string): Promise<Result> {
     },
     lignes,
     dispositif: avance ? "avance" : "credit",
+    remise,
   };
   const html = buildDevisHtml(data);
 
@@ -97,6 +85,7 @@ export async function buildProspectDevis(id: string): Promise<Result> {
     ok: true,
     devis: {
       html, data, num, totalTTC, rac, prestation, prestationVous, avance,
+      remise: T.remise > 0 ? { libelle: T.libelle, montant: T.remise, sousTotalTTC: T.sousTotalTTC, racSansRemise: T.racSansRemise } : undefined,
       prospect: {
         prenom: (p.prenom as string) || "",
         nom   : (p.nom as string) || "",

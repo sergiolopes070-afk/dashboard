@@ -14,6 +14,82 @@ export interface DevisData {
   client: DevisClient;
   lignes: DevisLigne[];
   dispositif?: "avance" | "credit"; // défaut: avance
+  remise?: DevisRemise | null;      // réduction globale (ligne dans les totaux)
+}
+
+// Réduction commerciale globale : en % (1–50) ou en € (> 0 et < sous-total TTC).
+export interface DevisRemise { type: "pct" | "eur"; valeur: number; libelle?: string }
+
+const arrondi2 = (n: number) => Math.round(n * 100) / 100;
+
+// Montant (TTC) de la réduction, borné à [0 ; sous-total]. 0 si remise invalide.
+export function montantRemise(sousTotalTTC: number, r?: DevisRemise | null): number {
+  if (!r || !(r.valeur > 0) || !(sousTotalTTC > 0)) return 0;
+  const m = r.type === "pct" ? sousTotalTTC * Math.min(r.valeur, 100) / 100 : r.valeur;
+  return arrondi2(Math.min(Math.max(m, 0), sousTotalTTC));
+}
+
+// Libellé de la ligne : « Réduction 10 % » / « Réduction » (+ libellé libre éventuel).
+export function libelleRemise(r?: DevisRemise | null): string {
+  if (!r) return "";
+  const pct = r.type === "pct" ? ` ${String(r.valeur).replace(".", ",")} %` : "";
+  const lib = (r.libelle || "").trim();
+  return `Réduction${pct}${lib ? ` — ${lib}` : ""}`;
+}
+
+// Totaux d'un devis — source UNIQUE pour HTML, PDF et email.
+// sousTotalTTC = somme des lignes ; totalTTC = après réduction ; HT/TVA recalculés
+// sur le total réduit ; rac (avance immédiate / crédit d'impôt) = totalTTC × 50 %.
+export function calcTotaux(lignes: DevisLigne[], r?: DevisRemise | null) {
+  const sousTotalTTC = lignes.filter(l => l.prixTTC > 0).reduce((s, l) => s + l.prixTTC, 0);
+  const remise = montantRemise(sousTotalTTC, r);
+  const totalTTC = arrondi2(sousTotalTTC - remise);
+  const totalHT = totalTTC / 1.1;
+  const tva = totalTTC - totalHT;
+  const rac = totalTTC * 0.5;
+  const racSansRemise = sousTotalTTC * 0.5;
+  return { sousTotalTTC, remise, totalTTC, totalHT, tva, rac, racSansRemise, libelle: remise > 0 ? libelleRemise(r) : "" };
+}
+
+// ─── Lignes / réduction d'un PROSPECT (pur, utilisable côté navigateur) ──────
+// Source unique pour buildProspectDevis (src/lib/prospectDevis.ts), les relances
+// devis (email R3) et les messages WhatsApp (devis-R3) : mêmes montants partout.
+const toNumProspect = (v: unknown) => parseFloat(String(v ?? "").replace(",", ".").replace(/[^\d.]/g, ""));
+
+// Un besoin : `quantite` = DESCRIPTION, `nombre` = nb d'articles, `prix` = prix TOTAL
+// de la ligne. À défaut de besoin chiffré : une ligne unique au budget.
+export function lignesProspect(besoins: unknown, budget?: unknown, typePresta?: string): DevisLigne[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bs: any[] = Array.isArray(besoins) ? besoins : [];
+  let lignes: DevisLigne[] = bs
+    .map(b => ({
+      typePresta: b?.typePresta as string,
+      detail    : typeof b?.quantite === "string" ? b.quantite : "",
+      qte       : Math.max(1, parseInt(String(b?.nombre ?? "1"), 10) || 1),
+      prixTTC   : toNumProspect(b?.prix),
+    }))
+    .filter(l => l.prixTTC > 0);
+  if (lignes.length === 0) {
+    const prix = toNumProspect(budget);
+    if (prix > 0) lignes = [{ typePresta: typePresta || "Prestation", prixTTC: prix }];
+  }
+  return lignes;
+}
+
+// suivi.remise → DevisRemise valide, ou null.
+export function normaliserRemise(r: unknown): DevisRemise | null {
+  const x = r as DevisRemise | undefined;
+  return x && (x.type === "pct" || x.type === "eur") && Number(x.valeur) > 0
+    ? { type: x.type, valeur: Number(x.valeur), libelle: x.libelle || undefined } : null;
+}
+
+// Réduction effectivement appliquée au devis du prospect (TTC), ou undefined.
+export interface RemiseAppliquee { montant: number; sousTotal: number; total: number; libelle: string }
+export function remiseAppliqueeProspect(besoins: unknown, budget: unknown, typePresta: string | undefined, remise: unknown): RemiseAppliquee | undefined {
+  const r = normaliserRemise(remise);
+  if (!r) return undefined;
+  const T = calcTotaux(lignesProspect(besoins, budget, typePresta), r);
+  return T.remise > 0 ? { montant: T.remise, sousTotal: T.sousTotalTTC, total: T.totalTTC, libelle: T.libelle } : undefined;
 }
 
 const eur = (n: number) => new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + " €";
@@ -100,12 +176,10 @@ export function buildDevisHtml(data: DevisData): string {
   const dispositif = data.dispositif || "avance";
   const lignes = data.lignes.filter(l => l.prixTTC > 0);
 
-  let totalHT = 0, totalTTC = 0;
   const rows = lignes.map(l => {
     const qte = l.qte && l.qte > 0 ? l.qte : 1;
     const ttc = l.prixTTC;
     const ht = ttc / 1.1;
-    totalHT += ht; totalTTC += ttc;
     const puHT = ht / qte;
     const { libelle, chip, description } = mapLigne(l.typePresta, l.detail || "");
     return `<tr>
@@ -115,9 +189,14 @@ export function buildDevisHtml(data: DevisData): string {
     </tr>`;
   }).join("\n");
 
-  const tva = totalTTC - totalHT;
-  const rac = totalTTC * 0.5;
-  const moitie = totalTTC * 0.5;
+  const T = calcTotaux(lignes, data.remise);
+  const { totalHT, tva, totalTTC, rac } = T;
+  const moitie = rac;
+  const aRemise = T.remise > 0;
+  const economie = aRemise
+    ? `<div class="eco">🎁 Vous économisez <strong>${eur(T.remise)}</strong>
+        <span>soit ${eur(rac)} au lieu de ${eur(T.racSansRemise)} ${dispositif === "credit" ? "après crédit d'impôt" : "après Avance Immédiate"}</span></div>`
+    : "";
 
   const clientNom = data.client.nom ? cassepropre(data.client.nom) : "Client";
   const clientAdresse = data.client.adresse ? esc(data.client.adresse) : "Adresse : à confirmer";
@@ -182,6 +261,10 @@ export function buildDevisHtml(data: DevisData): string {
   .totals tr.ttc td { background: #1a2942; color: #fff; font-weight: 600; font-size: 15px; font-family: 'Playfair Display', serif; }
   .totals tr.ttc td:first-child { border-radius: 6px 0 0 6px; }
   .totals tr.ttc td:last-child { border-radius: 0 6px 6px 0; }
+  .totals tr.rem td { color: #047857; font-weight: 600; }
+  .eco { margin: 12px 0 0 auto; width: 60%; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 10px 14px; color: #047857; font-size: 13px; text-align: center; }
+  .eco strong { font-size: 15px; }
+  .eco span { display: block; font-size: 10.5px; color: #059669; margin-top: 2px; }
   .aici { margin: 20px 32px 0; background: #eef3fb; border: 1px solid #c5d5ee; border-radius: 8px; padding: 15px 18px; }
   .aici h4 { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: #2f6bbf; margin-bottom: 10px; }
   .aici .rac { font-family: 'Playfair Display', serif; font-size: 22px; color: #1a2942; }
@@ -261,11 +344,14 @@ export function buildDevisHtml(data: DevisData): string {
 
     <div class="totals">
       <table>
-        <tr class="sub"><td>Total HT</td><td class="r">${eur(totalHT)}</td></tr>
+        ${aRemise ? `<tr class="sub"><td>Sous-total TTC</td><td class="r">${eur(T.sousTotalTTC)}</td></tr>
+        <tr class="rem"><td>${esc(T.libelle)}</td><td class="r">− ${eur(T.remise)}</td></tr>` : ""}
+        <tr class="${aRemise ? "" : "sub"}"><td>Total HT${aRemise ? " après réduction" : ""}</td><td class="r">${eur(totalHT)}</td></tr>
         <tr><td>TVA 10 %</td><td class="r">${eur(tva)}</td></tr>
-        <tr class="ttc"><td>Total TTC</td><td class="r">${eur(totalTTC)}</td></tr>
+        <tr class="ttc"><td>Total TTC${aRemise ? " après réduction" : ""}</td><td class="r">${eur(totalTTC)}</td></tr>
       </table>
     </div>
+    ${economie}
   </div>
 
   ${aici}
