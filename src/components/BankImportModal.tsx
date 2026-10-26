@@ -3,6 +3,8 @@ import { useState, useMemo } from "react";
 import { X, Upload, Loader2, FileText, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Depense, CATEGORIES_DEPENSES } from "@/lib/constants";
 import { parseStatement, rowKey, type BankRow } from "@/lib/bankParse";
+import { formatMontant } from "@/lib/finance";
+import { useToast } from "@/components/Toast";
 
 interface PreviewRow extends BankRow {
   id: number;
@@ -27,6 +29,7 @@ export default function BankImportModal({
   const [summary, setSummary]   = useState<{ credits: number; ignores: number } | null>(null);
   const [importing, setImporting] = useState(false);
   const [error, setError]       = useState("");
+  const toast = useToast();
 
   // Clés déjà en base → anti-doublon.
   const existingKeys = useMemo(
@@ -79,11 +82,14 @@ export default function BankImportModal({
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ depenses }),
       });
-      const d = await res.json();
+      // Réponse non-JSON (erreur serveur brute) → objet vide plutôt qu'un crash
+      const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Erreur d'import");
       onImported(d.imported ?? selected.length);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erreur d'import");
+      const msg = e instanceof Error ? e.message : "Erreur d'import";
+      setError(msg);
+      toast.error(`Import impossible : ${msg}`);
       setImporting(false);
     }
   }
@@ -121,13 +127,13 @@ export default function BankImportModal({
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
                 <FileText size={36} className="mx-auto text-gray-300 mb-3" />
                 <p className="font-medium text-gray-700">Choisir le fichier CSV du relevé</p>
-                <p className="text-xs text-gray-400 mt-1">Glisse ou clique — rien n'est envoyé tant que tu n'as pas validé l'aperçu</p>
+                <p className="text-xs text-gray-400 mt-1">Glisse ou clique — rien n&apos;est envoyé tant que tu n&apos;as pas validé l&apos;aperçu</p>
               </label>
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-800">
                 <p className="font-semibold mb-1">Comment exporter ?</p>
                 <p className="text-blue-700 text-[13px] leading-relaxed">
                   Dans ton espace bancaire : <strong>Mes opérations → Exporter / Télécharger → format CSV (Excel)</strong>.
-                  On ne garde que les <strong>débits</strong> (sorties d'argent) ; les entrées sont ignorées.
+                  On ne garde que les <strong>débits</strong> (sorties d&apos;argent) ; les entrées sont ignorées.
                 </p>
               </div>
             </>
@@ -144,8 +150,8 @@ export default function BankImportModal({
               </div>
 
               {/* Tableau aperçu */}
-              <div className="border border-gray-100 rounded-xl overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="border border-gray-100 rounded-xl overflow-hidden overflow-x-auto">
+                <table className="w-full text-sm min-w-[560px]">
                   <thead className="bg-gray-50 text-gray-500">
                     <tr>
                       <th className="w-9 px-2 py-2"></th>
@@ -176,7 +182,7 @@ export default function BankImportModal({
                             {r.type === "mensuel" ? "Mensuel" : "Ponctuel"}
                           </button>
                         </td>
-                        <td className="px-2 py-1.5 text-right font-semibold text-gray-900 whitespace-nowrap">{r.amount.toFixed(2)} €</td>
+                        <td className="px-2 py-1.5 text-right font-semibold text-gray-900 whitespace-nowrap">{formatMontant(r.amount, { decimales: 2 })}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -195,7 +201,7 @@ export default function BankImportModal({
             <button onClick={doImport} disabled={importing || !selected.length}
               className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">
               {importing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
-              Importer {selected.length} dépense{selected.length > 1 ? "s" : ""} ({totalSel.toFixed(2)} €)
+              Importer {selected.length} dépense{selected.length > 1 ? "s" : ""} ({formatMontant(totalSel, { decimales: 2 })})
             </button>
           </div>
         )}

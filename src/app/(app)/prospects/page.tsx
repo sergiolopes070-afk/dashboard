@@ -1848,6 +1848,8 @@ export default function ProspectsPage() {
         onRefresh={load}
         loading={loading}
         alerts={counts.urgent}
+        onAlertsClick={() => choisirOnglet("urgent")}
+        alertsLabel="à contacter aujourd'hui"
         action={
           <div className="flex items-center gap-2">
             <button onClick={importerLeads} disabled={importing}

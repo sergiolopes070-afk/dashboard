@@ -132,7 +132,10 @@ function DepenseModal({ initial, onClose, onSave }: ModalProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error((await res.json()).error);
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || "Échec de l'enregistrement");
+      }
       onSave();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur inconnue");
@@ -280,7 +283,7 @@ export default function DepensesPage() {
   const [showImport,  setShowImport]  = useState(false);
   const [filterType,  setFilterType]  = useState<"tous" | "ponctuel" | "mensuel">("tous");
   const [filterCat,   setFilterCat]   = useState("tous");
-  const [deleting,    setDeleting]    = useState<string | null>(null);
+  const [deleting]                    = useState<string | null>(null);
 
   // ── Période ──
   const [preset,       setPreset]       = useState<Preset>("mois");
@@ -435,9 +438,10 @@ export default function DepensesPage() {
     setTimeout(async () => {
       if (undone) return;
       try {
-        await fetch(`/api/depenses/${id}`, { method: "DELETE" });
+        const res = await fetch(`/api/depenses/${id}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("delete failed");
       } catch {
-        // Échec réseau → on restaure et on prévient.
+        // Échec réseau ou serveur → on restaure et on prévient.
         setDepenses(prev => [item, ...prev]);
         toast.error("Échec de la suppression, dépense restaurée");
       }
@@ -480,16 +484,18 @@ export default function DepensesPage() {
             </button>
             <button
               onClick={() => setModal("new")}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+              aria-label="Nouvelle dépense"
+              title="Nouvelle dépense"
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
             >
               <Plus size={15} />
-              Nouvelle dépense
+              <span className="hidden sm:inline">Nouvelle dépense</span>
             </button>
           </div>
         }
       />
 
-      <div className="flex-1 p-6 space-y-6">
+      <div className="flex-1 p-3 sm:p-6 space-y-4 sm:space-y-6">
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{error}</div>
@@ -504,12 +510,12 @@ export default function DepensesPage() {
             </div>
 
             {/* Presets */}
-            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            <div className="flex gap-1 bg-gray-100 rounded-xl p-1 max-w-full overflow-x-auto">
               {PRESETS.map(({ key, label }) => (
                 <button
                   key={key}
                   onClick={() => applyPreset(key)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap flex-shrink-0
                     ${preset === key ? "bg-white shadow text-blue-600 font-semibold" : "text-gray-500 hover:text-gray-700"}`}
                 >
                   {label}
@@ -619,7 +625,7 @@ export default function DepensesPage() {
                 Charges récurrentes
                 <span className="text-xs font-normal text-gray-400">prélevées chaque mois</span>
               </h2>
-              <span className="text-sm font-bold text-purple-700">{totalMensuel.toFixed(2)} € / mois</span>
+              <span className="text-sm font-bold text-purple-700">{formatMontant(totalMensuel, { decimales: 2 })} / mois</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {depenses.filter(d => d.type === "mensuel").map(d => (
@@ -630,7 +636,7 @@ export default function DepensesPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-gray-900 truncate">{d.nom}</p>
-                    <p className="text-xs text-gray-400 truncate">{d.categorie} · {d.montant.toFixed(2)} €/mois</p>
+                    <p className="text-xs text-gray-400 truncate">{d.categorie} · {formatMontant(d.montant, { decimales: 2 })}/mois</p>
                   </div>
                   <button onClick={() => setModal(d)} title="Modifier"
                     className="p-2 rounded-lg text-gray-400 hover:bg-white hover:text-blue-600 transition-colors flex-shrink-0">
@@ -679,6 +685,18 @@ export default function DepensesPage() {
         {/* Liste */}
         {loading ? (
           <SkeletonList count={6} />
+        ) : filtered.length === 0 && depenses.length > 0 ? (
+          // Des dépenses existent mais les filtres les masquent toutes
+          <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+            <Receipt size={40} className="mb-3 opacity-30" />
+            <p className="font-medium">Aucun résultat pour ces filtres</p>
+            <button
+              onClick={() => { setFilterType("tous"); setFilterCat("tous"); }}
+              className="mt-3 px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Réinitialiser les filtres
+            </button>
+          </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400">
             <Receipt size={40} className="mb-3 opacity-30" />
@@ -686,7 +704,51 @@ export default function DepensesPage() {
             <p className="text-sm mt-1">Cliquez sur &quot;Nouvelle dépense&quot; pour commencer</p>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <>
+          {/* Mobile : cartes */}
+          <div className="sm:hidden bg-white rounded-2xl shadow-sm border border-gray-100 divide-y divide-gray-50">
+            {filtered.map(d => (
+              <div key={d.id} className="p-3 flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-medium text-gray-900 truncate">{d.nom}</p>
+                    <span className="font-semibold text-gray-900 whitespace-nowrap">{formatMontant(d.montant, { decimales: 2 })}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1 text-xs text-gray-500">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full font-medium ${TYPE_COLORS[d.type]}`}>
+                      {d.type === "ponctuel" ? "Ponctuel" : "Mensuel"}
+                    </span>
+                    <span>{d.categorie}</span>
+                    <span className="text-gray-300">·</span>
+                    <span>{frDate(d.date)}</span>
+                  </div>
+                  {d.notes && <p className="text-xs text-gray-400 truncate mt-0.5">{d.notes}</p>}
+                </div>
+                <div className="flex items-center flex-shrink-0">
+                  {d.document_url && (
+                    <a href={d.document_url} target="_blank" rel="noreferrer" aria-label="Voir le justificatif"
+                      className="p-2 rounded-lg text-blue-600 hover:bg-blue-50">
+                      <Paperclip size={15} />
+                    </a>
+                  )}
+                  <button onClick={() => setModal(d)} aria-label="Modifier"
+                    className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-blue-600 transition-colors">
+                    <Pencil size={15} />
+                  </button>
+                  <button onClick={() => handleDelete(d.id)} disabled={deleting === d.id} aria-label="Supprimer"
+                    className="p-2 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-40">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div className="p-3 flex justify-between text-sm bg-gray-50 rounded-b-2xl">
+              <span className="text-gray-600">Total ({filtered.length} dépense{filtered.length > 1 ? "s" : ""})</span>
+              <span className="font-bold text-gray-900">{formatMontant(filtered.reduce((s, d) => s + d.montant, 0), { decimales: 2 })}</span>
+            </div>
+          </div>
+          {/* Desktop : tableau */}
+          <div className="hidden sm:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
@@ -714,7 +776,7 @@ export default function DepensesPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-500">{frDate(d.date)}</td>
                     <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                      {d.montant.toFixed(2)} €
+                      {formatMontant(d.montant, { decimales: 2 })}
                     </td>
                     <td className="px-4 py-3 text-center">
                       {d.document_url ? (
@@ -752,13 +814,14 @@ export default function DepensesPage() {
                     Total affiché ({filtered.length} dépense{filtered.length > 1 ? "s" : ""})
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-gray-900">
-                    {filtered.reduce((s, d) => s + d.montant, 0).toFixed(2)} €
+                    {formatMontant(filtered.reduce((s, d) => s + d.montant, 0), { decimales: 2 })}
                   </td>
                   <td colSpan={2}></td>
                 </tr>
               </tfoot>
             </table>
           </div>
+          </>
         )}
 
         {/* Répartition par semaine */}
@@ -776,7 +839,7 @@ export default function DepensesPage() {
                   <div key={s.debut} className="flex-1 flex flex-col items-center gap-1 group relative">
                     {/* Tooltip */}
                     <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-xs rounded-lg px-2 py-1 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                      Sem. du {s.label}<br />{s.total.toFixed(2)} €
+                      Sem. du {s.label}<br />{formatMontant(s.total, { decimales: 2 })}
                     </div>
                     {/* Barre */}
                     <div className="w-full flex-1 flex items-end">
@@ -797,7 +860,7 @@ export default function DepensesPage() {
             <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-50 text-xs text-gray-500">
               <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-500 inline-block" />Semaine en cours</span>
               <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-200 inline-block" />Semaines précédentes</span>
-              <span className="ml-auto">Total 12 sem. : <strong className="text-gray-700">{parSemaine.reduce((s, w) => s + w.total, 0).toFixed(2)} €</strong></span>
+              <span className="ml-auto">Total 12 sem. : <strong className="text-gray-700">{formatMontant(parSemaine.reduce((s, w) => s + w.total, 0), { decimales: 2 })}</strong></span>
             </div>
           </div>
         )}
@@ -819,7 +882,7 @@ export default function DepensesPage() {
                   <div key={cat}>
                     <div className="flex justify-between text-sm mb-1">
                       <span className="text-gray-600">{cat}</span>
-                      <span className="font-medium text-gray-800">{total.toFixed(2)} € <span className="text-gray-400 font-normal">({pct.toFixed(0)}%)</span></span>
+                      <span className="font-medium text-gray-800">{formatMontant(total, { decimales: 2 })} <span className="text-gray-400 font-normal">({pct.toFixed(0)}%)</span></span>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-1.5">
                       <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${pct}%` }} />
@@ -836,7 +899,11 @@ export default function DepensesPage() {
         <DepenseModal
           initial={modal === "new" ? null : modal}
           onClose={() => setModal(null)}
-          onSave={() => { setModal(null); load(); }}
+          onSave={() => {
+            toast.success(modal === "new" ? "Dépense enregistrée" : "Dépense modifiée");
+            setModal(null);
+            load();
+          }}
         />
       )}
 

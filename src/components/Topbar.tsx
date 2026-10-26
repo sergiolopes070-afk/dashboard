@@ -11,6 +11,10 @@ interface TopbarProps {
   onRefresh?: () => void;
   loading?: boolean;
   alerts?: number;
+  /** Action de la cloche (ex. ouvrir l'onglet « Aujourd'hui ») — sinon remonte en haut */
+  onAlertsClick?: () => void;
+  /** Ce que comptent les alertes, pour l'infobulle (ex. « relances du jour ») */
+  alertsLabel?: string;
   action?: React.ReactNode;
   /** Version resserrée (moins de padding) — pages denses comme l'agenda */
   compact?: boolean;
@@ -156,7 +160,7 @@ function GlobalSearch({ onChanged }: { onChanged?: () => void }) {
   );
 }
 
-export default function Topbar({ title, subtitle, onRefresh, loading, alerts, action, compact }: TopbarProps) {
+export default function Topbar({ title, subtitle, onRefresh, loading, alerts, onAlertsClick, alertsLabel, action, compact }: TopbarProps) {
   const [spinning, setSpinning] = useState(false);
   const { toggle } = useSidebar();
 
@@ -190,8 +194,8 @@ export default function Topbar({ title, subtitle, onRefresh, loading, alerts, ac
         {alerts && alerts > 0 ? (
           <div className="relative">
             <button
-              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-              title={`${alerts} point${alerts > 1 ? "s" : ""} à voir — remonter en haut`}
+              onClick={() => { onAlertsClick?.(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              title={`${alerts} ${alertsLabel ?? `point${alerts > 1 ? "s" : ""} à voir`}`}
               aria-label={`${alerts} alerte${alerts > 1 ? "s" : ""}`}
               className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
               <Bell size={18} />

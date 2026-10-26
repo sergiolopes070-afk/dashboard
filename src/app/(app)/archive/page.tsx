@@ -145,7 +145,7 @@ function CompteRenduModal({
         <div className="flex items-center gap-2 px-6 py-3 border-b border-gray-100 bg-gray-50 flex-wrap">
           {!isNaN(prix) && prix > 0 && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-700 text-sm font-bold">
-              <Euro size={13} />{prix.toFixed(2)} €
+              <Euro size={13} />{formatMontant(prix, { decimales: 2 })}
             </span>
           )}
           {p.modePaiement && (
@@ -238,7 +238,7 @@ function CompteRenduModal({
                 <div>
                   <p className="text-xs text-gray-400 mb-0.5">Prix</p>
                   <p className="flex items-center gap-1.5 text-sm font-bold text-emerald-700">
-                    <Euro size={13} />{prix.toFixed(2)} €
+                    <Euro size={13} />{formatMontant(prix, { decimales: 2 })}
                   </p>
                 </div>
               )}
@@ -439,7 +439,7 @@ function CarteArchive({ p, onClick, onDelete, onClientClick }: { p: Prestation; 
 
         {/* Prix */}
         {!isNaN(prix) && prix > 0 && (
-          <span className={`font-bold text-sm shrink-0 ${annul ? "text-gray-400 line-through" : "text-emerald-700"}`}>{prix.toFixed(0)} €</span>
+          <span className={`font-bold text-sm shrink-0 ${annul ? "text-gray-400 line-through" : "text-emerald-700"}`}>{formatMontant(prix)}</span>
         )}
       </div>
 

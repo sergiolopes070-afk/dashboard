@@ -14,6 +14,7 @@ import { useToast } from "@/components/Toast";
 import NewClientModal from "@/components/NewClientModal";
 import ClotureModal from "@/components/ClotureModal";
 import AvanceBadge from "@/components/AvanceBadge";
+import { formatMontant } from "@/lib/finance";
 import { Prestation, Prestataire, ClientNote, STATUT_COLORS, estAnnulation } from "@/lib/constants";
 
 const TAGS_PRESET = ["Régulier", "VIP", "Difficile", "Sensible", "Pro", "Fidèle"];
@@ -315,7 +316,7 @@ function PrestationRow({
         <div className="flex items-center gap-2">
           {p.prix && (
             <span className="text-xs font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded-lg">
-              {parseFloat(p.prix).toFixed(0)} €
+              {formatMontant(parseFloat(p.prix) || 0)}
             </span>
           )}
           {!p.archived && (
@@ -850,7 +851,7 @@ export default function ClientsPage() {
                           </label>
                         )}
                         <span className="text-sm font-bold text-green-700 bg-green-50 px-2 py-1 rounded-lg">
-                          {c.totalCA.toFixed(0)} €
+                          {formatMontant(c.totalCA)}
                         </span>
                         <button
                           onClick={() => setModal({ mode: "edit", client: c })}

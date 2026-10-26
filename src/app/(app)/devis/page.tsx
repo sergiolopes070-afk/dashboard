@@ -5,8 +5,22 @@ import Topbar from "@/components/Topbar";
 import { SkeletonTable } from "@/components/Skeleton";
 import { Prestation } from "@/lib/constants";
 import { getEntite } from "@/lib/entite";
+import { formatMontant } from "@/lib/finance";
+import { useToast } from "@/components/Toast";
+
+// Prix stocké en texte → affichage "1 234 €" (ou tiret si vide)
+function fmtPrix(prix: string | null | undefined): string | null {
+  if (!prix) return null;
+  const n = parseFloat(String(prix).replace(",", "."));
+  return isNaN(n) ? `${prix} €` : formatMontant(n, { decimales: Number.isInteger(n) ? 0 : 2 });
+}
+
+// Nombre de prestations affichées avant "Voir plus"
+const PAGE_SIZE = 20;
 
 // ─── Modal de personnalisation ─────────────────────────────────────────────────
+// NB : le champ s'appelle `prixHT` pour compatibilité avec l'API /api/devis,
+// mais la valeur saisie est bien un prix TTC (cf. libellé "€TTC").
 interface LigneSupp { label: string; quantite: number; prixHT: number }
 interface DevisOptions {
   etats:           string[];
@@ -31,9 +45,11 @@ const ETATS_OPTIONS = [
 function DevisCustomizeModal({
   presta,
   onClose,
+  onGenerated,
 }: {
   presta: Prestation;
   onClose: () => void;
+  onGenerated: () => void;
 }) {
   const [opts, setOpts] = useState<DevisOptions>({
     etats: [],
@@ -252,21 +268,21 @@ function DevisCustomizeModal({
           <div className="bg-gray-50 rounded-xl p-4 space-y-1.5">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Sous-total HT</span>
-              <span className="font-medium">{totalHT.toFixed(2)} €</span>
+              <span className="font-medium">{formatMontant(totalHT, { decimales: 2 })}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">TVA (20%)</span>
-              <span className="font-medium">{totalTVA.toFixed(2)} €</span>
+              <span className="font-medium">{formatMontant(totalTVA, { decimales: 2 })}</span>
             </div>
             <div className="flex justify-between text-sm font-bold text-gray-900 pt-1 border-t border-gray-200">
               <span>Total TTC à payer</span>
-              <span>{totalTTC.toFixed(2)} €</span>
+              <span>{formatMontant(totalTTC, { decimales: 2 })}</span>
             </div>
             <p className="text-[11px] text-gray-400 pt-0.5">Le prix saisi est le montant TTC — le HT et la TVA sont calculés automatiquement.</p>
             {(opts.avanceImmediate || opts.creditImpot) && (
               <div className="flex justify-between text-sm text-blue-600 font-semibold pt-1">
                 <span>Après avantage fiscal (50%)</span>
-                <span>{(totalTTC * 0.5).toFixed(2)} €</span>
+                <span>{formatMontant(totalTTC * 0.5, { decimales: 2 })}</span>
               </div>
             )}
           </div>
@@ -278,6 +294,7 @@ function DevisCustomizeModal({
             href={buildUrl(false)}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={onGenerated}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors"
           >
             <FileText size={15} />
@@ -286,6 +303,7 @@ function DevisCustomizeModal({
           </a>
           <a
             href={buildUrl(true)}
+            onClick={onGenerated}
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
           >
             <Download size={15} />
@@ -303,6 +321,8 @@ export default function DevisPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
   const [customizing, setCustomizing] = useState<Prestation | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -315,6 +335,15 @@ export default function DevisPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Après ouverture / téléchargement du PDF : l'API marque le devis comme généré.
+  // On ferme la modale, on prévient l'utilisateur et on rafraîchit la liste
+  // (léger délai pour laisser le temps à la génération côté serveur).
+  const handleGenerated = useCallback(() => {
+    setCustomizing(null);
+    toast.success("Devis généré — la liste va se mettre à jour");
+    setTimeout(() => { load(); }, 2500);
+  }, [load, toast]);
 
   const devis = useMemo(() =>
     data.filter((p) => p.devisPDF || p.genDevis === "FAIT"),
@@ -339,10 +368,12 @@ export default function DevisPage() {
     );
   }, [all, search]);
 
+  const visibles = showAll ? allFiltered : allFiltered.slice(0, PAGE_SIZE);
+
   return (
     <div className="flex flex-col min-h-screen">
       {customizing && (
-        <DevisCustomizeModal presta={customizing} onClose={() => setCustomizing(null)} />
+        <DevisCustomizeModal presta={customizing} onClose={() => setCustomizing(null)} onGenerated={handleGenerated} />
       )}
       <Topbar
         title="Devis"
@@ -350,7 +381,7 @@ export default function DevisPage() {
         onRefresh={load}
         loading={loading}
       />
-      <div className="flex-1 p-6 space-y-4">
+      <div className="flex-1 p-3 sm:p-6 space-y-4">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -374,12 +405,37 @@ export default function DevisPage() {
                 <div className="px-4 py-3 border-b border-gray-50">
                   <h3 className="text-sm font-semibold text-gray-700">Devis générés</h3>
                 </div>
+                {/* Mobile : cartes */}
+                <div className="sm:hidden divide-y divide-gray-50">
+                  {filtered.map((p) => (
+                    <div key={p.row} className="p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-medium text-gray-900 truncate">{p.prenom} {p.nom}</div>
+                          <div className="text-xs text-gray-500 truncate">{p.typePresta || "—"}</div>
+                        </div>
+                        {fmtPrix(p.prix)
+                          ? <span className="font-semibold text-green-700 text-sm shrink-0">{fmtPrix(p.prix)}</span>
+                          : <span className="text-gray-300 shrink-0">—</span>}
+                      </div>
+                      <button
+                        onClick={() => setCustomizing(p)}
+                        className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-medium hover:bg-indigo-100 transition-colors"
+                      >
+                        <FileText size={12} />
+                        Voir / personnaliser le PDF
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {/* Desktop : tableau */}
+                <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50">
                       <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Client</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Prestation</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Montant HT</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Montant TTC</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">PDF</th>
                     </tr>
                   </thead>
@@ -392,8 +448,8 @@ export default function DevisPage() {
                         </td>
                         <td className="py-3 px-4 text-gray-700">{p.typePresta || "—"}</td>
                         <td className="py-3 px-4">
-                          {p.prix
-                            ? <span className="font-semibold text-green-700">{p.prix} €</span>
+                          {fmtPrix(p.prix)
+                            ? <span className="font-semibold text-green-700">{fmtPrix(p.prix)}</span>
                             : <span className="text-gray-300">—</span>
                           }
                         </td>
@@ -412,6 +468,7 @@ export default function DevisPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
 
@@ -427,44 +484,85 @@ export default function DevisPage() {
                   <p className="font-medium">Aucune prestation trouvée</p>
                 </div>
               ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Client</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Prestation</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Date</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Montant HT</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {allFiltered.slice(0, 20).map((p) => (
-                      <tr key={p.row} className="hover:bg-gray-50 transition-colors">
-                        <td className="py-3 px-4">
-                          <div className="font-medium text-gray-900">{p.prenom} {p.nom}</div>
-                          <div className="text-xs text-gray-400">{p.tel}</div>
-                        </td>
-                        <td className="py-3 px-4 text-gray-700">{p.typePresta || "—"}</td>
-                        <td className="py-3 px-4 text-gray-500">{p.date || "—"}</td>
-                        <td className="py-3 px-4">
-                          {p.prix
-                            ? <span className="font-semibold text-green-700">{p.prix} €</span>
-                            : <span className="text-gray-300">—</span>
-                          }
-                        </td>
-                        <td className="py-3 px-4">
-                          <button
-                            onClick={() => setCustomizing(p)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors"
-                          >
-                            <FileText size={12} />
-                            {p.genDevis === "FAIT" ? "Re-générer" : "Générer devis"}
-                          </button>
-                        </td>
-                      </tr>
+                <>
+                  {/* Mobile : cartes */}
+                  <div className="sm:hidden divide-y divide-gray-50">
+                    {visibles.map((p) => (
+                      <div key={p.row} className="p-3 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-medium text-gray-900 truncate">{p.prenom} {p.nom}</div>
+                            <div className="text-xs text-gray-500 truncate">{p.typePresta || "—"}</div>
+                            <div className="text-xs text-gray-400">{p.date || "—"}</div>
+                          </div>
+                          {fmtPrix(p.prix)
+                            ? <span className="font-semibold text-green-700 text-sm shrink-0">{fmtPrix(p.prix)}</span>
+                            : <span className="text-gray-300 shrink-0">—</span>}
+                        </div>
+                        <button
+                          onClick={() => setCustomizing(p)}
+                          className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors"
+                        >
+                          <FileText size={12} />
+                          {p.genDevis === "FAIT" ? "Re-générer" : "Générer devis"}
+                        </button>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                  {/* Desktop : tableau */}
+                  <div className="hidden sm:block overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50">
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Client</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Prestation</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Date</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Montant TTC</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {visibles.map((p) => (
+                        <tr key={p.row} className="hover:bg-gray-50 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="font-medium text-gray-900">{p.prenom} {p.nom}</div>
+                            <div className="text-xs text-gray-400">{p.tel}</div>
+                          </td>
+                          <td className="py-3 px-4 text-gray-700">{p.typePresta || "—"}</td>
+                          <td className="py-3 px-4 text-gray-500">{p.date || "—"}</td>
+                          <td className="py-3 px-4">
+                            {fmtPrix(p.prix)
+                              ? <span className="font-semibold text-green-700">{fmtPrix(p.prix)}</span>
+                              : <span className="text-gray-300">—</span>
+                            }
+                          </td>
+                          <td className="py-3 px-4">
+                            <button
+                              onClick={() => setCustomizing(p)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors"
+                            >
+                              <FileText size={12} />
+                              {p.genDevis === "FAIT" ? "Re-générer" : "Générer devis"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  </div>
+                  {allFiltered.length > PAGE_SIZE && (
+                    <div className="px-4 py-3 border-t border-gray-50 text-center">
+                      <button
+                        onClick={() => setShowAll(v => !v)}
+                        className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                      >
+                        {showAll
+                          ? "Voir moins"
+                          : `Voir plus (${allFiltered.length - PAGE_SIZE} autre${allFiltered.length - PAGE_SIZE > 1 ? "s" : ""})`}
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </>

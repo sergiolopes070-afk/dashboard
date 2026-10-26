@@ -11,6 +11,13 @@ interface Mission {
   photos: Photo[];
 }
 
+// Lecture JSON tolérante : une réponse d'erreur HTML (500, coupure réseau…) ne
+// doit pas faire planter l'écran ; on renvoie {} et on se base sur res.ok.
+async function lireJson(r: Response): Promise<Record<string, unknown>> {
+  try { return await r.json(); } catch { return {}; }
+}
+const msgErreur = (d: Record<string, unknown>, defaut: string) => (typeof d.error === "string" && d.error) ? d.error : defaut;
+
 // ── Appareil photo intégré (capture en direct, jamais la galerie) ──────────────
 function CameraModal({ mission, article, phase, onClose, onUploaded }: {
   mission: Mission; article: string; phase: "avant" | "apres";
@@ -22,6 +29,7 @@ function CameraModal({ mission, article, phase, onClose, onUploaded }: {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [shots, setShots] = useState<string[]>([]);
+  const [upErr, setUpErr] = useState(""); // échec d'envoi : la caméra reste ouverte
 
   useEffect(() => {
     let active = true;
@@ -35,7 +43,7 @@ function CameraModal({ mission, article, phase, onClose, onUploaded }: {
         setReady(true);
       } catch { setErr("Autorise l'accès à la caméra pour prendre les photos."); }
     })();
-    return () => { streamRef.current?.getTracks().forEach(t => t.stop()); };
+    return () => { active = false; streamRef.current?.getTracks().forEach(t => t.stop()); };
   }, []);
 
   async function snap() {
@@ -51,24 +59,30 @@ function CameraModal({ mission, article, phase, onClose, onUploaded }: {
       fd.append("prestationId", mission.row); fd.append("article", article); fd.append("phase", phase);
       fd.append("file", new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" }));
       const r = await fetch("/api/espace-pro/photo", { method: "POST", body: fd });
-      const d = await r.json();
-      if (r.ok && d.photo) { onUploaded(d.photo as Photo); setShots(s => [URL.createObjectURL(blob), ...s]); }
-      else setErr(d.error || "Échec de l'envoi");
-    } catch { setErr("Erreur pendant la capture"); }
+      const d = await lireJson(r);
+      if (r.ok && d.photo) { setUpErr(""); onUploaded(d.photo as Photo); setShots(s => [URL.createObjectURL(blob), ...s]); }
+      else setUpErr(msgErreur(d, "La photo n'a pas pu être envoyée. Vérifie ta connexion et réessaie."));
+    } catch { setUpErr("Photo non envoyée : vérifie ta connexion et réessaie."); }
     finally { setBusy(false); }
   }
 
   return (
     <div className="fixed inset-0 z-[60] bg-black flex flex-col">
       <div className="flex items-center justify-between px-4 py-3 text-white" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
-        <span className="text-sm font-medium truncate">{article} · {phase === "avant" ? "Avant" : "Après"}</span>
-        <button onClick={onClose} className="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-sm font-medium">Terminé{shots.length ? ` (${shots.length})` : ""}</button>
+        <span className="text-base font-semibold truncate">{article} · {phase === "avant" ? "① Avant" : "② Après"}</span>
+        <button onClick={onClose} className="min-h-[44px] px-4 rounded-xl bg-white/15 hover:bg-white/25 text-base font-semibold">Terminé{shots.length ? ` (${shots.length})` : ""}</button>
       </div>
       <div className="flex-1 relative flex items-center justify-center overflow-hidden">
         {err ? (
           <div className="text-center px-8"><Camera size={40} className="text-white/40 mx-auto mb-3" /><p className="text-white/80 text-sm">{err}</p></div>
         ) : (
           <video ref={videoRef} playsInline muted autoPlay className="w-full h-full object-cover" />
+        )}
+        {upErr && (
+          <div role="alert" className="absolute top-3 left-3 right-3 flex items-start gap-2 bg-red-600 text-white text-sm font-medium rounded-xl px-3 py-2.5 shadow-lg">
+            <span className="flex-1">{upErr}</span>
+            <button onClick={() => setUpErr("")} aria-label="Fermer le message" className="w-8 h-8 -m-1 flex items-center justify-center rounded-lg hover:bg-white/15"><X size={16} /></button>
+          </div>
         )}
         {shots.length > 0 && (
           <div className="absolute left-2 bottom-2 flex flex-col-reverse gap-1">
@@ -103,10 +117,10 @@ function DemandeStockModal({ onClose }: { onClose: () => void }) {
     setSaving(true); setErr("");
     try {
       const r = await fetch("/api/espace-pro/demande-stock", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ categorie, quantite, details }) });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Erreur");
+      const d = await lireJson(r);
+      if (!r.ok) throw new Error(msgErreur(d, "La demande n'a pas pu être envoyée. Réessaie."));
       setDone(true);
-    } catch (e) { setErr(e instanceof Error ? e.message : "Erreur"); }
+    } catch (e) { setErr(e instanceof TypeError ? "Pas de connexion : la demande n'est pas partie. Réessaie." : e instanceof Error ? e.message : "Erreur"); }
     finally { setSaving(false); }
   }
 
@@ -119,31 +133,31 @@ function DemandeStockModal({ onClose }: { onClose: () => void }) {
             <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-3"><CheckCircle2 size={28} className="text-green-500" /></div>
             <h2 className="font-bold text-gray-900 mb-1">Demande envoyée ✅</h2>
             <p className="text-sm text-gray-500 mb-4">Ton patron la voit sur son tableau de bord.</p>
-            <button onClick={onClose} className="w-full py-2.5 rounded-xl bg-[#1C3557] text-white text-sm font-semibold">Fermer</button>
+            <button onClick={onClose} className="w-full min-h-[48px] rounded-xl bg-[#1C3557] text-white text-base font-semibold">Fermer</button>
           </div>
         ) : (
           <>
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-bold text-gray-900 flex items-center gap-2"><Package size={18} className="text-[#1C3557]" /> Demander du matériel</h2>
-              <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><X size={18} /></button>
+              <button onClick={onClose} aria-label="Fermer" title="Fermer" className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400"><X size={20} /></button>
             </div>
-            {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2 mb-2">{err}</p>}
+            {err && <p role="alert" className="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-2 mb-2">{err}</p>}
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Type de matériel</label>
-                <select value={categorie} onChange={e => setCategorie(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm">
+                <label className="block text-sm text-gray-600 mb-1">Type de matériel</label>
+                <select value={categorie} onChange={e => setCategorie(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-3 text-base">
                   {CATS_MATERIEL.map(c => <option key={c}>{c}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Quantité (optionnel)</label>
-                <input value={quantite} onChange={e => setQuantite(e.target.value)} placeholder="ex : 2 bidons, 1 brosse…" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+                <label className="block text-sm text-gray-600 mb-1">Quantité (optionnel)</label>
+                <input value={quantite} onChange={e => setQuantite(e.target.value)} placeholder="ex : 2 bidons, 1 brosse…" className="w-full border border-gray-200 rounded-xl px-3 py-3 text-base" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Précisez</label>
-                <textarea value={details} onChange={e => setDetails(e.target.value)} rows={3} placeholder="Détaille ce dont tu as besoin (marque, référence, usage…)" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none" />
+                <label className="block text-sm text-gray-600 mb-1">Précisez</label>
+                <textarea value={details} onChange={e => setDetails(e.target.value)} rows={3} placeholder="Détaille ce dont tu as besoin (marque, référence, usage…)" className="w-full border border-gray-200 rounded-xl px-3 py-3 text-base resize-none" />
               </div>
-              <button onClick={envoyer} disabled={saving} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#1C3557] text-white text-sm font-semibold disabled:opacity-50">
+              <button onClick={envoyer} disabled={saving} className="w-full min-h-[48px] flex items-center justify-center gap-2 rounded-xl bg-[#1C3557] text-white text-base font-semibold disabled:opacity-50">
                 {saving ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Envoyer la demande
               </button>
             </div>
@@ -184,7 +198,24 @@ export default function EspaceProPage() {
   const [loading, setLoading]   = useState(true);
   const [sel, setSel]           = useState<Mission | null>(null);
   const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
-  const [view, setView]           = useState<"jour" | "semaine">("jour");
+  const [view, setViewState]      = useState<"jour" | "semaine">("jour");
+  // Vue par défaut : Jour sur téléphone, Semaine sur grand écran ; le dernier choix est mémorisé.
+  useEffect(() => {
+    let v: string | null = null;
+    try { v = localStorage.getItem("espacePro.vue"); } catch { /* stockage indisponible */ }
+    if (v === "jour" || v === "semaine") setViewState(v);
+    else if (window.matchMedia?.("(min-width: 768px)").matches) setViewState("semaine");
+  }, []);
+  const setView = (v: "jour" | "semaine") => { setViewState(v); try { localStorage.setItem("espacePro.vue", v); } catch { /* ignore */ } };
+  // Bandeau de retour (erreur / confirmation) — pas de ToastProvider hors du layout (app).
+  const [banner, setBanner] = useState<{ type: "error" | "success"; msg: string } | null>(null);
+  const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function notify(type: "error" | "success", msg: string) {
+    setBanner({ type, msg });
+    if (bannerTimer.current) clearTimeout(bannerTimer.current);
+    bannerTimer.current = setTimeout(() => setBanner(null), type === "error" ? 7000 : 3500);
+  }
+  useEffect(() => () => { if (bannerTimer.current) clearTimeout(bannerTimer.current); }, []);
   const [cursor, setCursor]       = useState<Date>(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; });
   const [indispos, setIndispos]   = useState<Indispo[]>([]);
   const [dispoBusy, setDispoBusy] = useState(false);
@@ -193,7 +224,7 @@ export default function EspaceProPage() {
   const [demandeOpen, setDemandeOpen] = useState(false);
   const [dark, setDark]           = useState(false);
   useEffect(() => { setDark(document.documentElement.classList.contains("dark")); }, []);
-  const toggleDark = () => { const n = !dark; setDark(n); localStorage.setItem("darkMode", String(n)); document.documentElement.classList.toggle("dark", n); };
+  const toggleDark = () => { const n = !dark; setDark(n); try { localStorage.setItem("darkMode", String(n)); } catch { /* ignore */ } document.documentElement.classList.toggle("dark", n); };
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
@@ -208,32 +239,45 @@ export default function EspaceProPage() {
     setLoading(true);
     try {
       const [rm, rd] = await Promise.all([fetch("/api/espace-pro/missions"), fetch("/api/espace-pro/dispo")]);
-      if (rm.ok) setMissions(await rm.json());
-      if (rd.ok) { const d = await rd.json(); setIndispos(Array.isArray(d.indispos) ? d.indispos : []); }
-    } finally { setLoading(false); }
+      if (rm.status === 401 || rd.status === 401) { window.location.href = "/login"; return; }
+      if (rm.ok) { const d = await lireJson(rm); setMissions(Array.isArray(d) ? (d as unknown as Mission[]) : []); }
+      if (rd.ok) { const d = await lireJson(rd); setIndispos(Array.isArray(d.indispos) ? d.indispos as Indispo[] : []); }
+      if (!rm.ok || !rd.ok) notify("error", "Impossible de charger toutes tes missions. Appuie sur « Actualiser ».");
+    } catch { notify("error", "Pas de connexion internet. Appuie sur « Actualiser » quand le réseau revient."); }
+    finally { setLoading(false); }
   }
-  useEffect(() => { load(); }, []);
-  async function logout() { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/login"; }
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  async function logout() { try { await fetch("/api/auth/logout", { method: "POST" }); } finally { window.location.href = "/login"; } }
 
   const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const indisposOf = (d: Date) => indispos.filter(x => x.date === isoOf(d));
   const jourEntierBloque = (d: Date) => indisposOf(d).some(x => !x.debut && !x.fin);
-  async function setDispo(entry: Indispo, bloquer: boolean) {
+  async function setDispo(entry: Indispo, bloquer: boolean): Promise<boolean> {
     setDispoBusy(true);
     try {
       const r = await fetch("/api/espace-pro/dispo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...entry, bloquer }) });
-      const j = await r.json(); if (r.ok) setIndispos(Array.isArray(j.indispos) ? j.indispos : []);
-    } finally { setDispoBusy(false); }
+      const j = await lireJson(r);
+      if (!r.ok) { notify("error", msgErreur(j, "Indisponibilité non enregistrée. Réessaie.")); return false; }
+      setIndispos(Array.isArray(j.indispos) ? j.indispos as Indispo[] : []);
+      notify("success", bloquer ? "Indisponibilité enregistrée ✅" : "Indisponibilité retirée");
+      return true;
+    } catch { notify("error", "Pas de connexion : rien n'a été enregistré. Réessaie."); return false; }
+    finally { setDispoBusy(false); }
   }
   const libIndispo = (x: Indispo) => (!x.debut && !x.fin) ? "Journée entière" : `${x.debut || "début"} – ${x.fin || "fin"}`;
   // Congés sur une période : « du … au … » en une fois (un seul email au patron).
   const [plage, setPlage] = useState({ du: "", au: "" });
-  async function setConges(du: string, au: string, bloquer: boolean) {
+  async function setConges(du: string, au: string, bloquer: boolean): Promise<boolean> {
     setDispoBusy(true);
     try {
       const r = await fetch("/api/espace-pro/dispo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: du, au, bloquer }) });
-      const j = await r.json(); if (r.ok) setIndispos(Array.isArray(j.indispos) ? j.indispos : []);
-    } finally { setDispoBusy(false); }
+      const j = await lireJson(r);
+      if (!r.ok) { notify("error", msgErreur(j, "Congés non enregistrés. Réessaie.")); return false; }
+      setIndispos(Array.isArray(j.indispos) ? j.indispos as Indispo[] : []);
+      notify("success", bloquer ? "Congés posés ✅ Ton patron est prévenu." : "Congés retirés");
+      return true;
+    } catch { notify("error", "Pas de connexion : congés non enregistrés. Réessaie."); return false; }
+    finally { setDispoBusy(false); }
   }
   const congesAvenir = useMemo(() => grouperIndispos(indispos.filter(x => x.date >= isoOf(today))), [indispos, today]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -244,12 +288,22 @@ export default function EspaceProPage() {
   }
   async function delPhoto(p: Photo) {
     if (!sel || !confirm("Supprimer cette photo ?")) return;
-    await fetch("/api/espace-pro/photo", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prestationId: sel.row, path: p.path }) });
+    try {
+      const r = await fetch("/api/espace-pro/photo", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prestationId: sel.row, path: p.path }) });
+      if (!r.ok) { notify("error", msgErreur(await lireJson(r), "La photo n'a pas pu être supprimée. Réessaie.")); return; }
+    } catch { notify("error", "Pas de connexion : la photo n'a pas été supprimée."); return; }
+    notify("success", "Photo supprimée");
     const rm = (m: Mission) => ({ ...m, photos: (m.photos || []).filter(x => x.path !== p.path) });
     setSel(s => s ? rm(s) : s); setMissions(ms => ms.map(m => m.row === sel.row ? rm(m) : m));
   }
 
   const missionsOf = (day: Date) => missions.filter(m => { const d = frToDate(m.date); return d && sameDay(d, day); }).sort((a, b) => (a.heure || "").localeCompare(b.heure || ""));
+  // Prochaine mission strictement après `day` (et pas dans le passé) : pour l'état vide de la vue Jour.
+  const prochaineApres = (day: Date): Date | null => {
+    let best: Date | null = null;
+    for (const m of missions) { const d = frToDate(m.date); if (d && d > day && d >= today && (!best || d < best)) best = d; }
+    return best;
+  };
   const nbAvenir = missions.filter(m => { const d = frToDate(m.date); return d && d >= today; }).length;
   const end = addDays(weekStart, 6);
   const weekLabel = `${weekStart.getDate()} ${MOIS_C[weekStart.getMonth()]} – ${end.getDate()} ${MOIS_C[end.getMonth()]}`;
@@ -290,80 +344,131 @@ export default function EspaceProPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="sticky top-0 z-20 bg-[#1C3557] text-white px-4 py-3 flex items-center justify-between shadow" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
-        <div><p className="font-bold leading-tight">KinouClean</p><p className="text-[11px] text-white/60">Espace prestataire · {nbAvenir} mission{nbAvenir > 1 ? "s" : ""} à venir</p></div>
-        <div className="flex items-center gap-1.5">
-          <button onClick={() => setDemandeOpen(true)} className="p-2 rounded-lg hover:bg-white/10" title="Demander du matériel"><Package size={16} /></button>
-          <button onClick={toggleDark} className="p-2 rounded-lg hover:bg-white/10" title={dark ? "Mode clair" : "Mode sombre"}>{dark ? <Sun size={16} /> : <Moon size={16} />}</button>
-          <button onClick={load} className="p-2 rounded-lg hover:bg-white/10" title="Rafraîchir"><RefreshCw size={16} className={loading ? "animate-spin" : ""} /></button>
-          <button onClick={logout} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-sm"><LogOut size={14} /></button>
+      {/* En-tête + barre de navigation : un seul bloc collant (hauteur variable selon le téléphone) */}
+      <div className="sticky top-0 z-20 shadow">
+      <header className="bg-[#1C3557] text-white px-3 py-2 flex items-center justify-between gap-2" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
+        <div className="min-w-0"><p className="font-bold text-base leading-tight">KinouClean</p><p className="text-xs text-white/70 truncate">{nbAvenir} mission{nbAvenir > 1 ? "s" : ""} à venir</p></div>
+        <div className="flex items-center gap-0.5 shrink-0">
+          {[
+            { label: "Matériel", title: "Demander du matériel", onClick: () => setDemandeOpen(true), icon: <Package size={18} /> },
+            { label: dark ? "Clair" : "Sombre", title: dark ? "Passer en mode clair" : "Passer en mode sombre", onClick: toggleDark, icon: dark ? <Sun size={18} /> : <Moon size={18} /> },
+            { label: "Actualiser", title: "Actualiser mes missions", onClick: load, icon: <RefreshCw size={18} className={loading ? "animate-spin" : ""} /> },
+            { label: "Quitter", title: "Se déconnecter", onClick: logout, icon: <LogOut size={18} /> },
+          ].map(b => (
+            <button key={b.title} onClick={b.onClick} title={b.title} aria-label={b.title}
+              className="min-w-[48px] min-h-[44px] px-1.5 rounded-lg hover:bg-white/10 active:bg-white/20 flex flex-col items-center justify-center gap-0.5">
+              {b.icon}<span className="text-[10px] font-medium leading-none text-white/85">{b.label}</span>
+            </button>
+          ))}
         </div>
       </header>
 
       {/* Barre : bascule Jour/Semaine + navigation */}
-      <div className="bg-white border-b border-gray-200 px-3 py-2 flex items-center gap-2 sticky top-[56px] z-10">
-        <div className="flex bg-gray-100 rounded-lg p-0.5">
+      <div className="bg-white border-b border-gray-200 px-3 py-1.5 flex items-center gap-1.5">
+        <div className="flex bg-gray-100 rounded-xl p-0.5">
           {(["jour", "semaine"] as const).map(v => (
-            <button key={v} onClick={() => setView(v)} className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${view === v ? "bg-white shadow text-gray-800" : "text-gray-500"}`}>{v === "jour" ? "Jour" : "Semaine"}</button>
+            <button key={v} onClick={() => setView(v)} aria-pressed={view === v} className={`min-h-[40px] px-3.5 rounded-lg text-sm font-semibold transition-all ${view === v ? "bg-white shadow text-gray-800" : "text-gray-500"}`}>{v === "jour" ? "Jour" : "Semaine"}</button>
           ))}
         </div>
-        {view === "jour" ? (
-          <>
-            <button onClick={() => setCursor(c => addDays(c, -1))} className="p-1.5 rounded-lg hover:bg-gray-100 ml-auto"><ChevronLeft size={18} className="text-gray-600" /></button>
-            <button onClick={() => setCursor(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })} className="px-2.5 py-1 text-xs font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50">Auj.</button>
-            <button onClick={() => setCursor(c => addDays(c, 1))} className="p-1.5 rounded-lg hover:bg-gray-100"><ChevronRight size={18} className="text-gray-600" /></button>
-          </>
-        ) : (
-          <>
-            <button onClick={() => setWeekStart(w => addDays(w, -7))} className="p-1.5 rounded-lg hover:bg-gray-100 ml-auto"><ChevronLeft size={18} className="text-gray-600" /></button>
-            <button onClick={() => setWeekStart(mondayOf(new Date()))} className="px-2.5 py-1 text-xs font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50">Auj.</button>
-            <button onClick={() => setWeekStart(w => addDays(w, 7))} className="p-1.5 rounded-lg hover:bg-gray-100"><ChevronRight size={18} className="text-gray-600" /></button>
-          </>
-        )}
+        <button onClick={() => view === "jour" ? setCursor(c => addDays(c, -1)) : setWeekStart(w => addDays(w, -7))} aria-label={view === "jour" ? "Jour précédent" : "Semaine précédente"} title={view === "jour" ? "Jour précédent" : "Semaine précédente"}
+          className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 ml-auto"><ChevronLeft size={22} className="text-gray-600" /></button>
+        <button onClick={() => { if (view === "jour") { const d = new Date(); d.setHours(0, 0, 0, 0); setCursor(d); } else setWeekStart(mondayOf(new Date())); }}
+          className="min-h-[40px] px-3 text-sm font-semibold text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50">Aujourd&apos;hui</button>
+        <button onClick={() => view === "jour" ? setCursor(c => addDays(c, 1)) : setWeekStart(w => addDays(w, 7))} aria-label={view === "jour" ? "Jour suivant" : "Semaine suivante"} title={view === "jour" ? "Jour suivant" : "Semaine suivante"}
+          className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100"><ChevronRight size={22} className="text-gray-600" /></button>
       </div>
+      </div>
+
+      {/* Bandeau d'erreur / de confirmation */}
+      {banner && (
+        <div role={banner.type === "error" ? "alert" : "status"} className="fixed left-3 right-3 z-[70] flex items-start gap-2 rounded-xl px-3 py-3 shadow-lg text-sm font-medium text-white sm:max-w-md sm:mx-auto"
+          style={{ bottom: "max(1rem, env(safe-area-inset-bottom))", backgroundColor: banner.type === "error" ? "#DC2626" : "#16A34A" }}>
+          <span className="flex-1">{banner.msg}</span>
+          <button onClick={() => setBanner(null)} aria-label="Fermer le message" className="w-8 h-8 -m-1 flex items-center justify-center rounded-lg hover:bg-white/15"><X size={16} /></button>
+        </div>
+      )}
 
       {loading && missions.length === 0 ? (
         <div className="flex items-center justify-center py-16 text-gray-400"><Loader2 className="animate-spin mr-2" size={18} /> Chargement…</div>
       ) : view === "jour" ? (
         /* ══ VUE JOUR ══ */
         <div className="flex-1 p-3 space-y-2">
-          <p className="text-sm font-semibold text-gray-800">{JOURS_FULL[cursor.getDay()]} {cursor.getDate()} {MOIS[cursor.getMonth()]}</p>
+          <p className="text-base font-bold text-gray-800">{JOURS_FULL[cursor.getDay()]} {cursor.getDate()} {MOIS[cursor.getMonth()]}</p>
+
+          {/* Missions du jour en grandes cartes lisibles (ou état vide) */}
+          {(() => {
+            const evs = missionsOf(cursor);
+            if (evs.length === 0) {
+              const next = prochaineApres(cursor);
+              return (
+                <div className="bg-white rounded-2xl border border-gray-100 p-5 text-center">
+                  <p className="text-base font-semibold text-gray-800">Aucune mission ce jour 🙌</p>
+                  {next ? (
+                    <>
+                      <p className="text-sm text-gray-500 mt-1">Prochaine mission : {JOURS_FULL[next.getDay()].toLowerCase()} {next.getDate()} {MOIS[next.getMonth()]}</p>
+                      <button onClick={() => setCursor(next)} className="mt-3 w-full min-h-[48px] rounded-xl bg-[#1C3557] text-white text-base font-semibold flex items-center justify-center gap-1.5">
+                        Voir ma prochaine mission <ChevronRight size={18} />
+                      </button>
+                    </>
+                  ) : <p className="text-sm text-gray-500 mt-1">Pas d&apos;autre mission prévue pour l&apos;instant.</p>}
+                </div>
+              );
+            }
+            return (
+              <div className="space-y-2">
+                {evs.map(m => (
+                  <button key={m.row} onClick={() => setSel(m)} className="w-full text-left bg-white rounded-2xl border border-gray-100 p-3.5 flex gap-3 active:scale-[0.99] transition-transform shadow-sm">
+                    <span className="w-1.5 rounded-full shrink-0" style={{ backgroundColor: colorByType[m.typePresta] || "#4285F4" }} />
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-center gap-1.5 text-base font-bold text-gray-900"><Clock size={16} className="text-gray-400 shrink-0" />{m.heure || "Heure à confirmer"}</span>
+                      <span className="block text-base font-semibold text-gray-800 truncate mt-0.5">{m.prenom} {m.nom}</span>
+                      <span className="block text-sm text-gray-500 truncate">{m.typePresta}</span>
+                      {m.adresse && <span className="flex items-start gap-1 text-sm text-gray-600 mt-1"><MapPin size={15} className="shrink-0 mt-0.5 text-gray-400" /><span className="line-clamp-2">{m.adresse}</span></span>}
+                    </span>
+                    <ChevronRight size={20} className="text-gray-300 self-center shrink-0" />
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Mes congés : poser une période et voir les plages à venir */}
           <div className="bg-white rounded-2xl border border-gray-100 p-3 space-y-2">
-            <p className="text-xs font-semibold text-gray-600 flex items-center gap-1">🏖️ Mes congés {dispoBusy && <Loader2 size={11} className="animate-spin text-amber-500" />}</p>
+            <p className="text-sm font-semibold text-gray-700 flex items-center gap-1">🏖️ Mes congés {dispoBusy && <Loader2 size={13} className="animate-spin text-amber-500" />}</p>
             {congesAvenir.length > 0 && (
               <div className="space-y-1">
                 {congesAvenir.map((c, i) => (
                   <div key={i} className="flex items-center justify-between bg-amber-50 rounded-lg px-2.5 py-1.5">
                     <span className="text-sm text-amber-800 font-medium">{libellePlage(c)}{!c.partiel && c.jours.length > 1 ? ` · ${c.jours.length} j` : ""}</span>
                     <button onClick={() => c.partiel ? setDispo({ date: c.start, debut: c.debut || "", fin: c.fin || "" }, false) : setConges(c.start, c.end, false)}
-                      disabled={dispoBusy} className="text-xs text-amber-600 hover:text-amber-800 font-medium disabled:opacity-50">Retirer</button>
+                      disabled={dispoBusy} className="min-h-[40px] px-3 -mr-1 text-sm text-amber-700 hover:text-amber-900 font-semibold disabled:opacity-50">Retirer</button>
                   </div>
                 ))}
               </div>
             )}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-gray-500">Du</span>
-              <input type="date" value={plage.du} min={isoOf(today)} onChange={e => setPlage(p => ({ du: e.target.value, au: p.au && p.au >= e.target.value ? p.au : e.target.value }))} className="border border-gray-200 rounded-lg px-1.5 py-1 text-xs" />
-              <span className="text-xs text-gray-500">au</span>
-              <input type="date" value={plage.au} min={plage.du || isoOf(today)} onChange={e => setPlage(p => ({ ...p, au: e.target.value }))} className="border border-gray-200 rounded-lg px-1.5 py-1 text-xs" />
-              <button onClick={() => { setConges(plage.du, plage.au, true); setPlage({ du: "", au: "" }); }} disabled={dispoBusy || !plage.du || !plage.au || plage.au < plage.du}
-                className="px-2.5 py-1 rounded-lg bg-amber-500 text-white text-xs font-medium disabled:opacity-40">Poser mes congés</button>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-sm text-gray-500">Du
+                <input type="date" value={plage.du} min={isoOf(today)} onChange={e => setPlage(p => ({ du: e.target.value, au: p.au && p.au >= e.target.value ? p.au : e.target.value }))} className="mt-0.5 w-full min-h-[44px] border border-gray-200 rounded-lg px-2 text-base" />
+              </label>
+              <label className="text-sm text-gray-500">Au
+                <input type="date" value={plage.au} min={plage.du || isoOf(today)} onChange={e => setPlage(p => ({ ...p, au: e.target.value }))} className="mt-0.5 w-full min-h-[44px] border border-gray-200 rounded-lg px-2 text-base" />
+              </label>
             </div>
+            <button onClick={async () => { if (await setConges(plage.du, plage.au, true)) setPlage({ du: "", au: "" }); }} disabled={dispoBusy || !plage.du || !plage.au || plage.au < plage.du}
+              className="w-full min-h-[44px] rounded-xl bg-amber-500 text-white text-base font-semibold disabled:opacity-40">Poser mes congés</button>
           </div>
 
           {/* Indisponibilités du jour */}
           <div className="bg-white rounded-2xl border border-gray-100 p-3 space-y-2">
-            <p className="text-xs font-semibold text-gray-600 flex items-center gap-1">🌴 Mes indisponibilités {dispoBusy && <Loader2 size={11} className="animate-spin text-amber-500" />}</p>
+            <p className="text-sm font-semibold text-gray-700 flex items-center gap-1">🌴 Mes indisponibilités ce jour {dispoBusy && <Loader2 size={13} className="animate-spin text-amber-500" />}</p>
             {indisposOf(cursor).length === 0 ? (
-              <p className="text-[11px] text-gray-400">Dispo toute la journée. Bloque un créneau si besoin :</p>
+              <p className="text-sm text-gray-500">Dispo toute la journée. Bloque un créneau si besoin :</p>
             ) : (
               <div className="space-y-1">
                 {indisposOf(cursor).map((x, i) => (
                   <div key={i} className="flex items-center justify-between bg-amber-50 rounded-lg px-2.5 py-1.5">
                     <span className="text-sm text-amber-800 font-medium">{libIndispo(x)}</span>
-                    <button onClick={() => setDispo(x, false)} className="text-xs text-amber-600 hover:text-amber-800 font-medium">Retirer</button>
+                    <button onClick={() => setDispo(x, false)} disabled={dispoBusy} className="min-h-[40px] px-3 -mr-1 text-sm text-amber-700 hover:text-amber-900 font-semibold disabled:opacity-50">Retirer</button>
                   </div>
                 ))}
               </div>
@@ -375,14 +480,14 @@ export default function EspaceProPage() {
                 { label: "Après-midi", d: "13:00", f: "19:00" },
               ].map(p => (
                 <button key={p.label} onClick={() => setDispo({ date: isoOf(cursor), debut: p.d, fin: p.f }, true)} disabled={dispoBusy}
-                  className="px-2.5 py-1 rounded-lg border border-amber-200 text-amber-700 text-xs font-medium hover:bg-amber-50 disabled:opacity-50">+ {p.label}</button>
+                  className="min-h-[40px] px-3 rounded-lg border border-amber-200 text-amber-700 text-sm font-semibold hover:bg-amber-50 disabled:opacity-50">+ {p.label}</button>
               ))}
-              <div className="flex items-center gap-1 ml-auto">
-                <input type="time" value={perso.debut} onChange={e => setPerso(p => ({ ...p, debut: e.target.value }))} className="border border-gray-200 rounded-lg px-1.5 py-1 text-xs" />
-                <span className="text-gray-400 text-xs">→</span>
-                <input type="time" value={perso.fin} onChange={e => setPerso(p => ({ ...p, fin: e.target.value }))} className="border border-gray-200 rounded-lg px-1.5 py-1 text-xs" />
-                <button onClick={() => { if (perso.debut && perso.fin) { setDispo({ date: isoOf(cursor), debut: perso.debut, fin: perso.fin }, true); setPerso({ debut: "", fin: "" }); } }} disabled={dispoBusy || !perso.debut || !perso.fin}
-                  className="px-2 py-1 rounded-lg bg-amber-500 text-white text-xs font-medium disabled:opacity-40">OK</button>
+              <div className="flex items-center gap-1.5 w-full">
+                <input type="time" aria-label="Début du créneau" value={perso.debut} onChange={e => setPerso(p => ({ ...p, debut: e.target.value }))} className="flex-1 min-w-0 min-h-[44px] border border-gray-200 rounded-lg px-2 text-base" />
+                <span className="text-gray-400 text-sm">→</span>
+                <input type="time" aria-label="Fin du créneau" value={perso.fin} onChange={e => setPerso(p => ({ ...p, fin: e.target.value }))} className="flex-1 min-w-0 min-h-[44px] border border-gray-200 rounded-lg px-2 text-base" />
+                <button onClick={async () => { if (perso.debut && perso.fin && await setDispo({ date: isoOf(cursor), debut: perso.debut, fin: perso.fin }, true)) setPerso({ debut: "", fin: "" }); }} disabled={dispoBusy || !perso.debut || !perso.fin || perso.fin <= perso.debut}
+                  className="min-h-[44px] px-4 rounded-lg bg-amber-500 text-white text-base font-semibold disabled:opacity-40">OK</button>
               </div>
             </div>
           </div>
@@ -397,6 +502,7 @@ export default function EspaceProPage() {
       ) : (
         /* ══ VUE SEMAINE ══ */
         <div className="flex-1 overflow-x-auto">
+          <p className="sm:hidden text-xs text-gray-500 text-center py-1.5 bg-amber-50">↔ Glisse pour voir toute la semaine · touche une mission pour l&apos;ouvrir</p>
           <div className="min-w-[600px]">
             <div className="flex items-center justify-center py-1.5 bg-white border-b border-gray-100"><span className="text-sm font-semibold text-gray-800">{weekLabel}</span></div>
             <div className="grid bg-white border-b border-gray-200" style={{ gridTemplateColumns: "42px repeat(7, 1fr)" }}>
@@ -438,53 +544,67 @@ export default function EspaceProPage() {
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) setSel(null); }}>
             <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl shadow-2xl px-5 pt-3 pb-5 space-y-3 max-h-[88vh] overflow-y-auto" style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}>
               <div className="mx-auto w-10 h-1 rounded-full bg-gray-200 mb-1 sm:hidden" />
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-gray-400">{jour}{sel.heure ? ` · ${sel.heure}` : ""}</p>
-                  <h2 className="text-lg font-bold text-gray-900">{sel.prenom} {sel.nom}</h2>
-                  <p className="text-sm text-gray-500">{sel.typePresta}</p>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-600 flex items-center gap-1.5"><Clock size={15} /> {jour}{sel.heure ? ` · ${sel.heure}` : ""}</p>
+                  <h2 className="text-xl font-bold text-gray-900">{sel.prenom} {sel.nom}</h2>
+                  <p className="text-base text-gray-600">{sel.typePresta}</p>
                 </div>
-                <button onClick={() => setSel(null)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><X size={18} /></button>
+                <button onClick={() => setSel(null)} aria-label="Fermer la fiche" title="Fermer" className="w-11 h-11 shrink-0 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400"><X size={22} /></button>
               </div>
               {sel.adresse && (
-                <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(sel.adresse)}`} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 p-3 rounded-xl bg-blue-50 text-blue-700 text-sm font-medium">
-                  <MapPin size={16} className="flex-shrink-0" /> <span className="flex-1">{sel.adresse}</span> <span className="text-xs opacity-70">Itinéraire →</span>
-                </a>
+                <p className="flex items-start gap-2 text-base text-gray-800"><MapPin size={18} className="shrink-0 mt-0.5 text-gray-400" /> {sel.adresse}</p>
               )}
-              {sel.telMasque ? (
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-gray-50 text-gray-500 text-sm">
-                  <Lock size={16} className="flex-shrink-0" /> Numéro du client visible <strong className="mx-1">24h avant</strong> le rendez-vous.
-                </div>
-              ) : sel.tel ? (
-                <a href={`tel:${sel.tel.replace(/\s/g, "")}`} className="flex items-center gap-2 p-3 rounded-xl bg-green-50 text-green-700 text-sm font-medium"><Phone size={16} /> {sel.tel}</a>
-              ) : null}
-              {sel.message && <div className="p-3 rounded-xl bg-gray-50"><p className="text-xs font-semibold text-gray-400 mb-1">Consignes</p><p className="text-sm text-gray-700 whitespace-pre-line">{sel.message}</p></div>}
+
+              {/* Actions principales : gros boutons */}
+              <div className="grid grid-cols-1 gap-2">
+                {sel.adresse && (
+                  <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(sel.adresse)}`} target="_blank" rel="noopener noreferrer"
+                    className="min-h-[52px] flex items-center justify-center gap-2 rounded-xl bg-blue-600 text-white text-base font-semibold active:scale-[0.99]">
+                    <MapPin size={20} /> Itinéraire (Google Maps)
+                  </a>
+                )}
+                {sel.telMasque ? (
+                  <div className="flex items-center gap-2 p-3 rounded-xl bg-gray-50 text-gray-600 text-sm">
+                    <Lock size={18} className="flex-shrink-0" /> <span>Numéro du client visible <strong>24h avant</strong> le rendez-vous.</span>
+                  </div>
+                ) : sel.tel ? (
+                  <a href={`tel:${sel.tel.replace(/\s/g, "")}`} className="min-h-[52px] flex items-center justify-center gap-2 rounded-xl bg-green-600 text-white text-base font-semibold active:scale-[0.99]">
+                    <Phone size={20} /> Appeler le client · {sel.tel}
+                  </a>
+                ) : null}
+              </div>
+              {sel.message && <div className="p-3 rounded-xl bg-gray-50"><p className="text-sm font-semibold text-gray-500 mb-1">Consignes</p><p className="text-base text-gray-800 whitespace-pre-line">{sel.message}</p></div>}
 
               {/* Photos avant / après, par article (plusieurs angles possibles) */}
               <div className="border-t border-gray-100 pt-3">
-                <p className="text-sm font-semibold text-gray-800 flex items-center gap-1.5"><Camera size={15} /> Photos avant / après</p>
-                <p className="text-[11px] text-gray-400 mb-2.5">Tu peux en ajouter plusieurs d&apos;un coup (plusieurs angles).</p>
-                <div className="space-y-3.5">
+                <p className="text-base font-semibold text-gray-800 flex items-center gap-1.5"><Camera size={18} /> Photos de l&apos;intervention</p>
+                <p className="text-sm text-gray-500 mb-3">① Prends les photos <strong>avant</strong> de commencer, ② puis <strong>après</strong> avoir fini. Plusieurs angles possibles.</p>
+                <div className="space-y-4">
                   {articlesDe(sel.typePresta).map(art => (
-                    <div key={art}>
-                      <p className="text-xs font-semibold text-gray-700 mb-1.5">{art}</p>
+                    <div key={art} className="rounded-xl border border-gray-100 p-3">
+                      <p className="text-base font-semibold text-gray-800 mb-2">{art}</p>
                       {(["avant", "apres"] as const).map(phase => {
                         const ph = (sel.photos || []).filter(p => p.article === art && p.phase === phase);
+                        const avant = phase === "avant";
                         return (
-                          <div key={phase} className="flex items-start gap-2 mb-2">
-                            <span className={`text-[11px] font-semibold w-12 pt-5 ${phase === "avant" ? "text-orange-600" : "text-green-600"}`}>{phase === "avant" ? "Avant" : "Après"}</span>
-                            <div className="flex gap-2 flex-wrap">
+                          <div key={phase} className="mb-3 last:mb-0">
+                            <p className={`text-sm font-semibold mb-1.5 flex items-center gap-1.5 ${avant ? "text-orange-600" : "text-green-600"}`}>
+                              {avant ? "① Avant" : "② Après"}
+                              {ph.length > 0 && <span className="inline-flex items-center gap-0.5 text-xs font-medium text-gray-500"><CheckCircle2 size={13} className="text-green-500" /> {ph.length} photo{ph.length > 1 ? "s" : ""}</span>}
+                            </p>
+                            <div className="flex gap-2.5 flex-wrap">
                               {ph.map(p => (
                                 <div key={p.path} className="relative">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <a href={p.url} target="_blank" rel="noopener noreferrer"><img src={p.url} alt={art} className="w-16 h-16 rounded-xl object-cover border border-gray-200" /></a>
-                                  <button onClick={() => delPhoto(p)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs leading-none shadow">×</button>
+                                  <a href={p.url} target="_blank" rel="noopener noreferrer"><img src={p.url} alt={`${art} – ${avant ? "avant" : "après"}`} className="w-20 h-20 rounded-xl object-cover border border-gray-200" /></a>
+                                  <button onClick={() => delPhoto(p)} aria-label="Supprimer cette photo" title="Supprimer cette photo"
+                                    className="absolute -top-2.5 -right-2.5 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center shadow border-2 border-white"><X size={14} /></button>
                                 </div>
                               ))}
                               <button onClick={() => setCam({ article: art, phase })}
-                                className="w-16 h-16 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-0.5 text-gray-400 hover:border-blue-400 hover:text-blue-500 active:scale-95 transition-all">
-                                <Camera size={20} /><span className="text-[9px]">Prendre</span>
+                                className={`w-20 h-20 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-all ${avant ? "border-orange-300 text-orange-600" : "border-green-300 text-green-600"}`}>
+                                <Camera size={24} /><span className="text-xs font-semibold">{ph.length ? "Ajouter" : "Prendre"}</span>
                               </button>
                             </div>
                           </div>
@@ -495,7 +615,7 @@ export default function EspaceProPage() {
                 </div>
               </div>
 
-              <p className="flex items-center gap-1.5 text-xs text-gray-400"><Clock size={12} /> {d && d < today ? "Rendez-vous passé" : "À venir"}</p>
+              <p className="flex items-center gap-1.5 text-sm text-gray-500"><Clock size={14} /> {d && d < today ? "Rendez-vous passé" : "À venir"}</p>
             </div>
           </div>
         );

@@ -9,6 +9,7 @@ import Topbar from "@/components/Topbar";
 import { SkeletonList } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
+import { formatMontant } from "@/lib/finance";
 
 interface Mouvement { date: string; type: "entree" | "sortie"; quantite: number; motif?: string; avant?: number; apres?: number; }
 interface StockItem {
@@ -350,7 +351,7 @@ export default function StockPage() {
         <div className="grid grid-cols-3 gap-3">
           {[
             { label: "Articles", val: items.length, icon: Boxes, color: "text-blue-600", bg: "bg-blue-50" },
-            { label: "Valeur du stock", val: `${valeurTotale.toFixed(0)} €`, icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50" },
+            { label: "Valeur du stock", val: formatMontant(valeurTotale), icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50" },
             { label: "À réapprovisionner", val: bas.length, icon: Bell, color: bas.length ? "text-red-600" : "text-gray-400", bg: bas.length ? "bg-red-50" : "bg-gray-50" },
           ].map(({ label, val, icon: Icon, color, bg }) => (
             <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col items-center gap-1">
@@ -431,7 +432,7 @@ export default function StockPage() {
                           <span className={`text-xs font-medium ${a != null && a < 2 ? "text-red-600" : a != null ? "text-gray-700" : "text-gray-300"}`}>{autonomieLabel(a)}</span>
                         ); })()}
                       </td>
-                      <td className="px-4 py-3 text-right text-gray-600">{i.prixUnitaire != null ? `${(i.quantite * i.prixUnitaire).toFixed(2)} €` : "—"}</td>
+                      <td className="px-4 py-3 text-right text-gray-600">{i.prixUnitaire != null ? formatMontant(i.quantite * i.prixUnitaire, { decimales: 2 }) : "—"}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={() => setMvt({ item: i, type: "entree" })} title="Entrée (+)"

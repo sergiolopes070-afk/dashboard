@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
-import { TrendingUp, TrendingDown, BadgeEuro, Users, Package, Target, Crown, Boxes } from "lucide-react";
+import { TrendingUp, TrendingDown, BadgeEuro, Package, Target, Crown, Boxes } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import { Skeleton } from "@/components/Skeleton";
 import { Prestation, Depense } from "@/lib/constants";
 import { bilanPeriode, caRealise, estRealisee, prixPresta, isoLocal, formatMontant } from "@/lib/finance";
 
@@ -24,6 +25,8 @@ export default function PilotagePage() {
   const [prospects, setPros]  = useState<Prospect[]>([]);
   const [stock, setStock]     = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // Vrai dès le 1er chargement terminé : évite d'afficher des "0 €" trompeurs pendant le chargement
+  const [loaded, setLoaded]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -33,7 +36,7 @@ export default function PilotagePage() {
       if (dep.ok) setDep(await dep.json());
       if (pr.ok) { const x = await pr.json(); setPros(Array.isArray(x) ? x : []); }
       if (st.ok) { const x = await st.json(); setStock(Array.isArray(x) ? x : []); }
-    } finally { setLoading(false); }
+    } finally { setLoading(false); setLoaded(true); }
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -90,7 +93,14 @@ export default function PilotagePage() {
           ].map(({ label, val, icon: Icon, c, bg }) => (
             <Card key={label} className="!p-4 flex items-center gap-3">
               <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center flex-shrink-0`}><Icon size={18} className={c} /></div>
-              <div><p className="text-lg font-bold text-gray-900 leading-none">{val}</p><p className="text-[11px] text-gray-400 mt-1">{label}</p></div>
+              {loaded ? (
+                <div><p className="text-lg font-bold text-gray-900 leading-none">{val}</p><p className="text-[11px] text-gray-400 mt-1">{label}</p></div>
+              ) : (
+                <div className="flex-1 space-y-1.5" aria-busy="true" aria-label="Chargement en cours">
+                  <Skeleton className="h-5 w-20" />
+                  <Skeleton className="h-3 w-28" />
+                </div>
+              )}
             </Card>
           ))}
         </div>
@@ -110,7 +120,9 @@ export default function PilotagePage() {
           {/* Top clients */}
           <Card>
             <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Crown size={16} className="text-amber-500" /> Meilleurs clients (CA réalisé)</h2>
-            {topClients.length === 0 ? <p className="text-sm text-gray-400">Clôture des prestations pour voir tes meilleurs clients.</p> : (
+            {!loaded ? (
+              <div className="space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-5 w-full" />)}</div>
+            ) : topClients.length === 0 ? <p className="text-sm text-gray-400">Clôture des prestations pour voir tes meilleurs clients.</p> : (
               <div className="space-y-2">
                 {topClients.map(([nom, d], i) => (
                   <div key={nom} className="flex items-center gap-3">
@@ -128,7 +140,7 @@ export default function PilotagePage() {
           <Card>
             <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Target size={16} className="text-purple-500" /> Conversion des leads</h2>
             <div className="flex items-center gap-4 mb-3">
-              <div className="text-center"><p className="text-2xl font-bold text-purple-700">{conv.taux}%</p><p className="text-[11px] text-gray-400">taux de conversion</p></div>
+              <div className="text-center"><p className="text-2xl font-bold text-purple-700">{loaded ? `${conv.taux}%` : "…"}</p><p className="text-[11px] text-gray-400">taux de conversion</p></div>
               <p className="text-sm text-gray-500"><strong className="text-gray-800">{conv.convertis}</strong> convertis sur <strong className="text-gray-800">{conv.total}</strong> prospects</p>
             </div>
             <div className="space-y-1.5">
@@ -146,7 +158,9 @@ export default function PilotagePage() {
         {/* ── STOCK analytics ── */}
         <Card>
           <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Package size={17} className="text-orange-500" /> Analyse du stock</h2>
-          {stock.length === 0 ? (
+          {!loaded ? (
+            <div className="space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-4 w-full" />)}</div>
+          ) : stock.length === 0 ? (
             <p className="text-sm text-gray-400">Crée tes produits (page Stock) pour débloquer l&apos;analyse : coût matériel par prestation, produits les plus consommés…</p>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -154,7 +168,7 @@ export default function PilotagePage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1"><Boxes size={13} /> Vue d&apos;ensemble</p>
                 <div className="space-y-1.5 text-sm">
                   <div className="flex justify-between"><span className="text-gray-500">Articles</span><strong className="text-gray-800">{stock.length}</strong></div>
-                  <div className="flex justify-between"><span className="text-gray-500">Valeur du stock</span><strong className="text-emerald-700">{stockVal.toFixed(0)} €</strong></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Valeur du stock</span><strong className="text-emerald-700">{formatMontant(stockVal)}</strong></div>
                   <div className="flex justify-between"><span className="text-gray-500">À réapprovisionner</span><strong className={stock.filter(it => it.seuil > 0 && it.quantite <= it.seuil).length ? "text-red-600" : "text-gray-800"}>{stock.filter(it => it.seuil > 0 && it.quantite <= it.seuil).length}</strong></div>
                 </div>
               </div>
@@ -163,7 +177,7 @@ export default function PilotagePage() {
                 {coutParType.length === 0 ? <p className="text-xs text-gray-400">Renseigne une dose de conso sur tes produits.</p> : (
                   <div className="space-y-1.5 text-sm">
                     {coutParType.map(([t, c]) => (
-                      <div key={t} className="flex justify-between"><span className="text-gray-500 truncate">{t}</span><strong className="text-gray-800">{c.toFixed(2)} €</strong></div>
+                      <div key={t} className="flex justify-between"><span className="text-gray-500 truncate">{t}</span><strong className="text-gray-800">{formatMontant(c, { decimales: 2 })}</strong></div>
                     ))}
                   </div>
                 )}
