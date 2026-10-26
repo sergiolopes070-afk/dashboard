@@ -12,7 +12,7 @@ import {
   Pencil, FileText, Download, CreditCard, Clock, StickyNote,
 } from "lucide-react";
 import ClientModal from "@/components/ClientModal";
-import { ClientNote, STATUT_COLORS } from "@/lib/constants";
+import { ClientNote, STATUT_COLORS, TYPES_PRESTATION } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
 import { Entite } from "@/lib/entite";
 import EntiteBadge from "@/components/EntiteBadge";
@@ -215,7 +215,7 @@ export default function ClientFiche({
     } catch { toast.error("Erreur lors de l'ajout du RDV"); }
     finally { setRdvSaving(false); }
   }
-  const RDV_TYPES = ["Ménage", "Repassage", "Vitres", "Lavage Canapé", "Lavage fauteuil", "Lavage chaises", "Lavage de matelas", "Lavage tapis", "Lavage moquette", "Sièges auto", "Lavage véhicule", "Après travaux", "Bureaux", "Débarras", "Autre"];
+  const RDV_TYPES = TYPES_PRESTATION; // liste commune (constants.ts)
 
   const fmtDate = (iso: string) => {
     const d = new Date(iso);

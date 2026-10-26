@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { X, Save, Loader2, Wrench } from "lucide-react";
+import { useToast } from "@/components/Toast";
 
 const inputCls =
   "w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white";
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export default function NewPrestataireModal({ onClose, onSaved }: Props) {
+  const toast = useToast();
   const [form, setForm] = useState({ nom: "", email: "", tel: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState<string | null>(null);
@@ -39,7 +41,8 @@ export default function NewPrestataireModal({ onClose, onSaved }: Props) {
         headers: { "Content-Type": "application/json" },
         body   : JSON.stringify(form),
       });
-      if (!res.ok) throw new Error((await res.json()).error || "Erreur serveur");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erreur serveur");
+      toast.success(`${form.nom.trim()} ajouté à l'équipe`);
       onSaved();
       onClose();
     } catch (e: unknown) {

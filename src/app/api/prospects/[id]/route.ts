@@ -75,8 +75,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   let devisTransferes = 0;
   if (body.statut === "CONVERTI") {
     try {
-      const { data: pr } = await supabase.from("prospects").select("prenom, nom, email, tel").eq("id", id).limit(1);
-      const clientId = pr?.[0] ? await findClientForProspect(pr[0]) : null;
+      // clientId fourni par le formulaire (fiche réellement créée/retrouvée) → prioritaire.
+      let clientId: string | null = typeof body.clientId === "string" && body.clientId ? body.clientId : null;
+      if (!clientId) {
+        const { data: pr } = await supabase.from("prospects").select("prenom, nom, email, tel").eq("id", id).limit(1);
+        clientId = pr?.[0] ? await findClientForProspect(pr[0]) : null;
+      }
       if (clientId) devisTransferes = await transferDevisExternes(id, clientId);
     } catch (e) { console.error("[prospects] transfert devis externes :", e); }
   }

@@ -1,14 +1,17 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Phone, Mail, Wrench, UserPlus, Pencil, Trash2, X, Save, Loader2, BarChart2, Euro, CheckCircle2, XCircle, CalendarOff, KeyRound, Copy } from "lucide-react";
+import { Phone, Mail, Wrench, UserPlus, Pencil, Trash2, X, Save, Loader2, BarChart2, Euro, CheckCircle2, XCircle, KeyRound, Copy } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { SkeletonCards } from "@/components/Skeleton";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
 import NewPrestataireModal from "@/components/NewPrestataireModal";
 import { Prestataire, Prestation } from "@/lib/constants";
 import { grouperIndispos, libellePlage } from "@/lib/indispos";
+import { useToast } from "@/components/Toast";
 
-const JOURS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+// Clé de regroupement des stats : email du prestataire si connu, sinon son nom.
+const statKey = (email: string | undefined, nom: string | undefined) =>
+  email?.trim() ? `e:${email.trim().toLowerCase()}` : `n:${(nom ?? "").trim()}`;
 
 // ─── Modal édition ────────────────────────────────────────────────────────────
 
@@ -21,6 +24,7 @@ function EditPrestataireModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const [form, setForm]   = useState({ nom: prestataire.nom, email: prestataire.email, tel: prestataire.tel });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState<string | null>(null);
@@ -37,7 +41,8 @@ function EditPrestataireModal({
         headers: { "Content-Type": "application/json" },
         body   : JSON.stringify({ id: prestataire.id, ...form }),
       });
-      if (!res.ok) throw new Error((await res.json()).error || "Erreur serveur");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erreur serveur");
+      toast.success(`${form.nom.trim()} modifié`);
       onSaved();
       onClose();
     } catch (e: unknown) {
@@ -119,19 +124,22 @@ export default function PrestatairesPage() {
   const [codeInfo, setCodeInfo]     = useState<{ nom: string; login: string; code: string } | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
 
+  const toast = useToast();
+
   async function generateCode(p: Prestataire) {
     setGenId(p.id);
     try {
       const res = await fetch("/api/prestataires/code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: p.id }) });
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       if (res.ok) setCodeInfo({ nom: p.nom, login: d.login, code: d.code });
-      else alert(d.error || "Erreur");
-    } catch { alert("Erreur réseau"); }
+      else toast.error(d.error || "Impossible de générer le code d'accès");
+    } catch { toast.error("Erreur réseau : code d'accès non généré"); }
     finally { setGenId(null); }
   }
-  // Disponibilités : map prestataire.id → jours off (0=Lun … 6=Dim)
-  const [dispos, setDispos] = useState<Record<string, number[]>>({});
-  const [savingDispo] = useState<string | null>(null);
+  // NB : l'ancien bloc « Jours off » (jours de repos hebdo) a été retiré : il n'était
+  // stocké que dans le localStorage de ce navigateur (clé « prestataires_dispos ») et
+  // n'était lu nulle part ailleurs (ni agenda, ni affectations, ni autre appareil).
+  // Les vraies indisponibilités sont saisies par le prestataire (p.indispos, côté serveur).
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -141,14 +149,11 @@ export default function PrestatairesPage() {
         fetch("/api/prestations"),
         fetch("/api/archive"),
       ]);
-      if (!resPrest.ok) throw new Error((await resPrest.json()).error);
+      if (!resPrest.ok) throw new Error((await resPrest.json().catch(() => ({}))).error || "Impossible de charger les prestataires");
       const prestataireData: Prestataire[] = await resPrest.json();
       setData(prestataireData); cacheSet(CACHE_KEYS.prestataires, prestataireData);
       if (resPrestations.ok) { const d = await resPrestations.json(); setPrestations(d); cacheSet(CACHE_KEYS.prestations, d); }
       if (resArchive.ok) { const d = await resArchive.json(); setArchive(d); cacheSet(CACHE_KEYS.archive, d); }
-      // Load stored dispos from localStorage
-      const stored = localStorage.getItem("prestataires_dispos");
-      if (stored) setDispos(JSON.parse(stored));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erreur");
     } finally {
@@ -156,30 +161,23 @@ export default function PrestatairesPage() {
     }
   }, []);
 
-  // Stats per prestataire
+  // Stats par prestataire. Les prestations côté client n'exposent pas prestataire_id
+  // (seulement nom + email du prestataire, cf. lib/sheets.ts) : on regroupe donc par
+  // email quand il existe (unique), sinon par nom (cf. statKey) — évite de mélanger deux homonymes.
   const statsMap = useMemo(() => {
     const all = [...prestations, ...archive];
     const map: Record<string, { missions: number; ca: number; accepte: number; refuse: number }> = {};
     for (const p of all) {
-      if (!p.prestataire) continue;
-      if (!map[p.prestataire]) map[p.prestataire] = { missions: 0, ca: 0, accepte: 0, refuse: 0 };
-      map[p.prestataire].missions++;
-      map[p.prestataire].ca += parseFloat(p.prix) || 0;
-      if (p.statutPresta === "ACCEPTÉ") map[p.prestataire].accepte++;
-      if (p.statutPresta === "REFUSÉ")  map[p.prestataire].refuse++;
+      if (!p.prestataire && !p.emailPresta) continue;
+      const k = statKey(p.emailPresta, p.prestataire);
+      if (!map[k]) map[k] = { missions: 0, ca: 0, accepte: 0, refuse: 0 };
+      map[k].missions++;
+      map[k].ca += parseFloat(p.prix) || 0;
+      if (p.statutPresta === "ACCEPTÉ") map[k].accepte++;
+      if (p.statutPresta === "REFUSÉ")  map[k].refuse++;
     }
     return map;
   }, [prestations, archive]);
-
-  const toggleDispo = (prestataireId: string, jour: number) => {
-    setDispos(prev => {
-      const current = prev[prestataireId] ?? [];
-      const next = current.includes(jour) ? current.filter(j => j !== jour) : [...current, jour];
-      const updated = { ...prev, [prestataireId]: next };
-      localStorage.setItem("prestataires_dispos", JSON.stringify(updated));
-      return updated;
-    });
-  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -192,11 +190,12 @@ export default function PrestatairesPage() {
         headers: { "Content-Type": "application/json" },
         body   : JSON.stringify({ id: confirmDel.id }),
       });
-      if (!res.ok) throw new Error((await res.json()).error || "Erreur");
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Erreur lors de la suppression");
+      toast.success(`${confirmDel.nom} supprimé`);
       setConfirmDel(null);
       load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Erreur");
+      toast.error(e instanceof Error ? e.message : "Erreur lors de la suppression");
     } finally {
       setDeleting(false);
     }
@@ -221,7 +220,7 @@ export default function PrestatairesPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setConfirmDel(null); }}
         >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-4 sm:p-6 text-center">
             <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
               <Trash2 size={20} className="text-red-600" />
             </div>
@@ -253,7 +252,7 @@ export default function PrestatairesPage() {
       {codeInfo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
           onClick={(e) => { if (e.target === e.currentTarget) { setCodeInfo(null); setCodeCopied(false); } }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-4 sm:p-6">
             <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-3"><KeyRound size={20} className="text-blue-600" /></div>
             <h3 className="font-bold text-gray-900 text-center mb-1">Accès de {codeInfo.nom}</h3>
             <p className="text-xs text-gray-500 text-center mb-4">Transmets-lui ces identifiants. Le code n&apos;est affiché <strong>qu&apos;une seule fois</strong> — il faudra en régénérer un si tu le perds.</p>
@@ -262,7 +261,7 @@ export default function PrestatairesPage() {
               <div className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2"><span className="text-xs text-gray-500">Code</span><span className="font-mono font-bold text-lg text-blue-700 tracking-widest">{codeInfo.code}</span></div>
             </div>
             <button
-              onClick={() => { navigator.clipboard.writeText(`Ton accès KinouClean :\nSite : ${typeof window !== "undefined" ? window.location.origin : ""}/login\nIdentifiant : ${codeInfo.login}\nCode : ${codeInfo.code}`).then(() => { setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }); }}
+              onClick={() => { navigator.clipboard.writeText(`Ton accès KinouClean :\nSite : ${typeof window !== "undefined" ? window.location.origin : ""}/login\nIdentifiant : ${codeInfo.login}\nCode : ${codeInfo.code}`).then(() => { setCodeCopied(true); setTimeout(() => setCodeCopied(false), 2000); }).catch(() => toast.error("Copie impossible : recopie le code à la main")); }}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 mb-2">
               <Copy size={15} /> {codeCopied ? "Copié !" : "Copier le message à envoyer"}
             </button>
@@ -279,15 +278,16 @@ export default function PrestatairesPage() {
         action={
           <button
             onClick={() => setShowNew(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 transition-colors"
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 transition-colors"
+            aria-label="Nouveau prestataire"
           >
             <UserPlus size={16} />
-            Nouveau prestataire
+            <span className="hidden sm:inline">Nouveau prestataire</span>
           </button>
         }
       />
 
-      <div className="flex-1 p-6">
+      <div className="flex-1 p-3 sm:p-6">
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm mb-4">{error}</div>
         )}
@@ -297,13 +297,12 @@ export default function PrestatairesPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {data.map((p) => {
-                const s = statsMap[p.nom] ?? { missions: 0, ca: 0, accepte: 0, refuse: 0 };
+                const s = statsMap[statKey(p.email, p.nom)] ?? { missions: 0, ca: 0, accepte: 0, refuse: 0 };
                 const tauxAccept = (s.accepte + s.refuse) > 0
                   ? Math.round(s.accepte / (s.accepte + s.refuse) * 100)
                   : null;
-                const joursOff = dispos[p.id] ?? [];
                 return (
-                  <div key={p.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col gap-4 group">
+                  <div key={p.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-5 flex flex-col gap-4 group">
                     <div className="flex gap-4">
                       <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center flex-shrink-0">
                         <Wrench size={20} className="text-orange-600" />
@@ -330,15 +329,16 @@ export default function PrestatairesPage() {
                           </a>
                         )}
                       </div>
-                      <div className="flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => generateCode(p)} disabled={genId === p.id} className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors disabled:opacity-40" title="Code d'accès prestataire">
-                          {genId === p.id ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                      {/* Actions : toujours visibles sur mobile (pas de survol au doigt), au survol sur desktop. Cibles ≥ 36px. */}
+                      <div className="flex flex-col gap-1 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
+                        <button onClick={() => generateCode(p)} disabled={genId === p.id} className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors disabled:opacity-40" title="Code d'accès prestataire" aria-label="Code d'accès prestataire">
+                          {genId === p.id ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
                         </button>
-                        <button onClick={() => setEditing(p)} className="p-1.5 rounded-lg hover:bg-orange-50 text-gray-400 hover:text-orange-600 transition-colors" title="Modifier">
-                          <Pencil size={14} />
+                        <button onClick={() => setEditing(p)} className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-orange-50 text-gray-400 hover:text-orange-600 transition-colors" title="Modifier" aria-label="Modifier">
+                          <Pencil size={16} />
                         </button>
-                        <button onClick={() => setConfirmDel(p)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors" title="Supprimer">
-                          <Trash2 size={14} />
+                        <button onClick={() => setConfirmDel(p)} className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors" title="Supprimer" aria-label="Supprimer">
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </div>
@@ -384,28 +384,6 @@ export default function PrestatairesPage() {
                       );
                     })()}
 
-                    {/* Disponibilités */}
-                    <div className="pt-2 border-t border-gray-50">
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1 mb-2">
-                        <CalendarOff size={11} /> Jours off
-                        {savingDispo === p.id && <span className="text-blue-500 normal-case font-normal ml-1">sauvegardé</span>}
-                      </p>
-                      <div className="flex gap-1">
-                        {JOURS.map((j, i) => (
-                          <button
-                            key={i}
-                            onClick={() => toggleDispo(p.id, i)}
-                            className={`flex-1 text-xs py-1 rounded-lg font-medium transition-colors ${
-                              joursOff.includes(i)
-                                ? "bg-red-100 text-red-700"
-                                : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                            }`}
-                          >
-                            {j}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
                   </div>
                 );
             })}

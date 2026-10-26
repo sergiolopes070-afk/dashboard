@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useMemo, useRef } from "react";
-import { ChevronLeft, ChevronRight, Plus, X, SlidersHorizontal, Download, CheckCircle2, MapPin, Loader2 } from "lucide-react";
-import { Prestation, Prestataire, StatutClient } from "@/lib/constants";
+import { ChevronLeft, ChevronRight, Plus, X, SlidersHorizontal, CheckCircle2, MapPin, Loader2 } from "lucide-react";
+import { Prestation, Prestataire, StatutClient, TYPES_PRESTATION } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
 import { ClientFicheById } from "@/components/ClientFiche";
 import EmailActions from "@/components/EmailActions";
@@ -37,7 +37,15 @@ const EVENT_DUR  = 60;
 const JOURS_LONG  = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
 const JOURS_SHORT = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 const MOIS        = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
-const STATUTS: StatutClient[] = ["EMAIL ENVOYÉ","CONFIRMÉ","TERMINÉ","ANNULÉ",""];
+// Statuts client alignés sur StatutClient / STATUT_COLORS (src/lib/constants.ts).
+// Le Record garantit à la compilation qu'aucun statut partagé n'est oublié.
+const STATUTS_MAP: Record<StatutClient, true> = {
+  "EMAIL ENVOYÉ": true, "CONFIRMÉ": true, "PRESTATAIRE REFUSÉ – À RÉAFFECTER": true,
+  "TERMINÉ": true, "PAYÉ": true, "ANNULÉ": true, "": true,
+};
+const STATUTS = Object.keys(STATUTS_MAP) as StatutClient[];
+type ViewMode = "day" | "week" | "month";
+const VIEW_KEY = "agenda:viewMode";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getMondayOfWeek(d: Date): Date {
@@ -100,10 +108,7 @@ const PAYMENT_SHORT: Record<string, string> = {
 };
 
 // ─── Options prestation ───────────────────────────────────────────────────────
-const TYPES_PRESTA = [
-  "Ménage", "Repassage", "Vitres", "Débarras",
-  "Après travaux", "Bureaux", "Lavage Canapé", "Lavage fauteuil", "Lavage chaises", "Lavage véhicule", "Lavage de matelas", "Lavage tapis", "Lavage moquette", "Sièges auto", "Autre",
-];
+const TYPES_PRESTA = TYPES_PRESTATION; // liste commune (constants.ts)
 
 // ─── Composant DayDetailModal ─────────────────────────────────────────────────
 const DAY_SLOTS = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => {
@@ -232,22 +237,6 @@ function DayDetailModal({
   );
 }
 
-// ─── Hook auto-ville ──────────────────────────────────────────────────────────
-function useVilleFromCP(cp: string) {
-  const [villes,  setVilles]  = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  useEffect(() => {
-    if (cp.length !== 5) { setVilles([]); return; }
-    setLoading(true);
-    fetch(`https://geo.api.gouv.fr/communes?codePostal=${cp}&fields=nom&format=json`)
-      .then(r => r.json())
-      .then((data: { nom: string }[]) => setVilles(data.map(d => d.nom)))
-      .catch(() => setVilles([]))
-      .finally(() => setLoading(false));
-  }, [cp]);
-  return { villes, loading };
-}
-
 // ─── Autocomplete adresse (Base Adresse Nationale) ───────────────────────────
 interface BanFeature {
   properties: { label: string; name: string; postcode: string; city: string };
@@ -353,7 +342,19 @@ export default function AgendaPage() {
   const [loading,      setLoading]      = useState(() => !cacheHas(CACHE_KEYS.agenda));
   const [weekStart,    setWeekStart]    = useState<Date>(() => getMondayOfWeek(new Date()));
   const [monthDate,    setMonthDate]    = useState<Date>(() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; });
-  const [viewMode,     setViewMode]     = useState<"day"|"week"|"month">("week");
+  const [viewMode,     setViewModeRaw]  = useState<ViewMode>("week");
+  // Choix de vue mémorisé (localStorage) — sinon : Jour sur mobile (< 768px), Semaine sur desktop.
+  // Décidé au montage (pas au rendu serveur) pour éviter tout décalage d'hydratation.
+  const setViewMode = (v: ViewMode) => {
+    setViewModeRaw(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* stockage indisponible */ }
+  };
+  useEffect(() => {
+    let saved: string | null = null;
+    try { saved = localStorage.getItem(VIEW_KEY); } catch { /* stockage indisponible */ }
+    if (saved === "day" || saved === "week" || saved === "month") setViewModeRaw(saved);
+    else if (window.matchMedia("(max-width: 767px)").matches) setViewModeRaw("day");
+  }, []);
   const [lightbox,     setLightbox]     = useState<{ photos: LightboxPhoto[]; index: number } | null>(null);
   const avanceIdx = useAvanceInscrits(); // clients inscrits avance immédiate (tél, email ou prénom + nom)
   const [dayDate,      setDayDate]      = useState<Date>(() => { const d = new Date(); d.setHours(0,0,0,0); return d; });
@@ -743,6 +744,16 @@ export default function AgendaPage() {
     setCreateSlot({ date: toFrDate(day), heure });
   }
 
+  // Bouton « + Nouveau RDV » : ouvre la création pré-remplie avec le jour affiché
+  // (vue jour : ce jour ; semaine/mois : aujourd'hui s'il est visible, sinon le 1er jour visible).
+  function openNewRdv() {
+    let d: Date;
+    if (viewMode === "day") d = dayDate;
+    else if (viewMode === "week") d = today >= weekStart && today < addDays(weekStart, 7) ? today : weekStart;
+    else d = today.getFullYear() === monthDate.getFullYear() && today.getMonth() === monthDate.getMonth() ? today : monthDate;
+    setCreateSlot({ date: toFrDate(d), heure: "" });
+  }
+
   // ── Sidebar ────────────────────────────────────────────────────────────────
   const allChecked = prestataires.every(p => checked[p.id]) && showSansPresta;
   const toggleAll  = (v: boolean) => {
@@ -814,7 +825,17 @@ export default function AgendaPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Topbar partagée : menu (mobile) + recherche globale. Version compacte pour laisser la place au calendrier. */}
-      <Topbar title="Agenda" onRefresh={loadData} loading={loading} compact />
+      <Topbar title="Agenda" onRefresh={loadData} loading={loading} compact
+        action={
+          <button
+            onClick={openNewRdv}
+            title="Nouveau RDV (jour affiché)"
+            aria-label="Nouveau RDV"
+            className="flex items-center gap-1.5 min-h-[36px] min-w-[36px] justify-center p-2 sm:px-3 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors">
+            <Plus size={18} />
+            <span className="hidden sm:inline">Nouveau RDV</span>
+          </button>
+        } />
       <div className="flex-1 flex min-h-0">
 
       {/* ── Sidebar filtre mobile (drawer) ────────────────────────────────── */}
@@ -842,46 +863,49 @@ export default function AgendaPage() {
       {/* ── Calendrier ────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        {/* Barre navigation */}
-        <div className="bg-white border-b border-gray-200 px-2 sm:px-4 py-2.5 flex items-center gap-1 sm:gap-2 shrink-0">
+        {/* Barre navigation — mobile : 2 lignes (commandes puis date) pour tenir en 375px, cibles ≥ 36px */}
+        <div className="bg-white border-b border-gray-200 px-2 sm:px-4 py-2 sm:py-2.5 flex flex-wrap sm:flex-nowrap items-center gap-x-1 gap-y-1 sm:gap-2 shrink-0">
           {/* Bouton filtre prestataires - mobile only */}
           <button
             onClick={() => setFilterOpen(true)}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors md:hidden shrink-0"
+            className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors md:hidden shrink-0"
             title="Filtrer par prestataire"
+            aria-label="Filtrer par prestataire"
           >
             <SlidersHorizontal size={17} className="text-gray-600" />
           </button>
-          <button onClick={navPrev} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors shrink-0">
-            <ChevronLeft size={18} className="text-gray-600" />
+          <button onClick={navPrev} aria-label="Précédent"
+            className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors shrink-0">
+            <ChevronLeft size={20} className="text-gray-600" />
           </button>
           <button onClick={navToday}
-            className="px-2 sm:px-3 py-1 text-xs sm:text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition-colors shrink-0">
-            Auj.
+            className="h-9 px-2.5 sm:px-3 text-xs sm:text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition-colors shrink-0">
+            Aujourd&apos;hui
           </button>
-          <button onClick={navNext} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors shrink-0">
-            <ChevronRight size={18} className="text-gray-600" />
+          <button onClick={navNext} aria-label="Suivant"
+            className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors shrink-0">
+            <ChevronRight size={20} className="text-gray-600" />
           </button>
-          <h2 className="text-xs sm:text-sm font-semibold text-gray-800 ml-1 flex-1 truncate">
+          <h2 className="order-last sm:order-none w-full sm:w-auto sm:flex-1 text-sm font-semibold text-gray-800 px-1 sm:ml-1 truncate">
             {viewMode === "day"
               ? `${JOURS_LONG[(dayDate.getDay()+6)%7]} ${dayDate.getDate()} ${MOIS[dayDate.getMonth()]}`
               : viewMode === "week" ? weekLabel : monthLabel}
           </h2>
           {/* Toggle jour / semaine / mois */}
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium shrink-0">
+          <div className="ml-auto sm:ml-0 flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium shrink-0">
             <button
               onClick={() => setViewMode("day")}
-              className={`px-2 sm:px-3 py-1.5 transition-colors ${viewMode==="day" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+              className={`h-9 px-2 sm:px-3 transition-colors ${viewMode==="day" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
               Jour
             </button>
             <button
               onClick={() => setViewMode("week")}
-              className={`px-2 sm:px-3 py-1.5 border-l border-gray-200 transition-colors ${viewMode==="week" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+              className={`h-9 px-2 sm:px-3 border-l border-gray-200 transition-colors ${viewMode==="week" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
               Sem.
             </button>
             <button
               onClick={() => { setViewMode("month"); setMonthDate(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1)); }}
-              className={`px-2 sm:px-3 py-1.5 border-l border-gray-200 transition-colors ${viewMode==="month" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+              className={`h-9 px-2 sm:px-3 border-l border-gray-200 transition-colors ${viewMode==="month" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
               Mois
             </button>
           </div>
@@ -929,7 +953,7 @@ export default function AgendaPage() {
                   );
                 })}
                 {eventsForDay(dayDate).length === 0 && (
-                  <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-gray-300 text-sm pointer-events-none">Aucun rendez-vous ce jour<br /><span className="text-xs">Touche un créneau pour créer</span></div>
+                  <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-gray-300 text-sm pointer-events-none">Aucun rendez-vous ce jour<br /><span className="text-xs">Touche un créneau ou « + » pour créer</span></div>
                 )}
               </div>
             </div>
@@ -1427,40 +1451,227 @@ export default function AgendaPage() {
                           <CheckCircle2 size={13} /> Inscrit à l&apos;avance immédiate ⚡
                         </div>
                       )}
-                      {/* Satisfaction + avis — modifiables manuellement, même après archivage (primes) */}
-                      <div className="mb-3 rounded-xl border border-gray-100 p-2.5">
-                        <div className="flex items-center justify-between gap-1 mb-2">
-                          {[{ e: "😠", n: 1 }, { e: "🙁", n: 2 }, { e: "😐", n: 3 }, { e: "🙂", n: 4 }, { e: "😄", n: 5 }].map(({ e, n }) => (
-                            <button key={n} type="button" onClick={() => majAvisSatisf(ev.row, { satisfaction: ev.satisfaction === n ? 0 : n })}
-                              title={["Très mécontent", "Mécontent", "Neutre", "Content", "Très content"][n - 1]}
-                              className={`flex-1 py-1 rounded-lg text-xl transition-all ${ev.satisfaction === n ? "bg-emerald-50 scale-110" : "grayscale opacity-45 hover:opacity-80"}`}>
-                              {e}
-                            </button>
-                          ))}
-                        </div>
-                        <button type="button" onClick={() => majAvisSatisf(ev.row, { avisLaisse: ev.avis !== "OUI" })}
-                          className={`w-full py-2 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
-                            ev.avis === "OUI" ? "bg-amber-100 border-amber-300 text-amber-800" : "bg-white border-gray-200 text-gray-500 hover:border-amber-300 hover:bg-amber-50"
-                          }`}>
-                          ⭐ {ev.avis === "OUI" ? "Avis laissé (prime) — cliquer pour retirer" : "Marquer : avis laissé"}
-                        </button>
-                      </div>
+                      {/* ── Actions rapides client : appeler / WhatsApp / itinéraire / mail ── */}
+                      {(() => {
+                        const telClean = (ev.tel || "").replace(/\s/g, "");
+                        const quick = [
+                          { key: "tel",  icon: "📞", label: "Appeler",    href: telClean ? `tel:${telClean}` : "" },
+                          { key: "wa",   icon: "💬", label: "WhatsApp",   href: telClean ? `https://wa.me/${telClean.replace(/^0/, "33")}` : "" },
+                          { key: "maps", icon: "🧭", label: "Itinéraire", href: ev.adresse ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(ev.adresse)}` : "" },
+                          { key: "mail", icon: "✉️", label: "Mail",       href: ev.email ? `mailto:${ev.email}` : "" },
+                        ];
+                        return (
+                          <div className="grid grid-cols-4 gap-1.5 mb-3">
+                            {quick.map(q => q.href ? (
+                              <a key={q.key} href={q.href}
+                                {...(q.key === "wa" || q.key === "maps" ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                                className="min-h-[52px] rounded-xl border border-gray-200 bg-gray-50 hover:bg-blue-50 hover:border-blue-200 active:bg-blue-100 transition-colors flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-gray-700">
+                                <span className="text-base leading-none">{q.icon}</span>{q.label}
+                              </a>
+                            ) : (
+                              <span key={q.key} title="Information manquante"
+                                className="min-h-[52px] rounded-xl border border-dashed border-gray-200 flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-gray-300">
+                                <span className="text-base leading-none grayscale opacity-50">{q.icon}</span>{q.label}
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                      {/* ── Infos RDV : date / heure / prestataire / prix / statut ── */}
                       <div className="space-y-1.5 text-sm text-gray-700">
                         {([
-                          ["Date",     `${ev.date}${ev.heure ? ` à ${ev.heure}` : ""}`],
-                          ["Adresse",  ev.adresse || null],
-                          ["Statut",   ev.statut  || null],
-                          ["Prix",     ev.prix     ? `${ev.prix} €` : null],
-                          ["Tél",      ev.tel      || null],
-                          ["Message",  ev.message  || null],
-                          ["Note",     ev.commentaire || null],
+                          ["Date",        `${ev.date}${ev.heure ? ` à ${ev.heure}` : ""}`],
+                          ["Prestataire", ev.prestataire || "—"],
+                          ["Prix",        ev.prix     ? `${ev.prix} €` : null],
+                          ["Statut",      ev.statut  || null],
+                          ["Adresse",     ev.adresse || null],
+                          ["Tél",         ev.tel      || null],
+                          ["Message",     ev.message  || null],
+                          ["Note",        ev.commentaire || null],
                           ...(isArchived && archiveReason ? [["Motif", archiveReason]] : []),
                         ] as [string, string|null][]).filter(([,v]) => v).map(([label, val]) => (
                           <div key={label} className="flex gap-2">
                             <span className="text-gray-400 w-20 shrink-0">{label}</span>
-                            <span className={label === "Motif" ? "text-gray-500 italic" : ""}>{val}</span>
+                            <span className={label === "Motif" ? "text-gray-500 italic" : "min-w-0 break-words"}>{val}</span>
                           </div>
                         ))}
+                      </div>
+
+                      {/* ── Messages : mission au prestataire + rappel J-1 au client ── */}
+                      {!isArchived && (
+                        <div className="mt-4 border-t border-gray-100 pt-3 flex flex-col gap-2">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Messages</p>
+                        {/* ── WhatsApp prestataire : envoyer la mission (avec réponse directe) ── */}
+                        {ev.prestataire && (() => {
+                          const prestataireObj = prestataires.find(p => p.nom === ev.prestataire);
+                          const baseUrl   = typeof window !== "undefined" ? window.location.origin : "";
+                          const acceptUrl = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=accepter`;
+                          const refusUrl  = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=refuser`;
+                          const msg = encodeURIComponent(
+                            `Bonjour ${ev.prestataire} 👋,\n\nUne mission vous a été proposée chez KinouClean :\n\n` +
+                            `👤 Client : ${ev.prenom} ${ev.nom}\n` +
+                            `📞 Téléphone : ${ev.tel || "—"}\n` +
+                            `🧹 Prestation : ${ev.typePresta || "—"}\n` +
+                            `📍 Adresse : ${ev.adresse || "—"}\n` +
+                            `📅 Date : ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
+                            `💶 Prix : ${ev.prix && ev.prix !== "0" ? ev.prix + " €" : "À définir"}` +
+                            (ev.modePaiement ? `\n💳 Mode de paiement : ${ev.modePaiement}` : "") +
+                            (ev.message?.trim() ? `\n\n💬 Message client :\n${ev.message.trim()}` : "") +
+                            (ev.commentaire?.trim() ? `\n\n📝 Note interne :\n${ev.commentaire.trim()}` : "") +
+                            `\n\nMerci de répondre directement via ces liens :\n\n` +
+                            `✅ ACCEPTER la mission :\n${acceptUrl}\n\n` +
+                            `❌ REFUSER la mission :\n${refusUrl}\n\n` +
+                            `Votre réponse met à jour la fiche automatiquement 🙏`
+                          );
+                          // Pas de numéro enregistré pour ce prestataire → on l'indique au lieu de masquer.
+                          if (!prestataireObj?.tel) {
+                            return (
+                              <div className="w-full py-2 rounded-xl border border-dashed border-gray-200 text-gray-400 text-xs text-center px-2">
+                                📱 Ajoute un n° à <span className="font-medium">{ev.prestataire}</span> (fiche Prestataires) pour lui envoyer la mission
+                              </div>
+                            );
+                          }
+                          const prestaTel = prestataireObj.tel.replace(/\s/g, "").replace(/^0/, "33");
+                          return (
+                            <a
+                              href={`https://wa.me/${prestaTel}?text=${msg}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full py-2 rounded-xl border border-green-200 text-green-700 text-sm font-medium hover:bg-green-50 transition-colors flex items-center justify-center gap-1.5"
+                            >
+                              📱 Envoyer la mission à {ev.prestataire}
+                            </a>
+                          );
+                        })()}
+                        {/* ── Rappel client : WhatsApp si numéro + copie toujours dispo ── */}
+                        {(() => {
+                          // Avance immédiate par défaut (≈90 % des clients) → on affiche
+                          // TOUJOURS le reste à charge (−50 %) dès qu'il y a un montant.
+                          // Message manuel : à retirer à la main dans les rares cas « crédit ».
+                          const prixNumR = parseFloat((ev.prix || "").replace(",", "."));
+                          const resteR = !isNaN(prixNumR) && prixNumR > 0 ? prixNumR / 2 : null;
+                          const fmtR = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+                          const rappelMsg =
+                            `Bonjour ${ev.prenom || ""},\n\n` +
+                            `Petit rappel de votre rendez-vous KinouClean 🙂\n\n` +
+                            `🧹 ${ev.typePresta || "Prestation KinouClean"}\n` +
+                            `📅 ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
+                            `📍 ${ev.adresse || "—"}\n` +
+                            (ev.prix && ev.prix !== "0" ? `💶 Montant : ${ev.prix} €\n` : "") +
+                            (resteR != null ? `💳 Reste à charge : ${fmtR(resteR)} €\n` : "") +
+                            (resteR != null ? `\nN'oubliez pas de finaliser votre inscription à l'avance immédiate.\n` : "") +
+                            `\nEn cas d'empêchement, merci de nous prévenir au plus tôt.\n\nÀ très bientôt,\nL'équipe KinouClean`;
+                          return (
+                            <div className="flex flex-col gap-2">
+                              {ev.tel && (
+                                <a
+                                  href={`https://wa.me/${ev.tel.replace(/\s/g, "").replace(/^0/, "33")}?text=${encodeURIComponent(rappelMsg)}`}
+                                  target="_blank" rel="noopener noreferrer"
+                                  className="w-full py-2 rounded-xl border border-sky-200 text-sky-700 text-sm font-medium hover:bg-sky-50 transition-colors flex items-center justify-center gap-1.5"
+                                >
+                                  🔔 Rappel WhatsApp à {ev.prenom}
+                                </a>
+                              )}
+                              <button
+                                onClick={() => navigator.clipboard.writeText(rappelMsg).then(() => { setRappelCopied(true); setTimeout(() => setRappelCopied(false), 2000); })}
+                                className={`w-full py-2 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${rappelCopied ? "bg-green-50 text-green-700 border-green-200" : "border-sky-200 text-sky-700 hover:bg-sky-50"}`}
+                              >
+                                📋 {rappelCopied ? "Rappel copié !" : "Copier le message de rappel"}
+                              </button>
+                            </div>
+                          );
+                        })()}
+                        </div>
+                      )}
+
+                      {/* ── Contact client (email / WhatsApp) ── */}
+                      {!isArchived && (
+                        <div className="mt-4 border-t border-gray-100 pt-3">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Contacter le client</p>
+                          <EmailActions
+                            prestationId={ev.row}
+                            clientEmail={ev.email}
+                            clientTel={ev.tel}
+                            prenom={ev.prenom}
+                            typePresta={ev.typePresta}
+                            prix={ev.prix}
+                            quantite={ev.quantite}
+                            adresse={ev.adresse}
+                            date={ev.date}
+                            heure={ev.heure}
+                            compact
+                          />
+                        </div>
+                      )}
+
+                      {/* ── Satisfaction + avis (modifiables même après archivage, pour les primes) ── */}
+                      <div className="mt-4 border-t border-gray-100 pt-3">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Satisfaction & avis</p>
+                        {/* Satisfaction + avis — modifiables manuellement, même après archivage (primes) */}
+                        <div className="mb-2 rounded-xl border border-gray-100 p-2.5">
+                          <div className="flex items-center justify-between gap-1 mb-2">
+                            {[{ e: "😠", n: 1 }, { e: "🙁", n: 2 }, { e: "😐", n: 3 }, { e: "🙂", n: 4 }, { e: "😄", n: 5 }].map(({ e, n }) => (
+                              <button key={n} type="button" onClick={() => majAvisSatisf(ev.row, { satisfaction: ev.satisfaction === n ? 0 : n })}
+                                title={["Très mécontent", "Mécontent", "Neutre", "Content", "Très content"][n - 1]}
+                                className={`flex-1 py-1 rounded-lg text-xl transition-all ${ev.satisfaction === n ? "bg-emerald-50 scale-110" : "grayscale opacity-45 hover:opacity-80"}`}>
+                                {e}
+                              </button>
+                            ))}
+                          </div>
+                          <button type="button" onClick={() => majAvisSatisf(ev.row, { avisLaisse: ev.avis !== "OUI" })}
+                            className={`w-full py-2 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
+                              ev.avis === "OUI" ? "bg-amber-100 border-amber-300 text-amber-800" : "bg-white border-gray-200 text-gray-500 hover:border-amber-300 hover:bg-amber-50"
+                            }`}>
+                            ⭐ {ev.avis === "OUI" ? "Avis laissé (prime) — cliquer pour retirer" : "Marquer : avis laissé"}
+                          </button>
+                        </div>
+                    {/* ── Avis client (affiché même si archivé) ── */}
+                    {(ev.prenom || ev.nom) && (
+                      <div className={`flex flex-col gap-2`}>
+                        <button
+                          onClick={() => {
+                            const params = new URLSearchParams({ nom: `${ev.prenom} ${ev.nom}`.trim() });
+                            if (ev.typePresta) params.set("prestation", ev.typePresta);
+                            const url = `${window.location.origin}/avis/${ev.row}?${params.toString()}`;
+                            navigator.clipboard.writeText(url).then(() => {
+                              setAvisLinkCopied(true);
+                              setTimeout(() => setAvisLinkCopied(false), 2000);
+                            });
+                          }}
+                          className={`w-full py-2 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
+                            avisLinkCopied
+                              ? "bg-green-50 text-green-700 border-green-200"
+                              : "bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100"
+                          }`}
+                        >
+                          ⭐ {avisLinkCopied ? "Lien copié !" : "Copier lien avis"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            const params = new URLSearchParams({ nom: `${ev.prenom} ${ev.nom}`.trim() });
+                            if (ev.typePresta) params.set("prestation", ev.typePresta);
+                            const avisUrl = `${window.location.origin}/avis/${ev.row}?${params.toString()}`;
+                            const msg =
+                              `Bonjour ${ev.prenom} 👋,\n\n` +
+                              `J'espère que votre ${ev.typePresta ? `prestation de ${ev.typePresta}` : "prestation"} s'est très bien passée 😊.\n\n` +
+                              `Votre satisfaction est notre priorité et nous serions ravis d'avoir votre retour !\n\n` +
+                              `Si vous avez quelques instants, pourriez-vous laisser un avis ici ⭐ :\n${avisUrl}\n\n` +
+                              `Merci infiniment pour votre confiance 🙏\n\nÀ très bientôt,\nL'équipe KinouClean`;
+                            navigator.clipboard.writeText(msg).then(() => {
+                              setAvisMsgCopied(true);
+                              setTimeout(() => setAvisMsgCopied(false), 2000);
+                            });
+                          }}
+                          className={`w-full py-2 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
+                            avisMsgCopied
+                              ? "bg-green-50 text-green-700 border-green-200"
+                              : "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                          }`}
+                        >
+                          💬 {avisMsgCopied ? "Message copié !" : "Copier message fin de prestation"}
+                        </button>
+                      </div>
+                    )}
                       </div>
 
                       {/* ── Mode de paiement (visible + modifiable même archivé) ── */}
@@ -1561,286 +1772,140 @@ export default function AgendaPage() {
                         </div>
                       )}
 
-                      {/* ── Contact client (email / WhatsApp) ── */}
-                      {!isArchived && (
-                        <div className="mt-4 border-t border-gray-100 pt-3">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Contacter le client</p>
-                          <EmailActions
-                            prestationId={ev.row}
-                            clientEmail={ev.email}
-                            clientTel={ev.tel}
-                            prenom={ev.prenom}
-                            typePresta={ev.typePresta}
-                            prix={ev.prix}
-                            quantite={ev.quantite}
-                            adresse={ev.adresse}
-                            date={ev.date}
-                            heure={ev.heure}
-                            compact
-                          />
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {!editMode && <div className="mt-4 flex flex-col gap-2">
-                    {!isArchived && (<>
-                      {/* ── Annulation rapide ── */}
-                      {!cancelConfirm ? (
-                        <button
-                          onClick={() => setCancelConfirm(true)}
-                          className="w-full py-2 rounded-xl border border-red-200 text-red-500 text-sm font-medium hover:bg-red-50 transition-colors flex items-center justify-center gap-1.5"
-                        >
-                          ❌ Annuler ce RDV
-                        </button>
-                      ) : (
-                        <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-2">
-                          <p className="text-xs text-red-700 font-medium text-center">Confirmer l&apos;annulation ?</p>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => setCancelConfirm(false)}
-                              className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-                            >
-                              Retour
+                      {/* ── Gestion du RDV : ajout, 2ème passage, puis actions sensibles en bas ── */}
+                      <div className="mt-4 border-t border-gray-100 pt-3 flex flex-col gap-2">
+                        {!isArchived && (<>
+                          {/* ── Ajouter une prestation à ce RDV (même client, même créneau) ── */}
+                          {!addOpen ? (
+                            <button type="button" onClick={() => { setAddOpen(true); setAddType(""); setAddUnit(""); setAddNb("1"); }}
+                              className="w-full py-2 rounded-xl border border-emerald-200 text-emerald-700 text-sm font-medium hover:bg-emerald-50 transition-colors flex items-center justify-center gap-1.5">
+                              ➕ Ajouter une prestation
                             </button>
-                            <button
-                              onClick={() => quickCancel(ev.row)}
-                              disabled={cancelling}
-                              className="flex-1 py-1.5 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors"
-                            >
-                              {cancelling ? "Annulation…" : "Oui, annuler"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      <button
-                        onClick={() => {
-                          setRescheduleEv(ev);
-                          setRescheduleDate(ev.date || "");
-                          setRescheduleHrs(ev.heure || "");
-                          setSelectedEvent(null);
-                        }}
-                        className="w-full py-2 rounded-xl border border-blue-200 text-blue-600 text-sm font-medium hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5"
-                      >
-                        📅 Déplacer ce RDV
-                      </button>
-                      <button
-                        onClick={() => {
-                          setArchiveEv(ev);
-                          setSelectedEvent(null);
-                        }}
-                        className="w-full py-2 rounded-xl border border-orange-200 text-orange-600 text-sm font-medium hover:bg-orange-50 transition-colors flex items-center justify-center gap-1.5"
-                      >
-                        📦 Archiver ce RDV
-                      </button>
-
-                      {/* ── Ajouter une prestation à ce RDV (même client, même créneau) ── */}
-                      {!addOpen ? (
-                        <button type="button" onClick={() => { setAddOpen(true); setAddType(""); setAddUnit(""); setAddNb("1"); }}
-                          className="w-full py-2 rounded-xl border border-emerald-200 text-emerald-700 text-sm font-medium hover:bg-emerald-50 transition-colors flex items-center justify-center gap-1.5">
-                          ➕ Ajouter une prestation
-                        </button>
-                      ) : (
-                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
-                          <p className="text-xs text-emerald-800 font-semibold">Ajouter une prestation — {ev.prenom} {ev.nom}</p>
-                          <select value={addType} onChange={e => setAddType(e.target.value)}
-                            className="w-full bg-white border border-emerald-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
-                            <option value="">— Type de prestation —</option>
-                            {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
-                          </select>
-                          <div className="flex items-end gap-2 flex-wrap">
-                            <div>
-                              <label className="text-[11px] text-gray-500 block mb-0.5">Prix unitaire (€)</label>
-                              <input type="number" step="0.01" value={addUnit} onChange={e => setAddUnit(e.target.value)}
-                                className="w-24 bg-white border border-emerald-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="0.00" />
-                            </div>
-                            <div>
-                              <label className="text-[11px] text-gray-500 block mb-0.5">Nombre</label>
-                              <div className="flex items-center gap-1">
-                                <button type="button" onClick={() => setAddNb(String(Math.max(1, (parseInt(addNb) || 1) - 1)))} className="w-7 h-7 rounded-lg border border-emerald-200 bg-white text-gray-600 text-lg leading-none">–</button>
-                                <input type="number" min={1} value={addNb} onChange={e => setAddNb(e.target.value)} className="w-11 text-center bg-white border border-emerald-200 rounded-lg px-1 py-1.5 text-sm" />
-                                <button type="button" onClick={() => setAddNb(String((parseInt(addNb) || 1) + 1))} className="w-7 h-7 rounded-lg border border-emerald-200 bg-white text-gray-600 text-lg leading-none">+</button>
+                          ) : (
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                              <p className="text-xs text-emerald-800 font-semibold">Ajouter une prestation — {ev.prenom} {ev.nom}</p>
+                              <select value={addType} onChange={e => setAddType(e.target.value)}
+                                className="w-full bg-white border border-emerald-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                                <option value="">— Type de prestation —</option>
+                                {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
+                              </select>
+                              <div className="flex items-end gap-2 flex-wrap">
+                                <div>
+                                  <label className="text-[11px] text-gray-500 block mb-0.5">Prix unitaire (€)</label>
+                                  <input type="number" step="0.01" value={addUnit} onChange={e => setAddUnit(e.target.value)}
+                                    className="w-24 bg-white border border-emerald-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" placeholder="0.00" />
+                                </div>
+                                <div>
+                                  <label className="text-[11px] text-gray-500 block mb-0.5">Nombre</label>
+                                  <div className="flex items-center gap-1">
+                                    <button type="button" onClick={() => setAddNb(String(Math.max(1, (parseInt(addNb) || 1) - 1)))} className="w-7 h-7 rounded-lg border border-emerald-200 bg-white text-gray-600 text-lg leading-none">–</button>
+                                    <input type="number" min={1} value={addNb} onChange={e => setAddNb(e.target.value)} className="w-11 text-center bg-white border border-emerald-200 rounded-lg px-1 py-1.5 text-sm" />
+                                    <button type="button" onClick={() => setAddNb(String((parseInt(addNb) || 1) + 1))} className="w-7 h-7 rounded-lg border border-emerald-200 bg-white text-gray-600 text-lg leading-none">+</button>
+                                  </div>
+                                </div>
+                                {(() => { const t = (parseFloat(addUnit.replace(",", ".")) || 0) * Math.max(1, parseInt(addNb) || 1); return t > 0 ? <div className="text-sm text-gray-700 pb-1.5">= <strong>{t.toFixed(2)} €</strong></div> : null; })()}
+                              </div>
+                              <div className="flex gap-2">
+                                <button type="button" onClick={() => setAddOpen(false)} className="flex-1 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-50">Annuler</button>
+                                <button type="button" onClick={() => ajouterPrestation(ev.row)} disabled={!addType || addBusy}
+                                  className="flex-1 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
+                                  {addBusy ? <Loader2 size={14} className="animate-spin" /> : null} Ajouter
+                                </button>
                               </div>
                             </div>
-                            {(() => { const t = (parseFloat(addUnit.replace(",", ".")) || 0) * Math.max(1, parseInt(addNb) || 1); return t > 0 ? <div className="text-sm text-gray-700 pb-1.5">= <strong>{t.toFixed(2)} €</strong></div> : null; })()}
-                          </div>
-                          <div className="flex gap-2">
-                            <button type="button" onClick={() => setAddOpen(false)} className="flex-1 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-50">Annuler</button>
-                            <button type="button" onClick={() => ajouterPrestation(ev.row)} disabled={!addType || addBusy}
-                              className="flex-1 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
-                              {addBusy ? <Loader2 size={14} className="animate-spin" /> : null} Ajouter
+                          )}
+                        </>)}
+                      {/* ── Reprogrammer un 2ème passage GRATUIT (offre fidélité) — RDV archivé ── */}
+                      {isArchived && (ev.prenom || ev.nom) && (
+                        <div className="flex flex-col gap-2">
+                          {!reprog2Open ? (
+                            <button type="button" onClick={() => { setReprog2Open(true); setReprog2Date(""); setReprog2Hrs(ev.heure || ""); }}
+                              className="w-full py-2 rounded-xl border border-emerald-200 text-emerald-700 text-sm font-medium hover:bg-emerald-50 transition-colors flex items-center justify-center gap-1.5">
+                              🎁 Reprogrammer un 2ème passage (gratuit)
                             </button>
-                          </div>
+                          ) : (
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                              <p className="text-xs text-emerald-800 font-semibold">2ème passage gratuit — {ev.prenom} {ev.nom}</p>
+                              <p className="text-[11px] text-emerald-700">Même client, même prestation. Créé dans l&apos;agenda à 0 €, marqué « 2ème passage ».</p>
+                              <div className="flex gap-2">
+                                <input type="date" value={reprog2Date} onChange={e => setReprog2Date(e.target.value)}
+                                  className="flex-1 border border-emerald-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                                <input type="time" value={reprog2Hrs} onChange={e => setReprog2Hrs(e.target.value)}
+                                  className="w-28 border border-emerald-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                              </div>
+                              <select value={reprog2Presta} onChange={e => setReprog2Presta(e.target.value)}
+                                className="w-full border border-emerald-200 rounded-lg px-2.5 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                                <option value="">Prestataire : à affecter plus tard</option>
+                                {prestataires.map(pr => <option key={pr.nom} value={pr.nom}>{pr.nom}</option>)}
+                              </select>
+                              <div className="flex gap-2">
+                                <button type="button" onClick={() => setReprog2Open(false)}
+                                  className="flex-1 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-50">Annuler</button>
+                                <button type="button" onClick={() => reprogram2(ev.row)} disabled={!reprog2Date || reprog2Busy}
+                                  className="flex-1 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
+                                  {reprog2Busy ? <Loader2 size={14} className="animate-spin" /> : null} Programmer
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
-
-                      {/* ── Rappel client : WhatsApp si numéro + copie toujours dispo ── */}
-                      {(() => {
-                        // Avance immédiate par défaut (≈90 % des clients) → on affiche
-                        // TOUJOURS le reste à charge (−50 %) dès qu'il y a un montant.
-                        // Message manuel : à retirer à la main dans les rares cas « crédit ».
-                        const prixNumR = parseFloat((ev.prix || "").replace(",", "."));
-                        const resteR = !isNaN(prixNumR) && prixNumR > 0 ? prixNumR / 2 : null;
-                        const fmtR = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
-                        const rappelMsg =
-                          `Bonjour ${ev.prenom || ""},\n\n` +
-                          `Petit rappel de votre rendez-vous KinouClean 🙂\n\n` +
-                          `🧹 ${ev.typePresta || "Prestation KinouClean"}\n` +
-                          `📅 ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
-                          `📍 ${ev.adresse || "—"}\n` +
-                          (ev.prix && ev.prix !== "0" ? `💶 Montant : ${ev.prix} €\n` : "") +
-                          (resteR != null ? `💳 Reste à charge : ${fmtR(resteR)} €\n` : "") +
-                          (resteR != null ? `\nN'oubliez pas de finaliser votre inscription à l'avance immédiate.\n` : "") +
-                          `\nEn cas d'empêchement, merci de nous prévenir au plus tôt.\n\nÀ très bientôt,\nL'équipe KinouClean`;
-                        return (
-                          <div className="flex flex-col gap-2">
-                            {ev.tel && (
-                              <a
-                                href={`https://wa.me/${ev.tel.replace(/\s/g, "").replace(/^0/, "33")}?text=${encodeURIComponent(rappelMsg)}`}
-                                target="_blank" rel="noopener noreferrer"
-                                className="w-full py-2 rounded-xl border border-sky-200 text-sky-700 text-sm font-medium hover:bg-sky-50 transition-colors flex items-center justify-center gap-1.5"
-                              >
-                                🔔 Rappel WhatsApp à {ev.prenom}
-                              </a>
-                            )}
-                            <button
-                              onClick={() => navigator.clipboard.writeText(rappelMsg).then(() => { setRappelCopied(true); setTimeout(() => setRappelCopied(false), 2000); })}
-                              className={`w-full py-2 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${rappelCopied ? "bg-green-50 text-green-700 border-green-200" : "border-sky-200 text-sky-700 hover:bg-sky-50"}`}
-                            >
-                              📋 {rappelCopied ? "Rappel copié !" : "Copier le message de rappel"}
-                            </button>
-                          </div>
-                        );
-                      })()}
-
-                      {/* ── WhatsApp prestataire : envoyer la mission (avec réponse directe) ── */}
-                      {ev.prestataire && (() => {
-                        const prestataireObj = prestataires.find(p => p.nom === ev.prestataire);
-                        const baseUrl   = typeof window !== "undefined" ? window.location.origin : "";
-                        const acceptUrl = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=accepter`;
-                        const refusUrl  = `${baseUrl}/api/mission/reponse?id=${ev.row}&action=refuser`;
-                        const msg = encodeURIComponent(
-                          `Bonjour ${ev.prestataire} 👋,\n\nUne mission vous a été proposée chez KinouClean :\n\n` +
-                          `👤 Client : ${ev.prenom} ${ev.nom}\n` +
-                          `📞 Téléphone : ${ev.tel || "—"}\n` +
-                          `🧹 Prestation : ${ev.typePresta || "—"}\n` +
-                          `📍 Adresse : ${ev.adresse || "—"}\n` +
-                          `📅 Date : ${ev.date || "—"}${ev.heure ? ` à ${ev.heure}` : ""}\n` +
-                          `💶 Prix : ${ev.prix && ev.prix !== "0" ? ev.prix + " €" : "À définir"}` +
-                          (ev.modePaiement ? `\n💳 Mode de paiement : ${ev.modePaiement}` : "") +
-                          (ev.message?.trim() ? `\n\n💬 Message client :\n${ev.message.trim()}` : "") +
-                          (ev.commentaire?.trim() ? `\n\n📝 Note interne :\n${ev.commentaire.trim()}` : "") +
-                          `\n\nMerci de répondre directement via ces liens :\n\n` +
-                          `✅ ACCEPTER la mission :\n${acceptUrl}\n\n` +
-                          `❌ REFUSER la mission :\n${refusUrl}\n\n` +
-                          `Votre réponse met à jour la fiche automatiquement 🙏`
-                        );
-                        // Pas de numéro enregistré pour ce prestataire → on l'indique au lieu de masquer.
-                        if (!prestataireObj?.tel) {
-                          return (
-                            <div className="w-full py-2 rounded-xl border border-dashed border-gray-200 text-gray-400 text-xs text-center px-2">
-                              📱 Ajoute un n° à <span className="font-medium">{ev.prestataire}</span> (fiche Prestataires) pour lui envoyer la mission
-                            </div>
-                          );
-                        }
-                        const prestaTel = prestataireObj.tel.replace(/\s/g, "").replace(/^0/, "33");
-                        return (
-                          <a
-                            href={`https://wa.me/${prestaTel}?text=${msg}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full py-2 rounded-xl border border-green-200 text-green-700 text-sm font-medium hover:bg-green-50 transition-colors flex items-center justify-center gap-1.5"
+                        {!isArchived && (
+                          <div className="mt-2 pt-3 border-t border-dashed border-gray-200 flex flex-col gap-2">
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Actions sur le RDV</p>
+                          <button
+                            onClick={() => {
+                              setRescheduleEv(ev);
+                              setRescheduleDate(ev.date || "");
+                              setRescheduleHrs(ev.heure || "");
+                              setSelectedEvent(null);
+                            }}
+                            className="w-full py-2 rounded-xl border border-blue-200 text-blue-600 text-sm font-medium hover:bg-blue-50 transition-colors flex items-center justify-center gap-1.5"
                           >
-                            📱 Envoyer la mission à {ev.prestataire}
-                          </a>
-                        );
-                      })()}
-                    </>)}
-
-                    {/* ── Avis client (affiché même si archivé) ── */}
-                    {(ev.prenom || ev.nom) && (
-                      <div className={`${!isArchived ? "border-t border-gray-100 pt-2" : ""} flex flex-col gap-2`}>
-                        <button
-                          onClick={() => {
-                            const params = new URLSearchParams({ nom: `${ev.prenom} ${ev.nom}`.trim() });
-                            if (ev.typePresta) params.set("prestation", ev.typePresta);
-                            const url = `${window.location.origin}/avis/${ev.row}?${params.toString()}`;
-                            navigator.clipboard.writeText(url).then(() => {
-                              setAvisLinkCopied(true);
-                              setTimeout(() => setAvisLinkCopied(false), 2000);
-                            });
-                          }}
-                          className={`w-full py-2 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
-                            avisLinkCopied
-                              ? "bg-green-50 text-green-700 border-green-200"
-                              : "bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100"
-                          }`}
-                        >
-                          ⭐ {avisLinkCopied ? "Lien copié !" : "Copier lien avis"}
-                        </button>
-                        <button
-                          onClick={() => {
-                            const params = new URLSearchParams({ nom: `${ev.prenom} ${ev.nom}`.trim() });
-                            if (ev.typePresta) params.set("prestation", ev.typePresta);
-                            const avisUrl = `${window.location.origin}/avis/${ev.row}?${params.toString()}`;
-                            const msg =
-                              `Bonjour ${ev.prenom} 👋,\n\n` +
-                              `J'espère que votre ${ev.typePresta ? `prestation de ${ev.typePresta}` : "prestation"} s'est très bien passée 😊.\n\n` +
-                              `Votre satisfaction est notre priorité et nous serions ravis d'avoir votre retour !\n\n` +
-                              `Si vous avez quelques instants, pourriez-vous laisser un avis ici ⭐ :\n${avisUrl}\n\n` +
-                              `Merci infiniment pour votre confiance 🙏\n\nÀ très bientôt,\nL'équipe KinouClean`;
-                            navigator.clipboard.writeText(msg).then(() => {
-                              setAvisMsgCopied(true);
-                              setTimeout(() => setAvisMsgCopied(false), 2000);
-                            });
-                          }}
-                          className={`w-full py-2 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
-                            avisMsgCopied
-                              ? "bg-green-50 text-green-700 border-green-200"
-                              : "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                          }`}
-                        >
-                          💬 {avisMsgCopied ? "Message copié !" : "Copier message fin de prestation"}
-                        </button>
-                      </div>
-                    )}
-
-                    {/* ── Reprogrammer un 2ème passage GRATUIT (offre fidélité) — RDV archivé ── */}
-                    {isArchived && (ev.prenom || ev.nom) && (
-                      <div className="border-t border-gray-100 pt-2 flex flex-col gap-2">
-                        {!reprog2Open ? (
-                          <button type="button" onClick={() => { setReprog2Open(true); setReprog2Date(""); setReprog2Hrs(ev.heure || ""); }}
-                            className="w-full py-2 rounded-xl border border-emerald-200 text-emerald-700 text-sm font-medium hover:bg-emerald-50 transition-colors flex items-center justify-center gap-1.5">
-                            🎁 Reprogrammer un 2ème passage (gratuit)
+                            📅 Déplacer ce RDV
                           </button>
-                        ) : (
-                          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
-                            <p className="text-xs text-emerald-800 font-semibold">2ème passage gratuit — {ev.prenom} {ev.nom}</p>
-                            <p className="text-[11px] text-emerald-700">Même client, même prestation. Créé dans l&apos;agenda à 0 €, marqué « 2ème passage ».</p>
-                            <div className="flex gap-2">
-                              <input type="date" value={reprog2Date} onChange={e => setReprog2Date(e.target.value)}
-                                className="flex-1 border border-emerald-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
-                              <input type="time" value={reprog2Hrs} onChange={e => setReprog2Hrs(e.target.value)}
-                                className="w-28 border border-emerald-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                          <button
+                            onClick={() => {
+                              setArchiveEv(ev);
+                              setSelectedEvent(null);
+                            }}
+                            className="w-full py-2 rounded-xl border border-orange-200 text-orange-600 text-sm font-medium hover:bg-orange-50 transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            📦 Clôturer / archiver ce RDV
+                          </button>
+                          {/* ── Annulation rapide ── */}
+                          {!cancelConfirm ? (
+                            <button
+                              onClick={() => setCancelConfirm(true)}
+                              className="w-full py-2 rounded-xl border border-red-200 text-red-500 text-sm font-medium hover:bg-red-50 transition-colors flex items-center justify-center gap-1.5"
+                            >
+                              ❌ Annuler ce RDV
+                            </button>
+                          ) : (
+                            <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-2">
+                              <p className="text-xs text-red-700 font-medium text-center">Confirmer l&apos;annulation ?</p>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => setCancelConfirm(false)}
+                                  className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                                >
+                                  Retour
+                                </button>
+                                <button
+                                  onClick={() => quickCancel(ev.row)}
+                                  disabled={cancelling}
+                                  className="flex-1 py-1.5 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 disabled:opacity-50 transition-colors"
+                                >
+                                  {cancelling ? "Annulation…" : "Oui, annuler"}
+                                </button>
+                              </div>
                             </div>
-                            <select value={reprog2Presta} onChange={e => setReprog2Presta(e.target.value)}
-                              className="w-full border border-emerald-200 rounded-lg px-2.5 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
-                              <option value="">Prestataire : à affecter plus tard</option>
-                              {prestataires.map(pr => <option key={pr.nom} value={pr.nom}>{pr.nom}</option>)}
-                            </select>
-                            <div className="flex gap-2">
-                              <button type="button" onClick={() => setReprog2Open(false)}
-                                className="flex-1 py-2 rounded-lg border border-gray-200 text-gray-600 text-sm hover:bg-gray-50">Annuler</button>
-                              <button type="button" onClick={() => reprogram2(ev.row)} disabled={!reprog2Date || reprog2Busy}
-                                className="flex-1 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
-                                {reprog2Busy ? <Loader2 size={14} className="animate-spin" /> : null} Programmer
-                              </button>
-                            </div>
+                          )}
                           </div>
                         )}
                       </div>
-                    )}
-                  </div>}
+                    </>
+                  )}
                 </>
               );
             })()}
@@ -1867,7 +1932,7 @@ export default function AgendaPage() {
           initialValues={{ date: createSlot.date, heure: createSlot.heure }}
           prestataires={prestataires}
           onClose={() => setCreateSlot(null)}
-          onSaved={() => { setCreateSlot(null); loadData(); }}
+          onSaved={() => loadData()} // la fenêtre reste ouverte sur son écran de succès
         />
       )}
 

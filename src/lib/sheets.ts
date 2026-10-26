@@ -4,6 +4,7 @@ import { getEntite, resolveEntite, Entite, ENTITE_OVERRIDE_KEY } from "./entite"
 import { getSettingJSON } from "./settings";
 import { caRealise, caPrevu, estRealisee, prixPresta } from "./finance";
 import { joursEntre } from "./indispos";
+import { telCle } from "./avanceMatch";
 
 // Lit la table de corrections manuelles d'entité (settings/entite_override).
 async function getEntiteOverrides(): Promise<Record<string, Entite>> {
@@ -341,21 +342,28 @@ export async function appendPrestation(fields: {
     statut : fields.statutClient || "NOUVEAU",
   };
 
-  if (fields.email) {
-    const { data: existing } = await db
-      .from("clients")
-      .select("id")
-      .eq("email", fields.email)
-      .maybeSingle();
+  // Client existant ? D'abord par email, puis par téléphone (9 derniers chiffres,
+  // « 06 81… » = « +33 6 81… ») → évite une nouvelle fiche à chaque prestation
+  // pour les clients sans email.
+  let existingId: string | null = null;
+  const email = (fields.email || "").trim();
+  if (email) {
+    const { data } = await db
+      .from("clients").select("id").eq("email", email)
+      .order("created_at", { ascending: false }).limit(1);
+    existingId = (data?.[0]?.id as string) || null;
+  }
+  const cleTel = telCle(fields.tel);
+  if (!existingId && cleTel.length === 9) {
+    const { data } = await db
+      .from("clients").select("id, tel").not("tel", "is", null).neq("tel", "")
+      .order("created_at", { ascending: false });
+    const hit = (data || []).find(c => telCle(c.tel as string) === cleTel);
+    existingId = (hit?.id as string) || null;
+  }
 
-    if (existing) {
-      clientId = existing.id;
-    } else {
-      const { data: created, error } = await db
-        .from("clients").insert(clientData).select("id").single();
-      if (error) throw new Error(error.message);
-      clientId = created.id;
-    }
+  if (existingId) {
+    clientId = existingId;
   } else {
     const { data: created, error } = await db
       .from("clients").insert(clientData).select("id").single();

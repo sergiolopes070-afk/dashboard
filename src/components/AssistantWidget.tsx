@@ -148,10 +148,12 @@ export default function AssistantWidget() {
 
   return (
     <>
-      {/* ── Bouton flottant ── */}
+      {/* ── Bouton flottant ──
+          Remonté (bottom-20) pour ne plus recouvrir/se faire recouvrir par les toasts
+          affichés en bas à droite (Toast.tsx : bottom-4 right-4) et leur bouton « Annuler ». */}
       <button
         onClick={() => setOpen(v => !v)}
-        className={`fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all ${
+        className={`fixed bottom-20 right-5 z-40 w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all ${
           open ? "bg-gray-700 scale-95" : "bg-blue-600 hover:bg-blue-700 hover:scale-110"
         }`}
         title="Assistant KinouClean"
@@ -165,8 +167,8 @@ export default function AssistantWidget() {
 
       {/* ── Fenêtre de chat ── */}
       {open && (
-        <div className="fixed bottom-24 right-5 z-50 w-[360px] max-w-[calc(100vw-20px)] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden"
-          style={{ height: "500px" }}>
+        // Hauteur bornée à l'écran visible (dvh) : tient sur mobile même clavier ouvert.
+        <div className="fixed bottom-36 right-2.5 sm:right-5 z-50 w-[360px] max-w-[calc(100vw-20px)] h-[500px] max-h-[calc(100dvh-10rem)] bg-white rounded-2xl shadow-2xl border border-gray-100 flex flex-col overflow-hidden">
 
           {/* Header */}
           <div className="bg-blue-600 px-4 py-3 flex items-center justify-between shrink-0">

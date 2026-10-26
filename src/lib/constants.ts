@@ -36,6 +36,14 @@ export const MODES_PAIEMENT: ModePaiement[] = [
   "Avance immédiate",
 ];
 
+// Types de prestation proposés dans TOUS les formulaires (création client/RDV,
+// prospect, agenda, fiche, stock). Une seule liste : avant, 7 copies divergeaient.
+export const TYPES_PRESTATION = [
+  "Lavage Canapé", "Lavage fauteuil", "Lavage chaises", "Lavage de matelas",
+  "Lavage tapis", "Lavage moquette", "Sièges auto", "Lavage véhicule", "Vitres",
+  "Ménage", "Repassage", "Débarras", "Après travaux", "Bureaux", "Autre",
+];
+
 // Modes proposés à la clôture d'un RDV (avance immédiate en 1er, ~90 % des cas).
 export const PAIEMENTS_CLOTURE: ModePaiement[] = [
   "Avance immédiate", "Espèces", "Virement bancaire", "Carte sur place", "Chèque", "Lien de paiement",

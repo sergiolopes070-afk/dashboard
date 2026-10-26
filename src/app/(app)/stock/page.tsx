@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo } from "react";
+import { TYPES_PRESTATION } from "@/lib/constants";
 import {
   Plus, Pencil, Trash2, X, Loader2, Package, AlertTriangle,
   ArrowUp, ArrowDown, Search, Boxes, TrendingUp, Bell,
@@ -19,10 +20,7 @@ interface StockItem {
 const CATS = ["Matériel", "Produits", "Consommables", "Équipement", "Autre"];
 const UNITES = ["unité", "L", "ml", "kg", "g", "rouleau", "paquet", "carton", "paire"];
 // Types de prestation qui peuvent consommer du produit (véhicule, canapé…).
-const TYPES_PRESTA = [
-  "Lavage véhicule", "Lavage Canapé", "Lavage de matelas", "Lavage tapis",
-  "Ménage", "Vitres", "Repassage", "Après travaux", "Bureaux",
-];
+const TYPES_PRESTA = TYPES_PRESTATION; // liste commune (constants.ts)
 
 // Autonomie lisible à partir d'un nombre de semaines.
 function autonomieLabel(semaines: number | null): string {

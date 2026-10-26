@@ -13,7 +13,8 @@ import AddressAutocomplete from "@/components/AddressAutocomplete";
 import NewClientModal from "@/components/NewClientModal";
 import PrestationFields from "@/components/PrestationFields";
 import { getSchema } from "@/lib/prestationSchema";
-import { Prestataire } from "@/lib/constants";
+import { Prestataire, ClientNote, TYPES_PRESTATION } from "@/lib/constants";
+import { ClientFicheById } from "@/components/ClientFiche";
 import DevisExternes, { DevisExterne, fmtDevisDate } from "@/components/DevisExternes";
 
 // Formatage FR compact pour le pense-bête d'import.
@@ -26,6 +27,13 @@ function fmtImportDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+// ─── Conversion prospect → client ───────────────────────────────────────────
+// Adresse « 12 rue X, 75001 Paris » → rue / CP / ville (champs du formulaire client).
+function splitAdresse(a: string): { adresse: string; codePostal: string; ville: string } {
+  const m = (a || "").trim().match(/^(.*?)[,\s]+(\d{5})\s+(.+)$/);
+  return m ? { adresse: m[1].trim(), codePostal: m[2], ville: m[3].trim() } : { adresse: a || "", codePostal: "", ville: "" };
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -54,6 +62,7 @@ interface Prospect {
   commentaires: Commentaire[];
   besoins?: Besoin[]; // prestations souhaitées (type + détails + prix), pré-remplit la conversion
   suivi?: Suivi;      // suivi commercial : devis envoyé + relances
+  dejaClient?: { id: string; nom: string } | null; // fiche client existante (même email / tél.), calculé côté serveur
 }
 
 // Suivi commercial d'un prospect (stocké dans settings/prospects_suivi).
@@ -76,11 +85,7 @@ const STATUT_META: Record<string, { label: string; color: string; bg: string; ic
 };
 
 const SOURCES = ["Google", "Réseaux sociaux", "Bouche à oreille", "Recommandation", "Formulaire web", "Autre"];
-const TYPES_PRESTA = [
-  "Ménage", "Repassage", "Vitres", "Débarras", "Après travaux", "Bureaux",
-  "Lavage Canapé", "Lavage fauteuil", "Lavage chaises", "Lavage de matelas",
-  "Lavage tapis", "Lavage moquette", "Sièges auto", "Lavage véhicule", "Autre",
-];
+const TYPES_PRESTA = TYPES_PRESTATION; // liste commune (constants.ts)
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatDate(iso: string) {
@@ -364,6 +369,8 @@ function ProspectModal({
   const [addingComment, setAddingComment] = useState(false);
   const [saving, setSaving]         = useState(false);
   const [showConvert, setShowConvert] = useState(false);
+  const [convertedClientId, setConvertedClientId] = useState<string>(""); // fiche créée par la conversion
+  const [ficheClientId, setFicheClientId] = useState<string>("");         // fiche client ouverte par-dessus
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameForm, setNameForm] = useState({ prenom: prospect.prenom, nom: prospect.nom });
@@ -597,20 +604,35 @@ function ProspectModal({
   }
 
   // Après création du client via NewClientModal : on marque le prospect converti.
-  async function handleConvertedSaved() {
+  // ⚠️ On NE ferme PAS ici : la modale affiche ensuite son écran de succès
+  // (récap client, WhatsApp, « Voir la fiche client ») ; la fermeture se fait via onClose.
+  async function handleConvertedSaved(info?: { clientId: string; prestationId: string }) {
+    const clientId = info?.clientId || "";
+    if (clientId) setConvertedClientId(clientId);
     try {
       const res = await fetch(`/api/prospects/${p.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ statut: "CONVERTI" }),
+        body: JSON.stringify({ statut: "CONVERTI", clientId: clientId || undefined }),
       });
       // Les devis externes du prospect sont copiés sur la fiche du nouveau client (côté serveur).
       const d = await res.json().catch(() => ({}));
       if (d.devisTransferes > 0) toast.success(`${d.devisTransferes} devis externe${d.devisTransferes > 1 ? "s" : ""} repris sur la fiche client`);
     } catch { /* le client est créé ; le statut prospect suivra au prochain refresh */ }
     setP(prev => ({ ...prev, statut: "CONVERTI" }));
+    setDraftStatut("CONVERTI");
     onConverted(p.id);
-    setShowConvert(false);
-    onClose();
+  }
+
+  // Données reprises à la conversion : journal (commentaires + notes) → notes client.
+  function notesPourClient(): ClientNote[] {
+    const notes: ClientNote[] = (p.commentaires || []).map(c => ({ id: c.id, date: c.date, texte: c.texte, type: "📌" }));
+    if (p.notes?.trim()) notes.push({ id: `prospect-notes-${p.id}`, date: p.createdAt, texte: `Note prospect : ${p.notes.trim()}`, type: "📌" });
+    notes.push({
+      id: `prospect-conv-${p.id}`, date: new Date().toISOString(), type: "🤝",
+      texte: `Converti depuis prospect (créé le ${formatDate(p.createdAt)}${p.source ? `, source : ${p.source}` : ""})`,
+    });
+    // Journal client = plus récent en premier.
+    return notes.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   }
 
   async function saveName() {
@@ -1229,12 +1251,26 @@ function ProspectModal({
               Convertir en client
             </button>
           )}
+          {/* Déjà client (même email / téléphone) : on le signale avant de convertir. */}
+          {isActive && p.dejaClient && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-3">
+              <UserCheck size={18} className="text-amber-600 shrink-0" />
+              <p className="flex-1 text-sm text-amber-800">Déjà client : <strong>{p.dejaClient.nom}</strong></p>
+              <button onClick={() => setFicheClientId(p.dejaClient!.id)}
+                className="shrink-0 text-xs font-semibold text-amber-800 underline">Voir la fiche</button>
+            </div>
+          )}
           {p.statut === "CONVERTI" && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
               <CheckCircle2 size={20} className="text-green-600 shrink-0" />
-              <div>
+              <div className="flex-1">
                 <p className="text-sm font-semibold text-green-800">Converti en client !</p>
-                <a href="/prestations" className="text-xs text-green-700 underline">Voir dans Prestations →</a>
+                {(convertedClientId || p.dejaClient?.id) ? (
+                  <button onClick={() => setFicheClientId(convertedClientId || p.dejaClient!.id)}
+                    className="text-xs text-green-700 underline">Voir la fiche client →</button>
+                ) : (
+                  <a href="/prestations" className="text-xs text-green-700 underline">Voir dans Prestations →</a>
+                )}
               </div>
             </div>
           )}
@@ -1284,15 +1320,30 @@ function ProspectModal({
         <NewClientModal
           prestataires={prestataires}
           initialValues={{
-            prenom: p.prenom, nom: p.nom, tel: p.tel, email: p.email, adresse: p.adresse,
+            prenom: p.prenom, nom: p.nom, tel: p.tel, email: p.email,
+            ...splitAdresse(p.adresse),
+            source    : p.source || "",
+            // Avance immédiate du suivi prospect (active par défaut) → choix fiscal du client.
+            fiscal    : avanceActive ? "avance" : "",
             typePresta: p.besoins?.[0]?.typePresta || p.typePresta,
             quantite  : p.besoins?.[0]?.quantite || "1",
             prix      : p.besoins?.[0]?.prix || "",
           }}
           initialDetails={p.besoins?.[0]?.details}
           initialArticles={(p.besoins || []).slice(1)}
-          onClose={() => setShowConvert(false)}
+          initialNotes={notesPourClient()}
+          // Fermeture après succès → on ferme aussi la fiche prospect ; Annuler → retour à la fiche.
+          onClose={() => { setShowConvert(false); if (convertedClientId || p.statut === "CONVERTI") onClose(); }}
           onSaved={handleConvertedSaved}
+          onVoirFiche={id => { setShowConvert(false); setFicheClientId(id); }}
+        />
+      )}
+
+      {/* Fiche client (après conversion ou « Déjà client ») */}
+      {ficheClientId && (
+        <ClientFicheById
+          clientId={ficheClientId}
+          onClose={() => { setFicheClientId(""); if (convertedClientId) onClose(); }}
         />
       )}
     </div>
@@ -1640,6 +1691,9 @@ export default function ProspectsPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-gray-900 truncate">{p.prenom} {p.nom}</p>
                       <StatutBadge statut={p.statut} small />
+                      {p.dejaClient && p.statut !== "CONVERTI" && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700" title={`Déjà client : ${p.dejaClient.nom}`}>Déjà client</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                       {p.tel && <a href={`tel:${p.tel}`} onClick={(e) => e.stopPropagation()} className="text-xs text-gray-500 flex items-center gap-1 hover:text-blue-600"><Phone size={11} />{p.tel}</a>}
@@ -1691,6 +1745,7 @@ export default function ProspectsPage() {
         <AddProspectModal
           onClose={() => setShowAdd(false)}
           onSaved={p => {
+            if (p.dejaClient) toast.info(`Déjà client : ${p.dejaClient.nom}`);
             setProspects(prev => [p, ...prev]);
             setShowAdd(false);
             setSelected(p); // Ouvre directement la fiche du nouveau prospect

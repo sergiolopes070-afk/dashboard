@@ -5,6 +5,7 @@ import {
   AlertCircle, ChevronRight, Database,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import { useToast } from "@/components/Toast";
 import { useState, useEffect, useCallback } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -446,12 +447,8 @@ export default function ConfigurationPage() {
   const [settings, setSettings] = useState<Settings>({});
   const [loading, setLoading]   = useState(true);
   const [modal, setModal]       = useState<"gmail" | "stripe" | null>(null);
-  const [toast, setToast]       = useState<{ msg: string; type: "success" | "error" } | null>(null);
-
-  const showToast = (msg: string, type: "success" | "error" = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  };
+  // Toast partagé (un seul système de notifications pour toute l'app)
+  const toast = useToast();
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -465,23 +462,28 @@ export default function ConfigurationPage() {
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
 
+  // Sauvegarde brute : ne notifie pas, c'est l'appelant qui affiche UN message précis.
   const save = async (patch: Record<string, string>) => {
     const res = await fetch("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "Erreur lors de la sauvegarde");
     await loadSettings();
-    showToast("Connexion enregistrée !");
   };
 
-  const disconnect = async (keys: string[]) => {
+  const disconnect = async (service: string, keys: string[]) => {
+    if (!confirm(`Déconnecter ${service} ? Les identifiants enregistrés seront effacés.`)) return;
     const patch: Record<string, string> = {};
     for (const k of keys) patch[k] = "";
-    await save(patch);
-    showToast("Service déconnecté", "success");
+    try {
+      await save(patch);
+      toast.success(`${service} déconnecté`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erreur lors de la déconnexion");
+    }
   };
 
   const tableReady  = settings._tableReady === "true" || settings._tableReady === true as unknown as string;
@@ -492,17 +494,7 @@ export default function ConfigurationPage() {
     <div className="flex flex-col min-h-screen bg-gray-50">
       <Topbar title="Configuration" subtitle="Gérez vos connexions et intégrations" />
 
-      {/* Toast */}
-      {toast && (
-        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all ${
-          toast.type === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
-        }`}>
-          {toast.type === "success" ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
-          {toast.msg}
-        </div>
-      )}
-
-      <div className="flex-1 p-6 max-w-2xl space-y-6">
+      <div className="flex-1 p-3 sm:p-6 max-w-2xl space-y-6">
 
         {loading ? (
           <div className="bg-white rounded-2xl border border-gray-100 p-12 flex flex-col items-center gap-3 text-gray-400">
@@ -529,7 +521,7 @@ export default function ConfigurationPage() {
                   connected={gmailOk}
                   detail={settings.gmail_user}
                   onConnect={() => setModal("gmail")}
-                  onDisconnect={() => disconnect(["gmail_user", "gmail_app_password"])}
+                  onDisconnect={() => disconnect("Gmail", ["gmail_user", "gmail_app_password"])}
                   disabled={!tableReady && !gmailOk}
                   accentClass="bg-red-50"
                   connectBtnClass="bg-red-500 hover:bg-red-600"
@@ -547,7 +539,7 @@ export default function ConfigurationPage() {
                       : "Clé secrète enregistrée"
                   }
                   onConnect={() => setModal("stripe")}
-                  onDisconnect={() => disconnect(["stripe_secret_key", "stripe_publishable_key"])}
+                  onDisconnect={() => disconnect("Stripe", ["stripe_secret_key", "stripe_publishable_key"])}
                   disabled={!tableReady && !stripeOk}
                   accentClass="bg-violet-50"
                   connectBtnClass="bg-violet-600 hover:bg-violet-700"
@@ -580,8 +572,8 @@ export default function ConfigurationPage() {
                       onClick={async () => {
                         try {
                           await save({ avis_actif: actif ? "false" : "true" });
-                          showToast(actif ? "Demandes d'avis mises en pause" : "Demandes d'avis réactivées");
-                        } catch (e) { showToast(e instanceof Error ? e.message : "Erreur", "error"); }
+                          toast.success(actif ? "Demandes d'avis mises en pause" : "Demandes d'avis réactivées");
+                        } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
                       }}
                       className={`relative shrink-0 w-12 h-7 rounded-full transition-colors ${actif ? "bg-emerald-500" : "bg-gray-300"}`}
                     >
@@ -611,8 +603,8 @@ export default function ConfigurationPage() {
                 <SecretField
                   initial={settings.leads_webhook_secret || ""}
                   onSave={async (v) => {
-                    try { await save({ leads_webhook_secret: v }); }
-                    catch (e) { showToast(e instanceof Error ? e.message : "Erreur", "error"); }
+                    try { await save({ leads_webhook_secret: v }); toast.success("Clé du webhook enregistrée"); }
+                    catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
                   }}
                 />
                 <p className={`text-xs font-medium ${settings.leads_webhook_secret ? "text-emerald-600" : "text-amber-600"}`}>
@@ -686,7 +678,11 @@ export default function ConfigurationPage() {
         <GmailModal
           currentEmail={settings.gmail_user}
           onClose={() => setModal(null)}
-          onSave={(user, pass) => save({ gmail_user: user, gmail_app_password: pass })}
+          onSave={async (user, pass) => {
+            // En cas d'erreur, la modale l'affiche elle-même (pas de toast en double).
+            await save({ gmail_user: user, gmail_app_password: pass });
+            toast.success("Gmail connecté");
+          }}
         />
       )}
       {modal === "stripe" && (
@@ -694,11 +690,14 @@ export default function ConfigurationPage() {
           currentPubKey={settings.stripe_publishable_key}
           currentWebhookSecret={settings.stripe_webhook_secret}
           onClose={() => setModal(null)}
-          onSave={(secret, pub, webhookSecret) => save({
-            stripe_secret_key    : secret,
-            stripe_publishable_key: pub,
-            stripe_webhook_secret: webhookSecret,
-          })}
+          onSave={async (secret, pub, webhookSecret) => {
+            await save({
+              stripe_secret_key    : secret,
+              stripe_publishable_key: pub,
+              stripe_webhook_secret: webhookSecret,
+            });
+            toast.success("Stripe connecté");
+          }}
         />
       )}
     </div>

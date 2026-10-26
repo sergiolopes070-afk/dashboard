@@ -85,18 +85,39 @@ export async function POST(req: Request) {
       modePaiement   : body.modePaiement   || "",
     });
 
+    // Fiche client rattachée (créée ou retrouvée par email / téléphone).
+    let clientId: string | null = null;
+    try { clientId = await getClientIdOfPrestation(prestationId); } catch { /* best effort */ }
+
     // Préférence fiscale choisie à la création (avance immédiate / crédit d'impôt).
-    if (body.fiscal === "avance" || body.fiscal === "credit") {
+    if (clientId && (body.fiscal === "avance" || body.fiscal === "credit")) {
+      try { await saveFiscal(clientId, body.fiscal); }
+      catch (e) { console.error("Erreur enregistrement fiscal:", e); }
+    }
+
+    // Journal repris d'un prospect converti (notesInit : ClientNote[], plus récent
+    // en premier) → ajouté AU-DESSUS du journal existant, sans doublon d'id.
+    if (clientId && supabase && Array.isArray(body.notesInit) && body.notesInit.length > 0) {
       try {
-        const clientId = await getClientIdOfPrestation(prestationId);
-        if (clientId) await saveFiscal(clientId, body.fiscal);
-      } catch (e) { console.error("Erreur enregistrement fiscal:", e); }
+        const { data: cur } = await supabase.from("clients").select("notes").eq("id", clientId).maybeSingle();
+        const existantes: { id?: string }[] = Array.isArray(cur?.notes) ? cur.notes : [];
+        const ids = new Set(existantes.map(n => n?.id).filter(Boolean));
+        const nouvelles = body.notesInit
+          .filter((n: { id?: string; texte?: string }) => n && typeof n.texte === "string" && n.texte.trim() && !ids.has(n.id))
+          .map((n: { id?: string; date?: string; texte: string; type?: string }) => ({
+            id   : n.id || crypto.randomUUID(),
+            date : n.date || new Date().toISOString(),
+            texte: n.texte.trim(),
+            type : n.type || "📌",
+          }));
+        if (nouvelles.length) await updateClientNotes(clientId, [...nouvelles, ...existantes]);
+      } catch (e) { console.error("Erreur reprise journal prospect:", e); }
     }
 
     // ⚠️ Envoi du récapitulatif désormais MANUEL (bouton sur l'écran de succès
     // et dans l'agenda) pour éviter tout envoi erroné. Aucun mail n'est envoyé
     // automatiquement à la création.
-    return NextResponse.json({ success: true, id: prestationId });
+    return NextResponse.json({ success: true, id: prestationId, clientId });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";
     return NextResponse.json({ error: message }, { status: 500 });

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { TYPES_PRESTATION } from "@/lib/constants";
 import { X, Save, Loader2, UserPlus, UserPen } from "lucide-react";
 interface ClientInfo {
   clientId?: string; // si présent : mise à jour directe de la fiche client (même sans prestation)
@@ -18,24 +19,7 @@ interface ClientModalProps {
   onSaved: () => void;
 }
 
-const TYPES_PRESTA = [
-  "",
-  "Ménage",
-  "Repassage",
-  "Vitres",
-  "Débarras",
-  "Après travaux",
-  "Bureaux",
-  "Lavage Canapé",
-  "Lavage fauteuil",
-  "Lavage chaises",
-  "Lavage de matelas",
-  "Lavage tapis",
-  "Lavage moquette",
-  "Sièges auto",
-  "Lavage véhicule",
-  "Autre",
-];
+const TYPES_PRESTA = TYPES_PRESTATION; // liste commune (constants.ts)
 
 function parseAdresse(full: string) {
   const m = full.match(/^(.*?),?\s*(\d{5})\s+(.+)$/);

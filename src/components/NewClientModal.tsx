@@ -2,9 +2,9 @@
 import { useState, useEffect, useRef } from "react";
 import {
   X, Save, Loader2, UserPlus, User, Briefcase, MapPin, Settings2,
-  CheckCircle, MessageCircle, Clock, UserCheck,
+  CheckCircle, MessageCircle, Clock, UserCheck, ExternalLink,
 } from "lucide-react";
-import { Prestataire } from "@/lib/constants";
+import { Prestataire, ClientNote, TYPES_PRESTATION } from "@/lib/constants";
 import { getSchema } from "@/lib/prestationSchema";
 import PrestationFields from "@/components/PrestationFields";
 
@@ -19,25 +19,7 @@ const SOURCES = [
   "Autre",
 ];
 
-const STATUTS_CLIENT = ["NOUVEAU", "ACTIF", "VIP", "À RELANCER"];
-
-const TYPES_PRESTA = [
-  "Ménage",
-  "Repassage",
-  "Vitres",
-  "Débarras",
-  "Après travaux",
-  "Bureaux",
-  "Lavage Canapé",
-  "Lavage fauteuil",
-  "Lavage chaises",
-  "Lavage de matelas",
-  "Lavage tapis",
-  "Lavage moquette",
-  "Sièges auto",
-  "Lavage véhicule",
-  "Autre",
-];
+const TYPES_PRESTA = TYPES_PRESTATION; // liste commune (constants.ts)
 
 
 // ─── Hook auto-ville ─────────────────────────────────────────────────────────
@@ -179,8 +161,12 @@ function Section({ icon: Icon, title, children }: {
 interface Props {
   prestataires: Prestataire[];
   onClose: () => void;
-  onSaved: () => void;
+  // Appelé dès la création (rafraîchir les listes) — l'écran de succès s'affiche ENSUITE,
+  // le parent ne doit donc pas fermer la modale ici (fermeture via onClose).
+  onSaved: (info?: { clientId: string; prestationId: string }) => void;
   initialValues?: Partial<typeof EMPTY>;
+  initialNotes?: ClientNote[]; // journal repris (conversion prospect), plus récent en premier
+  onVoirFiche?: (clientId: string) => void; // bouton « Voir la fiche client » sur l'écran de succès
   initialDetails?: Record<string, string>; // champs intelligents de la 1re prestation (conversion prospect)
   initialArticles?: { typePresta: string; quantite: string; prix: string; details?: Record<string, string> }[]; // pré-remplissage (conversion prospect)
 }
@@ -194,7 +180,6 @@ const EMPTY = {
   codePostal     : "",
   ville          : "",
   source         : "",
-  statutClient   : "NOUVEAU",
   typePresta     : "",
   quantite       : "1",
   date           : "",
@@ -208,7 +193,7 @@ const EMPTY = {
   fiscal         : "" as "" | "avance" | "credit", // préférence fiscale du client
 };
 
-export default function NewClientModal({ prestataires, onClose, onSaved, initialValues, initialDetails, initialArticles }: Props) {
+export default function NewClientModal({ prestataires, onClose, onSaved, initialValues, initialDetails, initialArticles, initialNotes, onVoirFiche }: Props) {
   const [form, setForm]                   = useState({ ...EMPTY, ...initialValues });
   // Articles / prestations supplémentaires (canapé + matelas + tapis en une fois…)
   type Article = { typePresta: string; quantite: string; prix: string; details?: Record<string, string> };
@@ -221,6 +206,7 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
   const [error, setError]                 = useState<string | null>(null);
   const [savedPrestataire, setSavedPrestataire] = useState<Prestataire | null>(null);
   const [savedPrestationId, setSavedPrestationId] = useState<string>("");
+  const [savedClientId, setSavedClientId] = useState<string>("");
   const [showSuccess, setShowSuccess]     = useState(false);
   const [savedFormData, setSavedFormData] = useState<typeof EMPTY | null>(null);
   // Envoi MANUEL du récap par email (bouton sur l'écran de succès).
@@ -286,6 +272,7 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
         statut      : hasPrestataire ? "EMAIL ENVOYÉ" : "",
         statutPresta: hasPrestataire ? "EN ATTENTE PRESTA" : "",
         articlesSupp: articlesSupp.filter(a => a.typePresta || a.prix),
+        notesInit   : initialNotes && initialNotes.length ? initialNotes : undefined,
       };
       const res = await fetch("/api/clients", {
         method : "POST",
@@ -295,14 +282,16 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
       if (!res.ok) throw new Error((await res.json()).error || "Erreur serveur");
       const data = await res.json();
       const prestationId: string = data.id || "";
+      const clientId: string = data.clientId || "";
 
-      onSaved();
+      onSaved({ clientId, prestationId });
 
       const clientHasTel = !!form.tel;
       const prestataireHasTel = hasPrestataire && !!assignedPrestataire?.tel;
 
-      if (clientHasTel || prestataireHasTel || form.email) {
+      if (clientHasTel || prestataireHasTel || form.email || (onVoirFiche && clientId)) {
         setSavedPrestationId(prestationId);
+        setSavedClientId(clientId);
         setSavedFormData({ ...form });
         setEmailSendState("");
         if (prestataireHasTel) setSavedPrestataire(assignedPrestataire!);
@@ -481,6 +470,14 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
             {prestataireBlock}
           </div>
 
+          {onVoirFiche && savedClientId && (
+            <button
+              onClick={() => onVoirFiche(savedClientId)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 mb-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-colors"
+            >
+              <ExternalLink size={15} /> Voir la fiche client
+            </button>
+          )}
           <button
             onClick={onClose}
             className="w-full px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
@@ -550,19 +547,15 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
                   className={inputCls} placeholder="marie@exemple.com" />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Source">
-                <select value={form.source} onChange={(e) => set("source", e.target.value)} className={inputCls}>
-                  <option value="">— Sélectionner —</option>
-                  {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </Field>
-              <Field label="Statut client">
-                <select value={form.statutClient} onChange={(e) => set("statutClient", e.target.value)} className={inputCls}>
-                  {STATUTS_CLIENT.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </Field>
-            </div>
+            {/* « Statut client » retiré : jamais enregistré (VIP = étiquette sur la fiche client). */}
+            <Field label="Source">
+              <select value={form.source} onChange={(e) => set("source", e.target.value)} className={inputCls}>
+                <option value="">— Sélectionner —</option>
+                {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
+                {/* Source hors liste (ex. reprise d'un prospect) → conservée telle quelle */}
+                {form.source && !SOURCES.includes(form.source) && <option value={form.source}>{form.source}</option>}
+              </select>
+            </Field>
           </Section>
 
           {/* Adresse */}

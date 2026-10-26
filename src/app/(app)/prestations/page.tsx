@@ -265,7 +265,7 @@ export default function PrestationsPage() {
         <NewClientModal
           prestataires={prestataires}
           onClose={() => setShowNew(false)}
-          onSaved={() => { setShowNew(false); load(); }}
+          onSaved={() => load()} // la fenêtre reste ouverte sur son écran de succès
         />
       )}
 

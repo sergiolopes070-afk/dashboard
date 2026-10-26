@@ -14,7 +14,7 @@ import { cacheGet, cacheSet } from "@/lib/dataCache";
 import { bilanPeriode, caRealise, formatMontant, isoLocal, periodeMois } from "@/lib/finance";
 import { grouperIndispos, libellePlage } from "@/lib/indispos";
 import ClotureModal from "@/components/ClotureModal";
-import { Prestation, Prestataire, Depense, PAIEMENTS_CLOTURE, MOTIF_TERMINEE } from "@/lib/constants";
+import { Prestation, Prestataire, Depense, PAIEMENTS_CLOTURE, MOTIF_TERMINEE, TYPES_PRESTATION } from "@/lib/constants";
 
 // ── Mini agenda helpers ──────────────────────────────────────────────────────
 const PALETTE_MINI = ["#4285F4","#EA4335","#34A853","#FBBC04","#8B5CF6","#F97316","#06B6D4","#EC4899","#10B981","#6366F1"];
@@ -82,7 +82,7 @@ interface Demande { id: string; at: string; prestataireNom: string; categorie: s
 interface StockItem { id: string; nom: string; unite: string; quantite: number; seuil: number; prixUnitaire: number | null; conso: Record<string, number>; historique: { date: string; type: string; quantite: number }[]; }
 
 const SOURCES_PROSPECT   = ["Google","Réseaux sociaux","Bouche à oreille","Recommandation","Formulaire web","Autre"];
-const TYPES_PRESTA_QUICK = ["Ménage","Repassage","Vitres","Débarras","Après travaux","Bureaux","Lavage Canapé","Lavage véhicule","Lavage de matelas","Lavage tapis","Lavage moquette","Autre"];
+const TYPES_PRESTA_QUICK = TYPES_PRESTATION; // liste commune (constants.ts)
 
 // Autonomie d'un produit = stock / consommation hebdo réelle (sorties 30 j).
 function autonomieSemaines(it: StockItem): number | null {
@@ -636,7 +636,7 @@ export default function HomePage() {
 
       </div>
 
-      {showNewClient && <NewClientModal prestataires={stats?.prestataires ?? []} onClose={() => setShowNewClient(false)} onSaved={() => { setShowNewClient(false); load(); }} />}
+      {showNewClient && <NewClientModal prestataires={stats?.prestataires ?? []} onClose={() => setShowNewClient(false)} onSaved={() => load()} /* reste ouverte sur l'écran de succès (confirmation client) */ />}
       {showNewProspect && <QuickProspectModal onClose={() => setShowNewProspect(false)} onSaved={() => { setShowNewProspect(false); load(); }} />}
 
       {/* ── Pop-up des demandes de matériel ── */}
