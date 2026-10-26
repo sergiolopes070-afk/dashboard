@@ -16,6 +16,7 @@ import { getSchema } from "@/lib/prestationSchema";
 import { Prestataire, ClientNote, TYPES_PRESTATION } from "@/lib/constants";
 import { ClientFicheById } from "@/components/ClientFiche";
 import DevisExternes, { DevisExterne, fmtDevisDate } from "@/components/DevisExternes";
+import { isoParis } from "@/lib/dateParis";
 
 // Formatage FR compact pour le pense-bête d'import.
 function fmtImportDateTime(iso: string): string {
@@ -66,7 +67,7 @@ interface Prospect {
 }
 
 // Suivi commercial d'un prospect (stocké dans settings/prospects_suivi).
-interface Suivi { devisEnvoye?: boolean; devisDate?: string; relanceNiveau?: number; relanceDate?: string; relanceDates?: string[]; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number; infoRelanceDates?: string[] }
+interface Suivi { devisEnvoye?: boolean; devisDate?: string; devisNum?: string; relanceNiveau?: number; relanceDate?: string; relanceDates?: string[]; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number; infoRelanceDates?: string[] }
 
 // Une prestation souhaitée notée sur le prospect (même forme que les articles client).
 // `details` = valeurs structurées des champs intelligents (tissu, places…), pour
@@ -84,7 +85,6 @@ const STATUT_META: Record<string, { label: string; color: string; bg: string; ic
   PERDU    : { label: "Perdu",     color: "text-gray-500",  bg: "bg-gray-100",   icon: "❌" },
 };
 
-const SOURCES = ["Google", "Réseaux sociaux", "Bouche à oreille", "Recommandation", "Formulaire web", "Autre"];
 const TYPES_PRESTA = TYPES_PRESTATION; // liste commune (constants.ts)
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -94,23 +94,6 @@ function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
   } catch { return iso; }
 }
-function isOverdue(dateRelance: string): boolean {
-  if (!dateRelance) return false;
-  return new Date(dateRelance) < new Date(new Date().toDateString());
-}
-function isDueToday(dateRelance: string): boolean {
-  if (!dateRelance) return false;
-  const d = new Date(dateRelance);
-  const t = new Date();
-  return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate();
-}
-function relanceLabel(dateRelance: string) {
-  if (!dateRelance) return null;
-  if (isOverdue(dateRelance)) return { text: "En retard", cls: "text-red-600 font-semibold" };
-  if (isDueToday(dateRelance)) return { text: "Aujourd'hui", cls: "text-orange-600 font-semibold" };
-  return { text: formatDate(dateRelance), cls: "text-gray-500" };
-}
-
 // Dernier email envoyé au prospect (devis, relances R1-R3, demande d'infos et ses
 // relances, devis externe). Les dates du suivi sont en "dd/mm/yyyy" (relanceDate en ISO).
 function parseAnyDate(s?: string): Date | null {
@@ -145,6 +128,140 @@ function ilYA(d: Date): string {
   const n = Math.round((t0.getTime() - d.getTime()) / 86400000);
   return n <= 0 ? "aujourd'hui" : n === 1 ? "hier" : `il y a ${n} jours`;
 }
+
+// ─── Onglets de relance : « seaux » calculés en dates calendrier de Paris ─────
+// Aujourd'hui = en retard + du jour + leads « Nouveau » sans date (à contacter
+// le jour même). Les autres onglets sont disjoints : demain, J+2→J+3, J+4→J+7.
+type Bucket = "urgent" | "demain" | "j3" | "j7" | "plus_tard" | "sans_date" | "inactif";
+type Onglet = "urgent" | "demain" | "j3" | "j7" | "ACTIFS" | "TOUS";
+const ONGLETS: Onglet[] = ["urgent", "demain", "j3", "j7", "ACTIFS", "TOUS"];
+const ONGLET_KEY = "prospects.onglet"; // dernier onglet choisi (localStorage)
+const ONGLET_LABEL: Record<Onglet, string> = {
+  urgent: "Aujourd'hui", demain: "Demain", j3: "Dans 3 jours", j7: "Cette semaine", ACTIFS: "Tous les actifs", TOUS: "Tous",
+};
+interface RefDates { t0: string; t1: string; t3: string; t7: string }
+const refDates = (): RefDates => ({ t0: isoParis(0), t1: isoParis(1), t3: isoParis(3), t7: isoParis(7) });
+const estActif = (p: { statut: string }) => p.statut !== "CONVERTI" && p.statut !== "PERDU";
+const jourIso = (d?: string) => (d || "").slice(0, 10);
+// Écart en jours entre deux dates "YYYY-MM-DD" (b − a).
+const ecartJours = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+const jjmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+
+function bucketOf(p: { statut: string; dateRelance: string }, r: RefDates = refDates()): Bucket {
+  if (!estActif(p)) return "inactif";
+  const d = jourIso(p.dateRelance);
+  if (!d) return p.statut === "NOUVEAU" ? "urgent" : "sans_date";
+  if (d <= r.t0) return "urgent";
+  if (d === r.t1) return "demain";
+  if (d <= r.t3) return "j3";
+  if (d <= r.t7) return "j7";
+  return "plus_tard";
+}
+const ongletDe = (b: Bucket): Onglet => b === "inactif" ? "TOUS" : (b === "plus_tard" || b === "sans_date") ? "ACTIFS" : b;
+// Libellé de destination pour les toasts (« Demain », « Tous les actifs (relance le 12/11) »…).
+function destinationLabel(p: { statut: string; dateRelance: string }): string {
+  const b = bucketOf(p);
+  if (b === "plus_tard") return `Tous les actifs (relance le ${jjmm(jourIso(p.dateRelance))})`;
+  if (b === "sans_date") return "Tous les actifs (sans date)";
+  return ONGLET_LABEL[ongletDe(b)];
+}
+// Rang de tri : en retard → aujourd'hui → nouveaux leads → à venir → sans date → archivés.
+function rangRelance(p: Prospect, r: RefDates): number {
+  if (!estActif(p)) return 5;
+  const d = jourIso(p.dateRelance);
+  if (!d) return p.statut === "NOUVEAU" ? 2 : 4;
+  return d < r.t0 ? 0 : d === r.t0 ? 1 : 3;
+}
+const SECTIONS_URGENT: Record<number, string> = { 0: "En retard", 1: "Aujourd'hui", 2: "Nouveaux leads" };
+
+// Pastille « prochaine relance » d'une ligne de liste : dit quoi faire et quand.
+function relanceChip(p: Prospect, r: RefDates): { text: string; cls: string } | null {
+  if (!estActif(p)) return null;
+  const d = jourIso(p.dateRelance);
+  if (!d) return p.statut === "NOUVEAU" ? { text: "À contacter", cls: "bg-red-50 text-red-600 border-red-200" } : null;
+  const n = ecartJours(r.t0, d);
+  if (n < 0)  return { text: `En retard ${-n} j`, cls: "bg-red-100 text-red-700 border-red-200" };
+  if (n === 0) return { text: "Aujourd'hui", cls: "bg-orange-50 text-orange-700 border-orange-200" };
+  if (n === 1) return { text: "Demain", cls: "bg-blue-50 text-blue-700 border-blue-200" };
+  if (n <= 7)  return { text: `Dans ${n} j`, cls: "bg-amber-50 text-amber-700 border-amber-200" };
+  return { text: `Le ${jjmm(d)}`, cls: "bg-gray-50 text-gray-500 border-gray-200" };
+}
+
+// ─── Journal : dates relatives (« aujourd'hui 14:05 », « hier », « il y a 3 j ») ─
+const TZ_PARIS = "Europe/Paris";
+const jourParisDe = (d: Date) => d.toLocaleDateString("sv-SE", { timeZone: TZ_PARIS });
+function quandRelatif(jour: string, heure?: string): string {
+  const n = ecartJours(jour, isoParis(0));
+  if (n <= 0) return heure ? `aujourd'hui ${heure}` : "aujourd'hui";
+  if (n === 1) return heure ? `hier ${heure}` : "hier";
+  if (n < 30) return `il y a ${n} j`;
+  return new Date(`${jour}T12:00:00Z`).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: n > 300 ? "numeric" : undefined });
+}
+// Date du suivi ("dd/mm/yyyy", ISO ou "YYYY-MM-DD") → jour "YYYY-MM-DD".
+function jourDeSuivi(s?: string): string | null {
+  if (!s) return null;
+  const fr = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (fr) return `${fr[3]}-${fr[2].padStart(2, "0")}-${fr[1].padStart(2, "0")}`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : jourParisDe(d);
+}
+
+interface EvtJournal { key: string; auto: boolean; icon: string; texte: string; tri: number; quand: string; titre: string; note?: Commentaire; pending?: boolean }
+
+// Événements automatiques tirés du suivi (emails envoyés depuis la fiche) — non modifiables.
+// Les devis externes ne sont pas repris ici : leur ajout / envoi écrit déjà une ligne dans le journal.
+function evenementsAuto(s: Suivi | undefined): EvtJournal[] {
+  const out: EvtJournal[] = [];
+  const v = s || {};
+  const add = (jour: string | null, icon: string, texte: string, seq: number) => {
+    if (!jour) return;
+    out.push({ key: `auto-${seq}`, auto: true, icon, texte, tri: Date.parse(`${jour}T12:00:00Z`) + seq, quand: quandRelatif(jour), titre: `${jour.slice(8, 10)}/${jour.slice(5, 7)}/${jour.slice(0, 4)}` });
+  };
+  const niv = v.relanceNiveau || 0, nivI = v.infoRelanceNiveau || 0;
+  if (v.devisEnvoye || v.devisDate) add(jourDeSuivi(v.devisDate), "📄", `Devis${v.devisNum ? ` n° ${v.devisNum}` : ""} envoyé par email`, 1);
+  for (let i = 0; i < Math.min(niv, 3); i++) {
+    const fallback = i === niv - 1 && !nivI ? v.relanceDate : undefined;
+    add(jourDeSuivi(v.relanceDates?.[i] || fallback), "🔁", `Relance R${i + 1} du devis envoyée`, 2 + i);
+  }
+  if (v.infosEnvoye || v.infosDate) add(jourDeSuivi(v.infosDate), "❓", "Demande d'infos envoyée par email", 5);
+  for (let i = 0; i < Math.min(nivI, 3); i++) {
+    const fallback = i === nivI - 1 && !niv ? v.relanceDate : undefined;
+    add(jourDeSuivi(v.infoRelanceDates?.[i] || fallback), "🔁", `Relance R${i + 1} (demande d'infos) envoyée`, 6 + i);
+  }
+  return out;
+}
+function evenementNote(c: Commentaire, pending = false): EvtJournal {
+  const d = new Date(c.date);
+  const ok = !isNaN(d.getTime());
+  const heure = ok ? d.toLocaleTimeString("fr-FR", { timeZone: TZ_PARIS, hour: "2-digit", minute: "2-digit" }) : "";
+  const first = Array.from(c.texte)[0] || "";
+  return {
+    key: c.id, auto: false, note: c, pending,
+    icon: (first.codePointAt(0) ?? 0) > 127 ? first : "💬",
+    texte: c.texte, tri: ok ? d.getTime() : 0,
+    quand: ok ? quandRelatif(jourParisDe(d), heure) : "",
+    titre: ok ? d.toLocaleString("fr-FR", { timeZone: TZ_PARIS }) : "",
+  };
+}
+
+// Tags rapides du journal : un tap = note ajoutée + proposition de reprogrammation
+// (reco en jours : 0 = à garder aujourd'hui, 1 = demain, 3, 7…).
+const CHIPS_JOURNAL = [
+  { emoji: "📞", label: "Appel passé",    reco: 3 },
+  { emoji: "💬", label: "DM envoyé",      reco: 1 },
+  { emoji: "📧", label: "Email envoyé",   reco: 1 },
+  { emoji: "🎯", label: "Très intéressé", reco: 0 },
+  { emoji: "💤", label: "Pas disponible", reco: 7 },
+  { emoji: "💶", label: "Devis demandé",  reco: 0 },
+  { emoji: "❌", label: "Pas de réponse", reco: 1 },
+];
+const REPROG = [
+  { jours: 0, label: "Aujourd'hui" },
+  { jours: 1, label: "Demain" },
+  { jours: 3, label: "+3 j" },
+  { jours: 7, label: "+1 sem" },
+];
 
 // ─── Composant : Badge statut ─────────────────────────────────────────────────
 function StatutBadge({ statut, small }: { statut: string; small?: boolean }) {
@@ -352,21 +469,191 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   );
 }
 
+// ─── Composant : Prochaine relance (date + reprogrammation en 1 tap) ─────────
+function RelanceRapide({ dateRelance, statut, saving, onSet }: {
+  dateRelance: string; statut: string; saving: boolean;
+  onSet: (date: string, msg: string) => void;
+}) {
+  const d = jourIso(dateRelance);
+  const chip = relanceChip({ dateRelance, statut } as Prospect, refDates());
+  return (
+    <div className="rounded-xl border border-gray-200 p-3 space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1"><Calendar size={13} /> Prochaine relance</p>
+        {chip ? <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${chip.cls}`}>{chip.text}</span>
+          : <span className="text-[11px] text-gray-400">aucune date</span>}
+        {saving && <Loader2 size={12} className="animate-spin text-gray-400" />}
+      </div>
+      <div className="flex gap-1.5 flex-wrap">
+        {REPROG.map(r => {
+          const iso = isoParis(r.jours);
+          const actif = d === iso;
+          return (
+            <button key={r.label} type="button" disabled={saving}
+              onClick={() => onSet(iso, r.jours === 0 ? "À rappeler aujourd'hui" : `Relance ${r.label === "Demain" ? "demain" : r.label}`)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors disabled:opacity-50 ${
+                actif ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-700"
+              }`}>
+              {r.label}
+            </button>
+          );
+        })}
+        {d && (
+          <button type="button" disabled={saving} onClick={() => onSet("", "Relance retirée")}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-400 hover:text-red-600 hover:border-red-200 disabled:opacity-50">
+            Retirer
+          </button>
+        )}
+        {/* Date précise (ex. « rappelez-moi le 15 ») */}
+        <input type="date" value={d} aria-label="Date de relance précise"
+          onChange={e => onSet(e.target.value, e.target.value ? `Relance le ${jjmm(e.target.value)}` : "Relance retirée")}
+          className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Composant : Journal des échanges (notes + emails envoyés, plus récent en haut) ─
+function JournalEchanges({ commentaires, pending, suivi, onAdd, onDelete, onReprogrammer }: {
+  commentaires: Commentaire[];
+  pending: Commentaire[];
+  suivi?: Suivi;
+  onAdd: (texte: string) => void;
+  onDelete: (c: Commentaire) => void;
+  onReprogrammer: (jours: number) => void;
+}) {
+  const [texte, setTexte] = useState("");
+  const [suggestion, setSuggestion] = useState<{ label: string; reco: number } | null>(null);
+  const [toutVoir, setToutVoir] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const evts = useMemo(() => [
+    ...commentaires.map(c => evenementNote(c)),
+    ...pending.map(c => evenementNote(c, true)),
+    ...evenementsAuto(suivi),
+  ].sort((a, b) => b.tri - a.tri), [commentaires, pending, suivi]);
+  const LIMITE = 6;
+  const visibles = toutVoir ? evts : evts.slice(0, LIMITE);
+
+  // Saisie libre : Entrée envoie, le champ garde le focus (on enchaîne les notes).
+  function envoyer() {
+    const t = texte.trim();
+    if (!t) return;
+    onAdd(t);
+    setTexte("");
+    setSuggestion(null);
+    inputRef.current?.focus();
+  }
+  // Tag rapide : ajoute la note en UN tap (avec le texte déjà tapé s'il y en a).
+  function tag(emoji: string, label: string, reco: number) {
+    const t = texte.trim();
+    onAdd(t ? `${emoji} ${label} — ${t}` : `${emoji} ${label}`);
+    setTexte("");
+    setSuggestion({ label, reco });
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 p-3">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+        <MessageSquare size={12} />
+        Journal des échanges {evts.length > 0 && <span className="text-gray-400 font-normal normal-case">({evts.length})</span>}
+      </p>
+
+      {/* Tags rapides — défilement horizontal sur mobile */}
+      <div className="flex gap-1.5 mb-2 overflow-x-auto sm:flex-wrap -mx-3 px-3 sm:mx-0 sm:px-0 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {CHIPS_JOURNAL.map(({ emoji, label, reco }) => (
+          <button key={label} type="button" onClick={() => tag(emoji, label, reco)}
+            className="shrink-0 whitespace-nowrap flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-blue-50 hover:text-blue-700 active:bg-blue-100 text-xs text-gray-600 border border-gray-200 hover:border-blue-200 transition-colors">
+            {emoji} {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Suggestion de reprogrammation après un tag */}
+      {suggestion && (
+        <div className="flex items-center gap-1.5 flex-wrap mb-2 px-2.5 py-2 rounded-lg bg-blue-50 border border-blue-100 text-xs text-blue-800">
+          <span className="font-medium">{suggestion.reco === 0 ? "👍 À garder aujourd'hui · ou reprogrammer :" : "Reprogrammer :"}</span>
+          {REPROG.filter(r => r.jours > 0).map(r => (
+            <button key={r.jours} type="button"
+              onClick={() => { onReprogrammer(r.jours); setSuggestion(null); }}
+              className={`px-2.5 py-1 rounded-lg font-semibold border transition-colors ${
+                r.jours === suggestion.reco ? "bg-blue-600 text-white border-blue-600" : "bg-white text-blue-700 border-blue-200 hover:bg-blue-100"
+              }`}>
+              {r.label}
+            </button>
+          ))}
+          <button type="button" onClick={() => setSuggestion(null)} aria-label="Ignorer" className="ml-auto text-blue-300 hover:text-blue-600 p-0.5"><X size={13} /></button>
+        </div>
+      )}
+
+      {/* Saisie libre */}
+      <div className="flex gap-2 mb-3">
+        <input ref={inputRef} type="text" value={texte} enterKeyHint="send"
+          onChange={e => setTexte(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); envoyer(); } }}
+          placeholder="Ajouter une note… (Entrée pour valider)"
+          className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        <button type="button" onClick={envoyer} disabled={!texte.trim()} aria-label="Ajouter la note"
+          className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-40 transition-colors shrink-0">
+          <ChevronRight size={14} />
+        </button>
+      </div>
+
+      {/* Timeline unique : notes manuelles + emails envoyés (gris, non modifiables) */}
+      <div className="space-y-1.5">
+        {evts.length === 0 && <p className="text-xs text-gray-400 italic text-center py-3">Aucun échange pour le moment</p>}
+        {visibles.map(e => e.auto ? (
+          <div key={e.key} className="flex gap-2.5 items-center px-1" title={e.titre}>
+            <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-[11px] shrink-0 grayscale">{e.icon}</div>
+            <p className="flex-1 text-xs text-gray-500 leading-snug">
+              <Mail size={10} className="inline -mt-0.5 mr-1 text-gray-400" />{e.texte}
+            </p>
+            <span className="text-[10px] text-gray-400 shrink-0">{e.quand}</span>
+          </div>
+        ) : (
+          <div key={e.key} className={`flex gap-2.5 items-start group ${e.pending ? "opacity-60" : ""}`}>
+            <div className="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center text-xs shrink-0 mt-0.5">{e.icon}</div>
+            <div className="flex-1 min-w-0 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
+              <p className="text-[10px] text-gray-400 mb-0.5" title={e.titre}>{e.pending ? "enregistrement…" : e.quand}</p>
+              <p className="text-sm text-gray-800 leading-snug break-words">{e.texte}</p>
+            </div>
+            {!e.pending && e.note && (
+              <button type="button" onClick={() => onDelete(e.note!)} title="Supprimer cette note" aria-label="Supprimer cette note"
+                className="sm:opacity-0 sm:group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-500 transition-all shrink-0 mt-0.5">
+                <Trash2 size={13} />
+              </button>
+            )}
+          </div>
+        ))}
+        {evts.length > LIMITE && (
+          <button type="button" onClick={() => setToutVoir(v => !v)} className="w-full text-xs text-blue-600 font-medium py-1.5 hover:underline">
+            {toutVoir ? "Réduire" : `Voir tout (${evts.length})`}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Composant : Modal détail / édition ───────────────────────────────────────
+// Navigation « Suivant » dans la liste de l'onglet d'où la fiche a été ouverte.
+interface FicheNav { pos: number; total: number; nextName?: string; onNext?: () => void }
+
 function ProspectModal({
-  prospect, prestataires, onClose, onUpdated, onDeleted, onConverted, onRefresh,
+  prospect, prestataires, onClose, onUpdated, onDeleted, onConverted, nav,
 }: {
   prospect: Prospect;
   prestataires: Prestataire[];
   onClose: () => void;
-  onUpdated: (p: Partial<Prospect> & { id: string }) => void;
+  // `msg` (facultatif) : action explicite → la page affiche le toast « → déplacé dans … ».
+  onUpdated: (p: Partial<Prospect> & { id: string }, msg?: string) => void;
   onDeleted: (id: string) => void;
   onConverted: (id: string) => void;
-  onRefresh?: () => void;
+  nav?: FicheNav;
 }) {
   const [p, setP] = useState<Prospect>({ ...prospect, genre: prospect.genre ?? "", relanceSteps: prospect.relanceSteps ?? [] });
-  const [commentText, setCommentText] = useState("");
-  const [addingComment, setAddingComment] = useState(false);
+  const [pendingNotes, setPendingNotes] = useState<Commentaire[]>([]); // notes en cours d'enregistrement (affichage optimiste)
+  const [doneMsg, setDoneMsg] = useState("");                          // dernière action faite (bandeau « Suivant »)
   const [saving, setSaving]         = useState(false);
   const [showConvert, setShowConvert] = useState(false);
   const [convertedClientId, setConvertedClientId] = useState<string>(""); // fiche créée par la conversion
@@ -388,13 +675,15 @@ function ProspectModal({
   const [draftStatut, setDraftStatut] = useState<string>(prospect.statut); // statut choisi, en attente de validation
   const [actionBusy, setActionBusy] = useState<"" | "devis" | "relance" | "avance" | "infos" | "relance_infos">("");
   const toast = useToast();
-  const commentsEndRef = useRef<HTMLDivElement>(null);
   const [devisExt, setDevisExt] = useState<DevisExterne[]>([]); // devis externes (pour « dernier email »)
+  // Dernier état connu (pour les écritures asynchrones enchaînées du journal).
+  const pRef = useRef(p);
+  pRef.current = p;
+  // File d'écritures du journal : les notes partent une par une (le serveur fait
+  // lecture → ajout → écriture, deux envois simultanés pourraient s'écraser).
+  const noteQueue = useRef<Promise<void>>(Promise.resolve());
 
-  // Scroll to bottom of comments when added
-  useEffect(() => { commentsEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [p.commentaires]);
-
-  async function patch(updates: Record<string, unknown>) {
+  async function patch(updates: Record<string, unknown>, msg?: string): Promise<boolean> {
     setSaving(true);
     try {
       const res = await fetch(`/api/prospects/${p.id}`, {
@@ -407,12 +696,24 @@ function ProspectModal({
         toast.error("besoins" in updates && /besoins/i.test(msg)
           ? "Colonne « besoins » manquante — lance le SQL (une seule fois)."
           : (d.error || "Échec de l'enregistrement"));
-        return;
+        return false;
       }
-      const next = { ...p, ...updates } as Prospect;
-      setP(next);
-      onUpdated({ id: p.id, ...updates } as Partial<Prospect> & { id: string });
+      setP(prev => ({ ...prev, ...updates } as Prospect));
+      onUpdated({ id: p.id, ...updates } as Partial<Prospect> & { id: string }, msg);
+      return true;
+    } catch {
+      toast.error("Échec de l'enregistrement");
+      return false;
     } finally { setSaving(false); }
+  }
+
+  // Reprogrammation rapide (chips Aujourd'hui / Demain / +3 j / +1 sem / Retirer).
+  // Passe dans la file du journal : une note encore en cours d'envoi (qui remet la
+  // relance à aujourd'hui côté serveur) ne peut pas écraser la nouvelle date.
+  function reprogrammer(date: string, msg: string) {
+    noteQueue.current = noteQueue.current.then(async () => {
+      if (await patch({ dateRelance: date }, msg)) setDoneMsg(msg);
+    });
   }
 
   // Sélection d'un statut. Choisir « Relancé » pose une date de relance par
@@ -420,8 +721,7 @@ function ProspectModal({
   function chooseStatut(s: string) {
     setDraftStatut(s);
     if (s === "RELANCÉ" && !p.dateRelance) {
-      const t = new Date(); t.setDate(t.getDate() + 1);
-      patch({ dateRelance: t.toISOString().split("T")[0] });
+      patch({ dateRelance: isoParis(1) });
     }
   }
 
@@ -475,8 +775,8 @@ function ProspectModal({
       const statut = p.statut === "NOUVEAU" ? "CONTACTÉ" : p.statut;
       setP(prev => ({ ...prev, suivi: d.suivi, statut, dateRelance: d.dateRelance ?? prev.dateRelance }));
       setDraftStatut(statut);
-      onUpdated({ id: p.id, suivi: d.suivi, statut, dateRelance: d.dateRelance });
-      toast.success(d.pdf ? "Devis (PDF) envoyé 📧 — à recontacter demain" : "Devis envoyé 📧 — à recontacter demain");
+      onUpdated({ id: p.id, suivi: d.suivi, statut, dateRelance: d.dateRelance }, d.pdf ? "Devis (PDF) envoyé 📧" : "Devis envoyé 📧");
+      setDoneMsg("Devis envoyé");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
     finally { setActionBusy(""); }
   }
@@ -509,8 +809,8 @@ function ProspectModal({
       if (!res.ok) throw new Error(d.error || "Erreur");
       setP(prev => ({ ...prev, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance ?? prev.dateRelance }));
       setDraftStatut("RELANCÉ");
-      onUpdated({ id: p.id, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance });
-      toast.success(`Relance ${d.niveau} envoyée 📧 — à recontacter demain`);
+      onUpdated({ id: p.id, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance }, `Relance ${d.niveau} envoyée 📧`);
+      setDoneMsg(`Relance ${d.niveau} envoyée`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
     finally { setActionBusy(""); }
   }
@@ -530,8 +830,8 @@ function ProspectModal({
       const statut = p.statut === "NOUVEAU" ? "CONTACTÉ" : p.statut;
       setP(prev => ({ ...prev, suivi: d.suivi, statut, dateRelance: d.dateRelance ?? prev.dateRelance }));
       setDraftStatut(statut);
-      onUpdated({ id: p.id, suivi: d.suivi, statut, dateRelance: d.dateRelance });
-      toast.success("Demande d'infos envoyée 📧 — à recontacter demain");
+      onUpdated({ id: p.id, suivi: d.suivi, statut, dateRelance: d.dateRelance }, "Demande d'infos envoyée 📧");
+      setDoneMsg("Demande d'infos envoyée");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
     finally { setActionBusy(""); }
   }
@@ -549,33 +849,70 @@ function ProspectModal({
       if (!res.ok) throw new Error(d.error || "Erreur");
       setP(prev => ({ ...prev, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance ?? prev.dateRelance }));
       setDraftStatut("RELANCÉ");
-      onUpdated({ id: p.id, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance });
-      toast.success(`Relance ${d.niveau} (infos) envoyée 📧 — à recontacter demain`);
+      onUpdated({ id: p.id, suivi: d.suivi, statut: "RELANCÉ", dateRelance: d.dateRelance }, `Relance ${d.niveau} (infos) envoyée 📧`);
+      setDoneMsg(`Relance ${d.niveau} (infos) envoyée`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur d'envoi"); }
     finally { setActionBusy(""); }
   }
 
-  async function addComment() {
-    if (!commentText.trim()) return;
-    setAddingComment(true);
-    try {
-      const res = await fetch(`/api/prospects/${p.id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ addComment: commentText.trim() }),
-      });
-      const d = await res.json();
-      // Ajouter une note = action faite → « à recontacter » aujourd'hui + sortie de « Nouveau ».
-      const next = {
-        ...p,
-        commentaires: [...p.commentaires, d.comment],
-        dateRelance : d.dateRelance ?? p.dateRelance,
-        statut      : d.statut ?? p.statut,
-      };
-      setP(next);
-      setDraftStatut(next.statut);
-      onUpdated({ id: p.id, commentaires: next.commentaires, dateRelance: next.dateRelance, statut: next.statut });
-      setCommentText("");
-    } finally { setAddingComment(false); }
+  // Journal : ajout optimiste (la note s'affiche tout de suite, grisée jusqu'à la
+  // confirmation serveur). Ajouter une note = action faite → « à recontacter »
+  // aujourd'hui (sauf relance future déjà posée) + sortie de « Nouveau ».
+  function addNote(texte: string) {
+    const temp: Commentaire = { id: `tmp-${crypto.randomUUID()}`, date: new Date().toISOString(), texte };
+    setPendingNotes(prev => [...prev, temp]);
+    noteQueue.current = noteQueue.current.then(async () => {
+      try {
+        const res = await fetch(`/api/prospects/${p.id}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ addComment: texte }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.comment) throw new Error(d.error || "Note non enregistrée");
+        const cur = pRef.current;
+        const next = {
+          ...cur,
+          commentaires: [...cur.commentaires, d.comment as Commentaire],
+          dateRelance : d.dateRelance ?? cur.dateRelance,
+          statut      : d.statut ?? cur.statut,
+        };
+        pRef.current = next;
+        setP(next);
+        setDraftStatut(prev => prev === cur.statut ? next.statut : prev);
+        onUpdated({ id: cur.id, commentaires: next.commentaires, dateRelance: next.dateRelance, statut: next.statut });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Note non enregistrée");
+      } finally {
+        setPendingNotes(prev => prev.filter(x => x.id !== temp.id));
+      }
+    });
+  }
+
+  // Suppression d'une note manuelle (liste complète renvoyée en PATCH).
+  function deleteNote(c: Commentaire) {
+    if (!confirm(`Supprimer cette note du journal ?\n\n« ${c.texte} »`)) return;
+    noteQueue.current = noteQueue.current.then(async () => {
+      const before = pRef.current.commentaires;
+      const updated = before.filter(x => x.id !== c.id);
+      setP(prev => ({ ...prev, commentaires: updated }));
+      try {
+        const res = await fetch(`/api/prospects/${p.id}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ commentaires: updated }),
+        });
+        if (!res.ok) throw new Error();
+        onUpdated({ id: p.id, commentaires: updated });
+      } catch {
+        setP(prev => ({ ...prev, commentaires: before }));
+        toast.error("Suppression impossible");
+      }
+    });
+  }
+
+  // « Suivant » : on enregistre d'abord un statut choisi mais pas encore validé.
+  async function suivant() {
+    if (draftStatut !== p.statut) await patch({ statut: draftStatut });
+    nav?.onNext?.();
   }
 
   // Devis externe ajouté → trace dans le journal des échanges (sans toucher statut/relance).
@@ -585,7 +922,7 @@ function ProspectModal({
       id: crypto.randomUUID(), date: new Date().toISOString(),
       texte: `📄 Devis externe envoyé le ${fmtDevisDate(d.date)} : ${d.intitule || d.fichier?.nom || "devis"}${montant}`,
     };
-    const updated = [...p.commentaires, c];
+    const updated = [...pRef.current.commentaires, c];
     try {
       const res = await fetch(`/api/prospects/${p.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -649,17 +986,6 @@ function ProspectModal({
     setEditingCoord(false);
   }
 
-  async function deleteComment(commentId: string) {
-    const updated = p.commentaires.filter(c => c.id !== commentId);
-    await fetch(`/api/prospects/${p.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commentaires: updated }),
-    });
-    const next = { ...p, commentaires: updated };
-    setP(next);
-    onUpdated({ id: p.id, commentaires: updated });
-  }
-
   const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
   const isActive = p.statut !== "CONVERTI" && p.statut !== "PERDU";
 
@@ -670,12 +996,12 @@ function ProspectModal({
         onClick={e => e.stopPropagation()}>
 
         {/* ── Header ── */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-2 px-4 sm:px-5 py-3 sm:py-4 border-b border-gray-100 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-base shrink-0">
               {p.prenom[0]?.toUpperCase()}{p.nom[0]?.toUpperCase()}
             </div>
-            <div>
+            <div className="min-w-0">
               {editingName ? (
                 <div className="flex items-center gap-1.5">
                   <input
@@ -697,8 +1023,8 @@ function ProspectModal({
                   <button onClick={() => setEditingName(false)} className="text-gray-300 hover:text-gray-500 p-0.5" title="Annuler"><X size={14} /></button>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 group">
-                  <h2 className="font-bold text-gray-900">{p.prenom} {p.nom}</h2>
+                <div className="flex items-center gap-1.5 group min-w-0">
+                  <h2 className="font-bold text-gray-900 truncate">{p.prenom} {p.nom}</h2>
                   <button
                     onClick={() => { setNameForm({ prenom: p.prenom, nom: p.nom }); setEditingName(true); }}
                     className="text-gray-300 hover:text-gray-500 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity p-0.5"
@@ -711,11 +1037,39 @@ function ProspectModal({
               <p className="text-xs text-gray-400">{formatDate(p.createdAt)}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 shrink-0">
             {saving && <Loader2 size={14} className="animate-spin text-gray-400" />}
-            <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-full"><X size={18} className="text-gray-400" /></button>
+            {nav && <span className="text-[11px] text-gray-400 tabular-nums">{nav.pos}/{nav.total}</span>}
+            {nav?.onNext && (
+              <button onClick={suivant} title={nav.nextName ? `Suivant : ${nav.nextName}` : "Prospect suivant"}
+                className="flex items-center gap-0.5 px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-semibold text-gray-700">
+                Suivant <ChevronRight size={14} />
+              </button>
+            )}
+            <button onClick={onClose} aria-label="Fermer" className="p-1.5 hover:bg-gray-100 rounded-full"><X size={18} className="text-gray-400" /></button>
           </div>
         </div>
+
+        {/* ── Action faite → bandeau « Suivant » (traiter la file du jour sans fermer la fiche) ── */}
+        {doneMsg && (
+          <div className="flex items-center gap-2 px-5 py-2.5 bg-emerald-50 border-b border-emerald-200 shrink-0">
+            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+            <p className="flex-1 min-w-0 text-xs text-emerald-800 leading-snug">
+              <strong>{doneMsg}</strong> — {isActive ? <>maintenant dans « {destinationLabel(p)} »</> : "prospect archivé"}
+            </p>
+            {nav?.onNext ? (
+              <button onClick={suivant}
+                className="shrink-0 flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 shadow-sm">
+                Suivant{nav.nextName ? ` · ${nav.nextName.split(" ")[0]}` : ""} <ChevronRight size={15} />
+              </button>
+            ) : (
+              <button onClick={async () => { if (draftStatut !== p.statut) await patch({ statut: draftStatut }); onClose(); }}
+                className="shrink-0 px-3 py-2 rounded-xl bg-white border border-emerald-300 text-emerald-700 text-sm font-semibold hover:bg-emerald-100">
+                {nav ? "Fin de la liste ✓" : "Fermer"}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── Actions rapides (fixes en haut de la fiche, hors zone scrollable) ── */}
         {(p.tel || p.email) && (
@@ -776,218 +1130,20 @@ function ProspectModal({
             );
           })()}
 
-          {/* Genre */}
-          <div className="flex gap-2">
-            {["Monsieur", "Madame"].map(g => (
-              <button key={g} type="button"
-                onClick={() => patch({ genre: p.genre === g ? "" : g })}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                  p.genre === g
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : "bg-white text-gray-500 border-gray-200 hover:border-blue-300"
-                }`}>
-                {g}
-              </button>
-            ))}
-          </div>
+          {/* Prochaine relance : reprogrammation en 1 tap (le prospect change d'onglet) */}
+          {isActive && (
+            <RelanceRapide dateRelance={p.dateRelance} statut={p.statut} saving={saving} onSet={reprogrammer} />
+          )}
 
-          {/* Statut — on choisit (le bouton se met en avant), puis on valide en bas.
-              « Converti » n'est pas un statut manuel : la conversion se fait via le
-              bouton « Convertir en client » plus bas. */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Statut</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {STATUTS.filter(s => s !== "CONVERTI").map(s => {
-                const sel = draftStatut === s;
-                return (
-                  <button key={s} type="button" onClick={() => chooseStatut(s)}
-                    className={`flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${
-                      sel
-                        ? `${STATUT_META[s].bg} ${STATUT_META[s].color} border-current shadow-sm scale-[1.03]`
-                        : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
-                    }`}>
-                    <span className="text-lg leading-none">{STATUT_META[s].icon}</span>
-                    <span>{STATUT_META[s].label}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {draftStatut !== p.statut && (
-              <p className="text-[11px] text-amber-600 mt-1.5">Statut modifié — clique sur <strong>Valider</strong> en bas pour enregistrer.</p>
-            )}
-
-            {/* Date de relance : par défaut au lendemain quand on clique « Relancé »,
-                ou date précise choisie à la main (ex. « rappelez-moi le 15 »). */}
-            <div className="mt-3 flex items-center gap-2 flex-wrap">
-              <label className="text-xs font-semibold text-gray-500 flex items-center gap-1"><Calendar size={13} /> Date de relance</label>
-              <input type="date" value={p.dateRelance ? p.dateRelance.slice(0, 10) : ""}
-                onChange={e => patch({ dateRelance: e.target.value })}
-                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-              {p.dateRelance && (
-                <button type="button" onClick={() => patch({ dateRelance: "" })}
-                  className="text-[11px] text-gray-400 hover:text-gray-600 underline">retirer</button>
-              )}
-            </div>
-            <p className="text-[11px] text-gray-400 mt-1">Le prospect remonte dans « À rappeler » à cette date. Enregistré immédiatement.</p>
-          </div>
-
-          {/* Infos contact */}
-          <div className="relative rounded-xl border border-gray-100 p-3">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500">Coordonnées</p>
-              {!editingCoord ? (
-                <button
-                  onClick={() => { setCoordForm({ tel: p.tel, email: p.email, adresse: p.adresse, budget: p.budget }); setEditingCoord(true); }}
-                  className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium">
-                  <Pencil size={12} /> Modifier
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <button onClick={() => setEditingCoord(false)} className="text-xs text-gray-400 hover:text-gray-600">Annuler</button>
-                  <button onClick={saveCoord} disabled={saving}
-                    className="text-xs text-white bg-blue-600 hover:bg-blue-700 rounded-lg px-2.5 py-1 flex items-center gap-1 disabled:opacity-50 font-medium">
-                    {saving ? <Loader2 size={11} className="animate-spin" /> : <Check size={12} />} Enregistrer
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {editingCoord ? (
-              <div className="space-y-2.5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="text-xs text-gray-400 mb-1 block">Téléphone</label>
-                    <input value={coordForm.tel} onChange={e => setCoordForm(f => ({ ...f, tel: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="06 00 00 00 00" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400 mb-1 block">Email</label>
-                    <input type="email" value={coordForm.email} onChange={e => setCoordForm(f => ({ ...f, email: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="email@exemple.fr" />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Adresse</label>
-                  <AddressAutocomplete value={coordForm.adresse} onChange={v => setCoordForm(f => ({ ...f, adresse: v }))} onSelect={a => setCoordForm(f => ({ ...f, adresse: a }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Adresse" />
-                </div>
-                <div className="w-1/2">
-                  <label className="text-xs text-gray-400 mb-1 block">Budget estimé (€)</label>
-                  <input type="number" inputMode="decimal" value={coordForm.budget} onChange={e => setCoordForm(f => ({ ...f, budget: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="ex : 190" />
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {[
-                  { icon: Phone,    label: "Téléphone", val: p.tel,    href: p.tel ? `tel:${p.tel}` : undefined },
-                  { icon: Mail,     label: "Email",     val: p.email,  href: p.email ? `mailto:${p.email}` : undefined },
-                  { icon: MapPin,   label: "Adresse",   val: p.adresse },
-                ].map(({ icon: Icon, label, val, href }) => val ? (
-                  <div key={label} className="flex items-start gap-2 text-sm">
-                    <Icon size={14} className="text-gray-400 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-xs text-gray-400">{label}</p>
-                      {href
-                        ? <a href={href} className="text-blue-600 hover:underline font-medium">{val}</a>
-                        : <p className="text-gray-800 font-medium">{val}</p>}
-                    </div>
-                  </div>
-                ) : null)}
-                {p.budget && (
-                  <div className="flex items-start gap-2 text-sm">
-                    <TrendingUp size={14} className="text-gray-400 mt-0.5 shrink-0" />
-                    <div><p className="text-xs text-gray-400">Budget estimé</p><p className="text-gray-800 font-medium">{p.budget} €</p></div>
-                  </div>
-                )}
-                {!p.tel && !p.email && !p.adresse && !p.budget && (
-                  <p className="text-xs text-gray-400 italic">Aucune coordonnée — clique sur <strong>Modifier</strong> pour en ajouter.</p>
-                )}
-              </div>
-            )}
-            {p.source && (
-              <div className="flex items-start gap-2 text-sm">
-                <Users size={14} className="text-gray-400 mt-0.5 shrink-0" />
-                <div><p className="text-xs text-gray-400">Source</p><p className="text-gray-800 font-medium">{p.source}</p></div>
-              </div>
-            )}
-          </div>
-
-          {/* Prestations souhaitées — même formulaire que la fiche client (pré-remplit la conversion) */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3.5 space-y-3">
-            <div className="flex items-center gap-2 pb-1 border-b border-gray-100">
-              <Star size={14} className="text-blue-500" />
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Prestations souhaitées</span>
-            </div>
-
-            {/* Liste des prestations déjà notées */}
-            {(p.besoins && p.besoins.length > 0) ? (
-              <div className="space-y-1.5">
-                {p.besoins.map((b, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">{b.typePresta || "—"}</p>
-                      {b.quantite && b.quantite !== "1" && <p className="text-xs text-gray-500 truncate">{b.quantite}</p>}
-                    </div>
-                    {b.prix && <span className="text-sm font-semibold text-green-700 shrink-0">{b.prix} €</span>}
-                    <button onClick={() => removeBesoin(i)} title="Retirer" className="text-gray-300 hover:text-red-600 shrink-0"><Trash2 size={14} /></button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-gray-400">Aucune prestation notée. Ajoute ce que le prospect souhaite (canapé, matelas, chaises…), avec les détails et le prix.</p>
-            )}
-
-            {/* Ajout d'une prestation souhaitée */}
-            <div className="space-y-2 border-t border-gray-100 pt-2.5">
-              <select value={draft.typePresta}
-                onChange={e => setDraft({ typePresta: e.target.value, quantite: "1", prix: draft.prix })}
-                className="w-full bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
-                <option value="">— Type de prestation —</option>
-                {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              {draft.typePresta && getSchema(draft.typePresta).length > 0 && (
-                <PrestationFields typePresta={draft.typePresta} initialValues={draft.details} onDetailChange={(d, v) => setDraft(x => ({ ...x, quantite: d, details: v }))} />
-              )}
-              <div className="flex items-end gap-2 flex-wrap">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Prix unitaire (€)</label>
-                  <input type="number" inputMode="decimal" min={0} step="0.01" value={besoinUnit} placeholder="ex. 210"
-                    onChange={e => applyBesoinPrix(e.target.value, besoinNb)}
-                    className="w-28 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300" />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Nombre</label>
-                  <div className="flex items-center gap-1">
-                    <button type="button" onClick={() => applyBesoinPrix(besoinUnit, String(Math.max(1, (parseInt(besoinNb) || 1) - 1)))} className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">–</button>
-                    <input type="number" min={1} value={besoinNb} onChange={e => applyBesoinPrix(besoinUnit, e.target.value)} className="w-12 text-center border border-gray-200 rounded-lg px-1 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300" />
-                    <button type="button" onClick={() => applyBesoinPrix(besoinUnit, String((parseInt(besoinNb) || 1) + 1))} className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">+</button>
-                  </div>
-                </div>
-                {(parseInt(besoinNb) || 1) > 1 && draft.prix && (
-                  <div className="text-sm text-gray-700 pb-1.5">= <strong>{draft.prix} €</strong></div>
-                )}
-              </div>
-              <button onClick={addBesoin} disabled={!draft.typePresta || saving}
-                className="w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                + Ajouter la prestation
-              </button>
-            </div>
-            <p className="text-[11px] text-gray-400">💡 Tout ce que tu notes ici sera pré-rempli automatiquement à la conversion en client.</p>
-          </div>
-
-          {/* Note interne — juste sous les prestations souhaitées */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Note interne</p>
-            <textarea
-              rows={2}
-              value={p.notes}
-              onChange={e => setP(prev => ({ ...prev, notes: e.target.value }))}
-              onBlur={e => patch({ notes: e.target.value })}
-              placeholder="Tache de sang, accès, remarques… (infos clés du prospect)"
-              className={`${inputCls} resize-none`}
-            />
-          </div>
+          {/* Journal des échanges — remonté juste sous la relance (accès sans scroller) */}
+          <JournalEchanges
+            commentaires={p.commentaires}
+            pending={pendingNotes}
+            suivi={p.suivi}
+            onAdd={addNote}
+            onDelete={deleteNote}
+            onReprogrammer={jours => reprogrammer(isoParis(jours), jours === 1 ? "Relance demain" : `Relance ${jours === 7 ? "+1 sem" : `+${jours} j`}`)}
+          />
 
           {/* Suivi commercial : devis envoyé + relances email (100% manuel) */}
           <div className="bg-white border border-gray-200 rounded-xl p-3.5 space-y-3">
@@ -1086,7 +1242,7 @@ function ProspectModal({
           {/* Demande d'information : prospect contacté mais injoignable (100% manuel) */}
           <div className="bg-white border border-gray-200 rounded-xl p-3.5 space-y-3">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-              <MessageSquare size={12} className="text-indigo-500" /> Demande d'information
+              <MessageSquare size={12} className="text-indigo-500" /> Demande d&apos;information
             </p>
             <p className="text-[11px] text-gray-400 -mt-1">Pour un prospect qui vous a contacté mais reste injoignable : on lui demande les infos manquantes, puis 3 relances, puis clôture.</p>
 
@@ -1101,7 +1257,7 @@ function ProspectModal({
             {p.suivi?.infosEnvoye && (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm">
                 <CheckCircle2 size={15} className="shrink-0" />
-                <span className="flex-1">Demande d'infos envoyée{p.suivi?.infosDate ? ` le ${p.suivi.infosDate}` : ""}</span>
+                <span className="flex-1">Demande d&apos;infos envoyée{p.suivi?.infosDate ? ` le ${p.suivi.infosDate}` : ""}</span>
               </div>
             )}
 
@@ -1139,6 +1295,69 @@ function ProspectModal({
             })()}
           </div>
 
+          {/* Prestations souhaitées — même formulaire que la fiche client (pré-remplit la conversion) */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3.5 space-y-3">
+            <div className="flex items-center gap-2 pb-1 border-b border-gray-100">
+              <Star size={14} className="text-blue-500" />
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Prestations souhaitées</span>
+            </div>
+
+            {/* Liste des prestations déjà notées */}
+            {(p.besoins && p.besoins.length > 0) ? (
+              <div className="space-y-1.5">
+                {p.besoins.map((b, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{b.typePresta || "—"}</p>
+                      {b.quantite && b.quantite !== "1" && <p className="text-xs text-gray-500 truncate">{b.quantite}</p>}
+                    </div>
+                    {b.prix && <span className="text-sm font-semibold text-green-700 shrink-0">{b.prix} €</span>}
+                    <button onClick={() => removeBesoin(i)} title="Retirer" className="text-gray-300 hover:text-red-600 shrink-0"><Trash2 size={14} /></button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">Aucune prestation notée. Ajoute ce que le prospect souhaite (canapé, matelas, chaises…), avec les détails et le prix.</p>
+            )}
+
+            {/* Ajout d'une prestation souhaitée */}
+            <div className="space-y-2 border-t border-gray-100 pt-2.5">
+              <select value={draft.typePresta}
+                onChange={e => setDraft({ typePresta: e.target.value, quantite: "1", prix: draft.prix })}
+                className="w-full bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+                <option value="">— Type de prestation —</option>
+                {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              {draft.typePresta && getSchema(draft.typePresta).length > 0 && (
+                <PrestationFields typePresta={draft.typePresta} initialValues={draft.details} onDetailChange={(d, v) => setDraft(x => ({ ...x, quantite: d, details: v }))} />
+              )}
+              <div className="flex items-end gap-2 flex-wrap">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Prix unitaire (€)</label>
+                  <input type="number" inputMode="decimal" min={0} step="0.01" value={besoinUnit} placeholder="ex. 210"
+                    onChange={e => applyBesoinPrix(e.target.value, besoinNb)}
+                    className="w-28 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Nombre</label>
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => applyBesoinPrix(besoinUnit, String(Math.max(1, (parseInt(besoinNb) || 1) - 1)))} className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">–</button>
+                    <input type="number" min={1} value={besoinNb} onChange={e => applyBesoinPrix(besoinUnit, e.target.value)} className="w-12 text-center border border-gray-200 rounded-lg px-1 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                    <button type="button" onClick={() => applyBesoinPrix(besoinUnit, String((parseInt(besoinNb) || 1) + 1))} className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">+</button>
+                  </div>
+                </div>
+                {(parseInt(besoinNb) || 1) > 1 && draft.prix && (
+                  <div className="text-sm text-gray-700 pb-1.5">= <strong>{draft.prix} €</strong></div>
+                )}
+              </div>
+              <button onClick={addBesoin} disabled={!draft.typePresta || saving}
+                className="w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                + Ajouter la prestation
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400">💡 Tout ce que tu notes ici sera pré-rempli automatiquement à la conversion en client.</p>
+          </div>
+
           {/* Devis : devis du dashboard + devis externes (faits ailleurs, envoyés à la main).
               Copiés automatiquement sur la fiche client à la conversion. */}
           <DevisExternes
@@ -1161,84 +1380,147 @@ function ProspectModal({
                 statut      : p.statut === "NOUVEAU" ? "CONTACTÉ" as Prospect["statut"] : p.statut,
               };
               setP(next);
-              onUpdated({ id: p.id, commentaires: next.commentaires, dateRelance: next.dateRelance, statut: next.statut });
+              // msg vide : DevisExternes a déjà affiché « Envoyé à … » → la page ajoute « déplacé dans … ».
+              onUpdated({ id: p.id, commentaires: next.commentaires, dateRelance: next.dateRelance, statut: next.statut }, info.dateRelance ? "" : undefined);
+              if (info.dateRelance) setDoneMsg("Devis externe envoyé");
             }}
           />
 
-          {/* Journal des échanges */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-              <MessageSquare size={12} />
-              Journal des échanges {p.commentaires.length > 0 && `(${p.commentaires.length})`}
-            </p>
-
-            {/* Tags rapides */}
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {[
-                { emoji: "📞", label: "Appel passé" },
-                { emoji: "💬", label: "DM envoyé" },
-                { emoji: "📧", label: "Email envoyé" },
-                { emoji: "🎯", label: "Très intéressé" },
-                { emoji: "💤", label: "Pas disponible" },
-                { emoji: "💶", label: "Devis demandé" },
-                { emoji: "❌", label: "Pas de réponse" },
-              ].map(({ emoji, label }) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => setCommentText(t => t ? `${emoji} ${label} — ${t}` : `${emoji} ${label}`)}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 hover:bg-blue-50 hover:text-blue-700 text-xs text-gray-600 border border-gray-200 hover:border-blue-200 transition-colors"
-                >
-                  {emoji} {label}
-                </button>
-              ))}
-            </div>
-
-            {/* Input note */}
-            <div className="flex gap-2 mb-3">
-              <input
-                type="text"
-                value={commentText}
-                onChange={e => setCommentText(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addComment(); } }}
-                placeholder="Ajouter une note… (Entrée pour valider)"
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              />
-              <button onClick={addComment} disabled={!commentText.trim() || addingComment}
-                className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-40 transition-colors shrink-0">
-                {addingComment ? <Loader2 size={14} className="animate-spin" /> : <ChevronRight size={14} />}
+          {/* Genre */}
+          <div className="flex gap-2">
+            {["Monsieur", "Madame"].map(g => (
+              <button key={g} type="button"
+                onClick={() => patch({ genre: p.genre === g ? "" : g })}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  p.genre === g
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "bg-white text-gray-500 border-gray-200 hover:border-blue-300"
+                }`}>
+                {g}
               </button>
-            </div>
+            ))}
+          </div>
 
-            {/* Timeline */}
-            <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
-              {p.commentaires.length === 0 && (
-                <p className="text-xs text-gray-400 italic text-center py-3">Aucune note pour le moment</p>
-              )}
-              {[...p.commentaires].reverse().map(c => {
-                const firstChar = c.texte.charAt(0);
-                const emoji = (firstChar.codePointAt(0) ?? 0) > 127 ? firstChar : null;
+          {/* Statut — on choisit (le bouton se met en avant), puis on valide en bas.
+              « Converti » n'est pas un statut manuel : la conversion se fait via le
+              bouton « Convertir en client » plus bas. */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Statut</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {STATUTS.filter(s => s !== "CONVERTI").map(s => {
+                const sel = draftStatut === s;
                 return (
-                  <div key={c.id} className="flex gap-2.5 items-start group">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 mt-0.5 ${emoji ? "bg-blue-50" : "bg-gray-100"}`}>
-                      {emoji || "💬"}
-                    </div>
-                    <div className="flex-1 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
-                      <p className="text-[10px] text-gray-400 mb-0.5">{formatDate(c.date)}</p>
-                      <p className="text-sm text-gray-800 leading-snug">{c.texte}</p>
-                    </div>
-                    <button
-                      onClick={() => deleteComment(c.id)}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-400 transition-all shrink-0 mt-0.5"
-                      title="Supprimer cette note"
-                    >
-                      <X size={13} />
-                    </button>
-                  </div>
+                  <button key={s} type="button" onClick={() => chooseStatut(s)}
+                    className={`flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${
+                      sel
+                        ? `${STATUT_META[s].bg} ${STATUT_META[s].color} border-current shadow-sm scale-[1.03]`
+                        : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+                    }`}>
+                    <span className="text-lg leading-none">{STATUT_META[s].icon}</span>
+                    <span>{STATUT_META[s].label}</span>
+                  </button>
                 );
               })}
-              <div ref={commentsEndRef} />
             </div>
+            {draftStatut !== p.statut && (
+              <p className="text-[11px] text-amber-600 mt-1.5">Statut modifié — clique sur <strong>Valider</strong> en bas pour enregistrer.</p>
+            )}
+
+          </div>
+
+          {/* Infos contact */}
+          <div className="relative rounded-xl border border-gray-100 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500">Coordonnées</p>
+              {!editingCoord ? (
+                <button
+                  onClick={() => { setCoordForm({ tel: p.tel, email: p.email, adresse: p.adresse, budget: p.budget }); setEditingCoord(true); }}
+                  className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium">
+                  <Pencil size={12} /> Modifier
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setEditingCoord(false)} className="text-xs text-gray-400 hover:text-gray-600">Annuler</button>
+                  <button onClick={saveCoord} disabled={saving}
+                    className="text-xs text-white bg-blue-600 hover:bg-blue-700 rounded-lg px-2.5 py-1 flex items-center gap-1 disabled:opacity-50 font-medium">
+                    {saving ? <Loader2 size={11} className="animate-spin" /> : <Check size={12} />} Enregistrer
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {editingCoord ? (
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Téléphone</label>
+                    <input value={coordForm.tel} onChange={e => setCoordForm(f => ({ ...f, tel: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="06 00 00 00 00" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">Email</label>
+                    <input type="email" value={coordForm.email} onChange={e => setCoordForm(f => ({ ...f, email: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="email@exemple.fr" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Adresse</label>
+                  <AddressAutocomplete value={coordForm.adresse} onChange={v => setCoordForm(f => ({ ...f, adresse: v }))} onSelect={a => setCoordForm(f => ({ ...f, adresse: a }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="Adresse" />
+                </div>
+                <div className="w-1/2">
+                  <label className="text-xs text-gray-400 mb-1 block">Budget estimé (€)</label>
+                  <input type="number" inputMode="decimal" value={coordForm.budget} onChange={e => setCoordForm(f => ({ ...f, budget: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="ex : 190" />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  { icon: Phone,    label: "Téléphone", val: p.tel,    href: p.tel ? `tel:${p.tel}` : undefined },
+                  { icon: Mail,     label: "Email",     val: p.email,  href: p.email ? `mailto:${p.email}` : undefined },
+                  { icon: MapPin,   label: "Adresse",   val: p.adresse },
+                ].map(({ icon: Icon, label, val, href }) => val ? (
+                  <div key={label} className="flex items-start gap-2 text-sm">
+                    <Icon size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs text-gray-400">{label}</p>
+                      {href
+                        ? <a href={href} className="text-blue-600 hover:underline font-medium">{val}</a>
+                        : <p className="text-gray-800 font-medium">{val}</p>}
+                    </div>
+                  </div>
+                ) : null)}
+                {p.budget && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <TrendingUp size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                    <div><p className="text-xs text-gray-400">Budget estimé</p><p className="text-gray-800 font-medium">{p.budget} €</p></div>
+                  </div>
+                )}
+                {!p.tel && !p.email && !p.adresse && !p.budget && (
+                  <p className="text-xs text-gray-400 italic">Aucune coordonnée — clique sur <strong>Modifier</strong> pour en ajouter.</p>
+                )}
+              </div>
+            )}
+            {p.source && (
+              <div className="flex items-start gap-2 text-sm">
+                <Users size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                <div><p className="text-xs text-gray-400">Source</p><p className="text-gray-800 font-medium">{p.source}</p></div>
+              </div>
+            )}
+          </div>
+
+          {/* Note interne — juste sous les prestations souhaitées */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Note interne</p>
+            <textarea
+              rows={2}
+              value={p.notes}
+              onChange={e => setP(prev => ({ ...prev, notes: e.target.value }))}
+              onBlur={e => patch({ notes: e.target.value })}
+              placeholder="Tache de sang, accès, remarques… (infos clés du prospect)"
+              className={`${inputCls} resize-none`}
+            />
           </div>
 
           {/* ── Convertir en client (formulaire intelligent complet) ── */}
@@ -1282,7 +1564,7 @@ function ProspectModal({
                 <p className="text-xs text-gray-500">Le client revient vers toi ? Rouvre-le pour le remettre dans le suivi.</p>
               </div>
               <button
-                onClick={async () => { const today = new Date().toISOString().split("T")[0]; await patch({ statut: "CONTACTÉ", dateRelance: today }); setDraftStatut("CONTACTÉ"); toast.success("Prospect rouvert — à recontacter"); }}
+                onClick={async () => { if (await patch({ statut: "CONTACTÉ", dateRelance: isoParis() }, "Prospect rouvert")) setDraftStatut("CONTACTÉ"); }}
                 disabled={saving}
                 className="shrink-0 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5">
                 <ArrowRight size={15} /> Rouvrir
@@ -1355,10 +1637,14 @@ export default function ProspectsPage() {
   const [prospects, setProspects] = useState<Prospect[]>(() => cacheGet<Prospect[]>(CACHE_KEYS.prospects) ?? []);
   const [loading, setLoading]     = useState(() => !cacheHas(CACHE_KEYS.prospects));
   const [search, setSearch]       = useState("");
-  const [filterRelance, setFilterRelance] = useState<string>("ACTIFS"); // montre tous les actifs (leads sans date de relance inclus)
+  // Onglet par défaut : « Aujourd'hui » (la file du jour) ; le dernier choisi est mémorisé.
+  const [filterRelance, setFilterRelance] = useState<Onglet>("urgent");
   const [filterStatut,  setFilterStatut]  = useState<string>("ACTIFS");
   const [showAdd, setShowAdd]     = useState(false);
   const [selected, setSelected]   = useState<Prospect | null>(null);
+  // File « Suivant » : ids de la liste de l'onglet au moment où la fiche a été ouverte.
+  const [queue, setQueue]         = useState<string[] | null>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
   const [importing, setImporting] = useState(false);
   const [lastImport, setLastImport] = useState<{ at: string; created: number; skipped: number; lastLeadName?: string; lastLeadDate?: string } | null>(null);
   const [prestataires, setPrestataires] = useState<Prestataire[]>(() => cacheGet<Prestataire[]>(CACHE_KEYS.prestataires) ?? []);
@@ -1372,6 +1658,28 @@ export default function ProspectsPage() {
     } finally { setLoading(false); }
   }
   useEffect(() => { load(); }, []);
+
+  // Onglet mémorisé (localStorage peut être indisponible : navigation privée…).
+  useEffect(() => {
+    try {
+      const t = localStorage.getItem(ONGLET_KEY) as Onglet | null;
+      if (t && ONGLETS.includes(t)) setFilterRelance(t);
+    } catch { /* ignore */ }
+  }, []);
+  function choisirOnglet(k: Onglet) {
+    setFilterRelance(k);
+    try { localStorage.setItem(ONGLET_KEY, k); } catch { /* ignore */ }
+  }
+  // Mobile : l'onglet actif reste visible dans la rangée défilante.
+  useEffect(() => {
+    tabsRef.current?.querySelector<HTMLElement>('[data-active="true"]')
+      ?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+  }, [filterRelance]);
+
+  // Cache partagé toujours à jour (retour sur la page = dates fraîches, pas l'ancien état).
+  useEffect(() => {
+    if (!loading) cacheSet(CACHE_KEYS.prospects, prospects);
+  }, [prospects, loading]);
 
   // Ouverture directe d'une fiche depuis la recherche globale (?fiche=<id>),
   // quel que soit le statut (y compris PERDU / converti).
@@ -1419,81 +1727,89 @@ export default function ProspectsPage() {
     }
   }
 
-  // ── Dates de référence ──
-  const todayIso    = useMemo(() => new Date().toISOString().split("T")[0], []);
-  const tomorrowIso = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; }, []);
-  const in3Iso      = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 3); return d.toISOString().split("T")[0]; }, []);
-  const in7Iso      = useMemo(() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().split("T")[0]; }, []);
+  // ── Dates de référence (Paris) ──
+  const ref = useMemo(() => refDates(), []);
 
-  // ── Compteurs pour badges ──
+  // ── Compteurs pour badges (mêmes définitions que les onglets) ──
   const counts = useMemo(() => {
-    const actifs = prospects.filter(p => !["CONVERTI","PERDU"].includes(p.statut));
-    return {
-      // Buckets DISJOINTS : aujourd'hui (≤ auj.), 3 jours (J+1→J+3), semaine (J+4→J+7).
-      urgent : actifs.filter(p => p.dateRelance && p.dateRelance <= todayIso).length,
-      demain : actifs.filter(p => p.dateRelance && p.dateRelance === tomorrowIso).length,
-      j3     : actifs.filter(p => p.dateRelance && p.dateRelance > tomorrowIso && p.dateRelance <= in3Iso).length,
-      j7     : actifs.filter(p => p.dateRelance && p.dateRelance > in3Iso   && p.dateRelance <= in7Iso).length,
-      actifs : actifs.length,
-      total  : prospects.length,
-      convertis: prospects.filter(p => p.statut === "CONVERTI").length,
-    };
-  }, [prospects, todayIso, tomorrowIso, in3Iso, in7Iso]);
+    const c = { urgent: 0, demain: 0, j3: 0, j7: 0, actifs: 0, total: prospects.length, convertis: 0 };
+    for (const p of prospects) {
+      const b = bucketOf(p, ref);
+      if (b === "inactif") { if (p.statut === "CONVERTI") c.convertis++; continue; }
+      c.actifs++;
+      if (b === "urgent" || b === "demain" || b === "j3" || b === "j7") c[b]++;
+    }
+    return c;
+  }, [prospects, ref]);
 
   // ── Filtrage + tri ──
+  // Une recherche porte sur TOUS les prospects (on cherche un nom, pas un onglet).
   const sorted = useMemo(() => {
-    const actifs = !["ACTIFS","TOUS"].includes(filterRelance) || filterStatut === "ACTIFS";
+    const q = search.trim().toLowerCase();
     const list = prospects.filter(p => {
-      // Filtre statut secondaire
+      // Filtre statut secondaire (« Actifs » ne s'applique ni à l'onglet « Tous » ni à une recherche)
+      if (filterStatut === "ACTIFS" && !estActif(p) && filterRelance !== "TOUS" && !q) return false;
       if (filterStatut !== "ACTIFS" && filterStatut !== "TOUS" && p.statut !== filterStatut) return false;
-      if (filterStatut === "ACTIFS" && ["CONVERTI","PERDU"].includes(p.statut)) return false;
-
+      if (q) return `${p.prenom} ${p.nom} ${p.tel} ${p.email} ${p.typePresta}`.toLowerCase().includes(q);
       // Filtre relance principal
-      if (filterRelance === "urgent") {
-        if (["CONVERTI","PERDU"].includes(p.statut)) return false;
-        return p.dateRelance && p.dateRelance <= todayIso;
-      }
-      if (filterRelance === "demain") {
-        if (["CONVERTI","PERDU"].includes(p.statut)) return false;
-        return p.dateRelance === tomorrowIso;
-      }
-      if (filterRelance === "j3") {
-        if (["CONVERTI","PERDU"].includes(p.statut)) return false;
-        return !!(p.dateRelance && p.dateRelance > tomorrowIso && p.dateRelance <= in3Iso);
-      }
-      if (filterRelance === "j7") {
-        if (["CONVERTI","PERDU"].includes(p.statut)) return false;
-        return !!(p.dateRelance && p.dateRelance > in3Iso && p.dateRelance <= in7Iso);
-      }
-      if (filterRelance === "ACTIFS" || actifs) {
-        if (filterRelance === "ACTIFS" && ["CONVERTI","PERDU"].includes(p.statut)) return false;
-      }
-
-      // Filtre recherche
-      if (search) {
-        const q = search.toLowerCase();
-        return `${p.prenom} ${p.nom} ${p.tel} ${p.email} ${p.typePresta}`.toLowerCase().includes(q);
-      }
-      return true;
-    }).filter(p => {
-      if (!search) return true;
-      const q = search.toLowerCase();
-      return `${p.prenom} ${p.nom} ${p.tel} ${p.email} ${p.typePresta}`.toLowerCase().includes(q);
+      if (filterRelance === "ACTIFS") return estActif(p);
+      if (filterRelance === "TOUS") return true;
+      return bucketOf(p, ref) === filterRelance;
     });
+    // Tri : en retard → aujourd'hui → nouveaux leads → à venir (date croissante) → sans date ;
+    // à égalité, le plus récent d'abord.
+    return [...list].sort((a, b) =>
+      rangRelance(a, ref) - rangRelance(b, ref)
+      || jourIso(a.dateRelance).localeCompare(jourIso(b.dateRelance))
+      || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [prospects, filterRelance, filterStatut, search, ref]);
 
-    // Tri : date relance croissante (sans date → en bas), puis date de création décroissante
-    return [...list].sort((a, b) => {
-      if (!a.dateRelance && !b.dateRelance) return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      if (!a.dateRelance) return 1;
-      if (!b.dateRelance) return -1;
-      return a.dateRelance.localeCompare(b.dateRelance);
-    });
-  }, [prospects, filterRelance, filterStatut, search, todayIso, tomorrowIso, in3Iso, in7Iso]);
+  // ── Navigation « Suivant » : prochain prospect de la file encore présent dans l'onglet ──
+  const nav = useMemo<FicheNav | undefined>(() => {
+    if (!selected || !queue) return undefined;
+    const idx = queue.indexOf(selected.id);
+    if (idx < 0) return undefined;
+    const encore = new Set(sorted.map(x => x.id));
+    const nextId = queue.slice(idx + 1).find(id => encore.has(id));
+    const next = nextId ? prospects.find(x => x.id === nextId) : undefined;
+    return {
+      pos: idx + 1, total: queue.length,
+      nextName: next ? `${next.prenom} ${next.nom}`.trim() : undefined,
+      onNext: next ? () => setSelected(next) : undefined,
+    };
+  }, [selected, queue, sorted, prospects]);
+  function ouvrir(p: Prospect) {
+    setQueue(sorted.map(x => x.id));
+    setSelected(p);
+  }
+  function fermer() { setSelected(null); setQueue(null); }
 
   // ── Mutations ──
-  function handleUpdated(update: Partial<Prospect> & { id: string }) {
+  // Refs : les envois de la fiche sont asynchrones → on lit l'état le plus récent.
+  const prospectsRef = useRef(prospects);
+  prospectsRef.current = prospects;
+  const ongletRef = useRef(filterRelance);
+  ongletRef.current = filterRelance;
+
+  // Mise à jour locale (+ cache via l'effet ci-dessus). Avec `msg` (action explicite :
+  // envoi, reprogrammation…), toast indiquant l'onglet où le prospect est parti.
+  function handleUpdated(update: Partial<Prospect> & { id: string }, msg?: string) {
+    const avant = prospectsRef.current.find(x => x.id === update.id);
     setProspects(prev => prev.map(p => p.id === update.id ? { ...p, ...update } : p));
-    if (selected?.id === update.id) setSelected(prev => prev ? { ...prev, ...update } : prev);
+    setSelected(prev => prev && prev.id === update.id ? { ...prev, ...update } : prev);
+    if (msg === undefined) return;
+    if (!avant || (!("dateRelance" in update) && !("statut" in update))) { if (msg) toast.success(msg); return; }
+    const apres = { ...avant, ...update } as Prospect;
+    if (!estActif(apres)) { if (msg) toast.success(msg); return; }
+    const r = refDates();
+    const bouge = bucketOf(avant, r) !== bucketOf(apres, r);
+    const dest = destinationLabel(apres);
+    const texte = bouge ? `déplacé dans « ${dest} »` : `toujours dans « ${dest} »`;
+    const onglet = ongletDe(bucketOf(apres, r));
+    const visibleIci = ongletRef.current === "TOUS" || ongletRef.current === "ACTIFS" || ongletRef.current === onglet;
+    toast.success(msg ? `${msg} → ${texte}` : texte.charAt(0).toUpperCase() + texte.slice(1), visibleIci ? undefined : {
+      action: { label: "Voir", onClick: () => { choisirOnglet(onglet); fermer(); } },
+    });
   }
   function handleDeleted(id: string) {
     setProspects(prev => prev.filter(p => p.id !== id));
@@ -1515,7 +1831,7 @@ export default function ProspectsPage() {
     setProspects(prev => prev.map(p => p.id === id ? { ...p, statut: "CONVERTI" } : p));
   }
 
-  const RELANCE_FILTERS = [
+  const RELANCE_FILTERS: { key: Onglet; label: string; count: number; activeClass: string; inactiveClass: string }[] = [
     { key: "urgent", label: "🔴 Aujourd'hui",    count: counts.urgent,   activeClass: "bg-red-500 text-white",    inactiveClass: "bg-red-50 text-red-600 border-red-200"    },
     { key: "demain", label: "🔵 Demain",         count: counts.demain,   activeClass: "bg-blue-500 text-white",   inactiveClass: "bg-blue-50 text-blue-600 border-blue-200"  },
     { key: "j3",     label: "🟠 Dans 3 jours",   count: counts.j3,       activeClass: "bg-orange-500 text-white", inactiveClass: "bg-orange-50 text-orange-600 border-orange-200" },
@@ -1591,10 +1907,11 @@ export default function ProspectsPage() {
 
         {/* ── Filtres relance (principal) ── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 space-y-3">
-          <div className="flex gap-1.5 flex-wrap">
+          {/* Mobile : une seule rangée qui défile horizontalement (au lieu de 3 lignes) */}
+          <div ref={tabsRef} className="flex gap-1.5 overflow-x-auto sm:flex-wrap -mx-3 px-3 sm:mx-0 sm:px-0 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {RELANCE_FILTERS.map(f => (
-              <button key={f.key} onClick={() => setFilterRelance(f.key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+              <button key={f.key} onClick={() => choisirOnglet(f.key)} data-active={filterRelance === f.key}
+                className={`shrink-0 whitespace-nowrap flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
                   filterRelance === f.key ? f.activeClass : f.inactiveClass + " hover:opacity-80"
                 }`}>
                 {f.label}
@@ -1620,7 +1937,7 @@ export default function ProspectsPage() {
                 className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
             </div>
-            <div className="flex gap-1 flex-wrap">
+            <div className="flex gap-1 overflow-x-auto sm:flex-wrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {[
                 { key: "ACTIFS",   label: "Actifs"    },
                 { key: "NOUVEAU",  label: "Nouveaux"  },
@@ -1631,7 +1948,7 @@ export default function ProspectsPage() {
                 { key: "TOUS",     label: "Tous"      },
               ].map(f => (
                 <button key={f.key} onClick={() => setFilterStatut(f.key)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
                     filterStatut === f.key ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                   }`}>
                   {f.label}
@@ -1639,6 +1956,7 @@ export default function ProspectsPage() {
               ))}
             </div>
           </div>
+          {search.trim() && <p className="text-[11px] text-gray-400">🔎 Recherche dans tous les prospects (tous onglets)</p>}
         </div>
 
         {/* ── Liste triée par urgence ── */}
@@ -1650,36 +1968,51 @@ export default function ProspectsPage() {
               <Bell size={24} className="text-gray-300" />
             </div>
             <p className="text-gray-500 font-medium">
-              {filterRelance === "urgent" ? "Aucun prospect à rappeler aujourd'hui 🎉" : "Aucun prospect trouvé"}
+              {filterRelance === "urgent" && !search ? "Aucun prospect à rappeler aujourd'hui 🎉" : "Aucun prospect trouvé"}
             </p>
             <p className="text-sm text-gray-400 mt-1">
-              {filterRelance === "urgent" ? "Tu es à jour !" : "Essaie un autre filtre."}
+              {filterRelance === "urgent" && !search ? "Tu es à jour !" : "Essaie un autre filtre."}
             </p>
+            {filterRelance === "urgent" && !search && counts.demain > 0 && (
+              <button onClick={() => choisirOnglet("demain")} className="mt-4 px-4 py-2 rounded-xl bg-blue-50 text-blue-700 text-sm font-semibold hover:bg-blue-100">
+                Voir Demain ({counts.demain}) →
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-2">
-            {sorted.map(p => {
-              const relance = relanceLabel(p.dateRelance);
-              const isOverdueFlag = p.dateRelance ? isOverdue(p.dateRelance) : false;
-              const isTodayFlag   = p.dateRelance ? isDueToday(p.dateRelance) : false;
-              const tomorrowIso = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; })();
-              const hasRelanceTomorrow = p.dateRelance === tomorrowIso;
+            {sorted.map((p, i) => {
+              const chip = relanceChip(p, ref);
+              const rang = rangRelance(p, ref);
+              const hasRelanceTomorrow = jourIso(p.dateRelance) === ref.t1;
+              const last = dernierEmail(p.suivi, []);
+              // En-têtes « En retard / Aujourd'hui / Nouveaux leads » dans l'onglet Aujourd'hui (si non vides).
+              const enSections = filterRelance === "urgent" && !search.trim();
+              const section = enSections && (i === 0 || rangRelance(sorted[i - 1], ref) !== rang) ? SECTIONS_URGENT[rang] : undefined;
 
               async function quickRelance() {
-                const newDate = hasRelanceTomorrow ? "" : tomorrowIso;
-                await fetch(`/api/prospects/${p.id}`, {
-                  method: "PATCH", headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ dateRelance: newDate }),
-                });
-                setProspects(prev => prev.map(pr => pr.id === p.id ? { ...pr, dateRelance: newDate } : pr));
+                const newDate = hasRelanceTomorrow ? "" : ref.t1;
+                try {
+                  const res = await fetch(`/api/prospects/${p.id}`, {
+                    method: "PATCH", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ dateRelance: newDate }),
+                  });
+                  if (!res.ok) throw new Error();
+                  handleUpdated({ id: p.id, dateRelance: newDate }, hasRelanceTomorrow ? "Relance de demain retirée" : "À rappeler demain");
+                } catch { toast.error("Échec de la mise à jour"); }
               }
 
               return (
+                <div key={p.id}>
+                {section && (
+                  <p className={`px-1 pt-2 pb-1 text-[11px] font-bold uppercase tracking-wide ${rang === 0 ? "text-red-600" : rang === 1 ? "text-orange-600" : "text-blue-600"}`}>
+                    {section}
+                  </p>
+                )}
                 <div
-                  key={p.id}
-                  className={`w-full bg-white rounded-2xl border shadow-sm p-4 flex items-center gap-3 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer
-                    ${isOverdueFlag ? "border-red-200" : isTodayFlag ? "border-orange-200" : "border-gray-100"}`}
-                  onClick={() => setSelected(p)}
+                  className={`w-full bg-white rounded-2xl border shadow-sm p-3 sm:p-4 flex items-center gap-3 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer
+                    ${rang === 0 ? "border-red-200" : rang === 1 ? "border-orange-200" : "border-gray-100"}`}
+                  onClick={() => ouvrir(p)}
                 >
                   {/* Avatar */}
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
@@ -1699,25 +2032,32 @@ export default function ProspectsPage() {
                       {p.tel && <a href={`tel:${p.tel}`} onClick={(e) => e.stopPropagation()} className="text-xs text-gray-500 flex items-center gap-1 hover:text-blue-600"><Phone size={11} />{p.tel}</a>}
                       {p.typePresta && <span className="text-xs text-gray-500">{p.typePresta}</span>}
                     </div>
+                    {/* Dernier email envoyé : dit où en est l'échange */}
+                    <p className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1 min-w-0">
+                      <Mail size={10} className="shrink-0" />
+                      {last ? <span className="truncate">{last.label} · {ilYA(last.date)}</span> : <span>aucun email envoyé</span>}
+                    </p>
                   </div>
 
-                  {/* Relance rapide + statut relance */}
+                  {/* Relance rapide + prochaine relance */}
                   <div className="shrink-0 flex flex-col items-end gap-1" onClick={e => e.stopPropagation()}>
-                    <button
-                      onClick={quickRelance}
-                      title={hasRelanceTomorrow ? "Annuler la relance demain" : "Relance demain"}
-                      className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border transition-colors ${
-                        hasRelanceTomorrow
-                          ? "bg-orange-500 text-white border-orange-500"
-                          : "bg-white text-gray-400 border-gray-200 hover:text-orange-500 hover:border-orange-300"
-                      }`}
-                    >
-                      <Bell size={11} />
-                      {hasRelanceTomorrow ? "Demain ✓" : "Rappel"}
-                    </button>
-                    {relance && !hasRelanceTomorrow && (
-                      <span className={`text-[11px] flex items-center gap-1 ${relance.cls}`}>
-                        <Calendar size={10} />{relance.text}
+                    {estActif(p) && (
+                      <button
+                        onClick={quickRelance}
+                        title={hasRelanceTomorrow ? "Annuler la relance demain" : "Relance demain"}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                          hasRelanceTomorrow
+                            ? "bg-orange-500 text-white border-orange-500"
+                            : "bg-white text-gray-400 border-gray-200 hover:text-orange-500 hover:border-orange-300"
+                        }`}
+                      >
+                        <Bell size={11} />
+                        {hasRelanceTomorrow ? "Demain ✓" : "Rappel"}
+                      </button>
+                    )}
+                    {chip && !hasRelanceTomorrow && (
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border whitespace-nowrap ${chip.cls}`}>
+                        {chip.text}
                       </span>
                     )}
                   </div>
@@ -1732,7 +2072,8 @@ export default function ProspectsPage() {
                     <Trash2 size={15} />
                   </button>
 
-                  <ChevronRight size={16} className="text-gray-300 shrink-0" />
+                  <ChevronRight size={16} className="text-gray-300 shrink-0 hidden sm:block" />
+                </div>
                 </div>
               );
             })}
@@ -1748,19 +2089,21 @@ export default function ProspectsPage() {
             if (p.dejaClient) toast.info(`Déjà client : ${p.dejaClient.nom}`);
             setProspects(prev => [p, ...prev]);
             setShowAdd(false);
+            setQueue(null);
             setSelected(p); // Ouvre directement la fiche du nouveau prospect
           }}
         />
       )}
       {selected && (
         <ProspectModal
+          key={selected.id} // « Suivant » : nouvelle fiche = état neuf
           prospect={selected}
           prestataires={prestataires}
-          onClose={() => setSelected(null)}
+          onClose={fermer}
           onUpdated={handleUpdated}
           onDeleted={handleDeleted}
           onConverted={handleConverted}
-          onRefresh={load}
+          nav={nav}
         />
       )}
 

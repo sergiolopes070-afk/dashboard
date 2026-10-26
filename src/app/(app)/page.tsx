@@ -15,6 +15,7 @@ import { bilanPeriode, caRealise, formatMontant, isoLocal, periodeMois } from "@
 import { grouperIndispos, libellePlage } from "@/lib/indispos";
 import ClotureModal from "@/components/ClotureModal";
 import { Prestation, Prestataire, Depense, PAIEMENTS_CLOTURE, MOTIF_TERMINEE, TYPES_PRESTATION } from "@/lib/constants";
+import { isoParis } from "@/lib/dateParis";
 
 // ── Mini agenda helpers ──────────────────────────────────────────────────────
 const PALETTE_MINI = ["#4285F4","#EA4335","#34A853","#FBBC04","#8B5CF6","#F97316","#06B6D4","#EC4899","#10B981","#6366F1"];
@@ -229,7 +230,7 @@ export default function HomePage() {
   const weekStart = useMemo(() => getMondayOfWeek(new Date()), []);
   const weekDays  = useMemo(() => Array.from({ length: 7 }, (_, i) => addDaysMini(weekStart, i)), [weekStart]);
   const today     = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
-  const todayIso  = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const todayIso  = useMemo(() => isoParis(), []);
 
   const colorByPresta = useMemo(() => {
     const map: Record<string, string> = {};
@@ -734,7 +735,7 @@ export default function HomePage() {
               ) : [...relanceEnRetard, ...prospects.filter(p => relanceRes[p.id] && !relanceEnRetard.includes(p))].map(p => {
                 const res = relanceRes[p.id];
                 const wa = p.tel ? `https://wa.me/${p.tel.replace(/\s/g, "").replace(/^0/, "33")}` : null;
-                const demain = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; })();
+                const demain = isoParis(1);
                 return (
                   <div key={p.id} className="rounded-xl border border-gray-100 p-3">
                     <div className="flex items-start justify-between gap-2">

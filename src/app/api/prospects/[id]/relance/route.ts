@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { getSettingJSON, setSettingRaw } from "@/lib/settings";
 import { sendProspectRelanceEmail, sendDevisEmail, sendProspectInfosEmail } from "@/lib/mailer";
 import { buildProspectDevis } from "@/lib/prospectDevis";
+import { isoParis, frParis } from "@/lib/dateParis";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // génération PDF (Chromium) incluse
@@ -41,11 +42,10 @@ async function traiter(req: Request, { params }: { params: { id: string } }) {
 
   const all = await getSettingJSON<Record<string, Suivi>>(SUIVI_KEY, {});
   const cur: Suivi = all[id] || {};
-  const todayFr = new Date().toLocaleDateString("fr-FR");
+  const todayFr = frParis();
   // Après chaque envoi, on reprogramme le prospect à DEMAIN : il quitte « à
   // recontacter aujourd'hui » (balle dans le camp du client) et remonte le lendemain.
-  const demain = new Date(); demain.setDate(demain.getDate() + 1);
-  const demainIso = demain.toISOString().split("T")[0];
+  const demainIso = isoParis(1);
 
   // Active / désactive l'avance immédiate pour ce prospect (impacte le devis + le mail).
   if (action === "set_avance") {
@@ -174,8 +174,7 @@ async function traiter(req: Request, { params }: { params: { id: string } }) {
     const prenom = (p.prenom as string) || "", nom = (p.nom as string) || "", genre = (p.genre as string) || "";
     const typePresta = (besoins[0]?.typePresta as string) || (p.type_presta as string) || "";
     const prix = (besoins[0]?.prix as string) || (p.budget as string) || "";
-    const demain = new Date(); demain.setDate(demain.getDate() + 1);
-    const demainIso = demain.toISOString().split("T")[0];
+    const demainIso = isoParis(1);
 
     let ok = false; let suiviNext: Suivi; let libelle: string;
     if (cur.devisEnvoye) {

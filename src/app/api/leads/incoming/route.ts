@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { leadExisteDeja } from "@/lib/inbox";
 import { getSettingRaw } from "@/lib/settings";
+import { isoParis } from "@/lib/dateParis";
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, duplicate: true, where: dejaLa });
   }
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = isoParis();
   const { error } = await supabase.from("prospects").insert({
     prenom, nom,
     tel        : tel || null,

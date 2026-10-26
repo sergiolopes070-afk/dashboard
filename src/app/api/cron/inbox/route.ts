@@ -4,6 +4,7 @@ import { importInbox } from "@/lib/inbox";
 import { supabase } from "@/lib/supabase";
 import { setSettingRaw, getSettingJSON } from "@/lib/settings";
 import { getInscrits, estInscrit } from "@/lib/avanceInscrits";
+import { isoParis } from "@/lib/dateParis";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -45,7 +46,7 @@ export async function GET(req: Request) {
   // déjà importés qui n'en ont pas (source formulaire), pour qu'ils apparaissent
   // dans « À rappeler ». Réservé au déclenchement à clé.
   if (url.searchParams.get("reviveLeads") === "1" && supabase) {
-    const today = new Date().toISOString().split("T")[0];
+    const today = isoParis();
     const { data, error } = await supabase
       .from("prospects")
       .update({ date_relance: today })

@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { sendDevisExterneEmail } from "@/lib/mailer";
 import { updateClientNotes } from "@/lib/sheets";
 import { BUCKET, FOLDER, listDevis, saveDevis, parseKind, validId, type DevisKind, type DevisExterne } from "../_store";
+import { isoParis } from "@/lib/dateParis";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // téléchargement de la pièce jointe + SMTP
@@ -135,8 +136,7 @@ export async function POST(req: Request) {
 
   // 7. Prospect : comme le devis standard → relance demain + sortie de « Nouveau ».
   if (kind === "prospect") {
-    const demain = new Date(); demain.setDate(demain.getDate() + 1);
-    dateRelance = demain.toISOString().split("T")[0];
+    dateRelance = isoParis(1);
     await supabase.from("prospects").update({ date_relance: dateRelance, updated_at: now }).eq("id", id);
     await supabase.from("prospects").update({ statut: "CONTACTÉ", updated_at: now }).eq("id", id).eq("statut", "NOUVEAU");
   }

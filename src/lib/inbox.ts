@@ -14,6 +14,7 @@ import { simpleParser } from "mailparser";
 import { supabase } from "./supabase";
 import { getSetting } from "./mailer";
 import { getSettingJSON, getSettingRaw, setSettingRaw } from "./settings";
+import { isoParis } from "./dateParis";
 
 const SUBJECT_MATCH = "Nouvelle demande de devis";
 const FROM_MATCH = "contact@kinouclean.fr"; // n'importer QUE les emails du formulaire du site
@@ -166,7 +167,7 @@ export async function importInbox(opts: { dry?: boolean; debug?: boolean; days?:
   const sinceDate = opts.since ? new Date(opts.since) : null;
   const sinceValide = sinceDate && !isNaN(sinceDate.getTime()) ? sinceDate : null;
   const days = opts.days && opts.days > 0 ? opts.days : 60;
-  const todayIso = new Date().toISOString().split("T")[0]; // date de relance par défaut du lead
+  const todayIso = isoParis(); // date de relance par défaut du lead
   const result: ImportResult = { imported: [], skipped: 0, errors: [], dry };
   if (debug) result.debugSample = [];
 

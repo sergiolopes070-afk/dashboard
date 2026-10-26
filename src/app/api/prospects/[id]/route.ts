@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/require-auth";
 import { supabase } from "@/lib/supabase";
 import { appendPrestation } from "@/lib/sheets";
 import { transferDevisExternes, findClientForProspect } from "@/app/api/devis-externes/_store";
+import { isoParis } from "@/lib/dateParis";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       date : new Date().toISOString(),
       texte: body.addComment,
     };
-    const today = new Date().toISOString().split("T")[0];
+    const today = isoParis();
     const curDate = current?.date_relance ? String(current.date_relance).slice(0, 10) : "";
     // On ne touche la date que si aucune n'est posée, ou si elle est déjà passée/aujourd'hui.
     const newDate = (!curDate || curDate <= today) ? today : curDate;
