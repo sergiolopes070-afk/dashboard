@@ -218,7 +218,16 @@ export async function getArchive(from?: string, to?: string): Promise<Prestation
   if (error) throw new Error(error.message);
   // Fusionne le flag « a laissé un avis » (réglage avis_laisse) → champ avis = "OUI".
   const avisMap = await avisLaisse;
-  return (data || []).map(r => { const p = rowToPrestation(r); if (avisMap[p.row]) p.avis = "OUI"; return p; });
+  // Liste allégée : les photos (≈ moitié du poids, URL publiques complètes) sont
+  // remplacées par leur nombre ; l'agenda les charge à l'ouverture d'un RDV archivé
+  // (GET /api/prestations/[id]/photos?liste=1). La fiche client (/api/clients/[id]) garde tout.
+  return (data || []).map(r => {
+    const p = rowToPrestation(r);
+    if (avisMap[p.row]) p.avis = "OUI";
+    p.nbPhotos = p.photos?.length ?? 0;
+    delete p.photos;
+    return p;
+  });
 }
 
 // ─── WRITE ───────────────────────────────────────────────────────────────────

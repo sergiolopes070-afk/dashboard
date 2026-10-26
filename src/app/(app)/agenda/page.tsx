@@ -94,6 +94,11 @@ function fromInputDate(d: string): string {
 function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
 }
+// Nombre de photos : tableau complet (prestations en cours / photos chargées) ou
+// nbPhotos (liste archive allégée, photos chargées à l'ouverture de la fiche).
+function nbPh(ev: Prestation): number {
+  return ev.photos?.length ?? ev.nbPhotos ?? 0;
+}
 function timeToMinutes(h: string): number {
   if (!h) return -1;
   const [hh,mm] = h.split(":").map(Number);
@@ -208,8 +213,8 @@ function DayDetailModal({
                             <span className="font-bold shrink-0" style={{ color: color.bg }}>{ev.heure}</span>
                             <span className="font-semibold text-gray-800 truncate flex-1">{ev.prenom} {ev.nom}</span>
                             {ev.typePresta && <span className="text-gray-500 truncate hidden sm:block shrink-0">{ev.typePresta}</span>}
-                            {Array.isArray(ev.photos) && ev.photos.length > 0 && (
-                              <span className="shrink-0 text-[11px]" title={`${ev.photos.length} photo(s) d'intervention`}>📷 {ev.photos.length}</span>
+                            {nbPh(ev) > 0 && (
+                              <span className="shrink-0 text-[11px]" title={`${nbPh(ev)} photo(s) d'intervention`}>📷 {nbPh(ev)}</span>
                             )}
                             {ev.avis === "OUI" && <span className="shrink-0 text-[11px]" title="Avis laissé">⭐</span>}
                             {ev.modePaiement && PAYMENT_ICONS[ev.modePaiement] && (
@@ -455,6 +460,30 @@ export default function AgendaPage() {
       .catch(() => {});
     return () => { alive = false; };
   }, [photosRow]);
+  // Photos des RDV archivés : la liste /api/archive n'envoie que nbPhotos → chargement
+  // à l'ouverture de la fiche, puis fusion dans selectedEvent, la liste en mémoire
+  // (réouverture sans nouvel appel) et la fiche d'édition éventuellement ouverte.
+  const [photosLoad, setPhotosLoad] = useState<{ row: string; err: boolean } | null>(null);
+  const photosAcharger = selectedEvent && !Array.isArray(selectedEvent.photos) && (selectedEvent.nbPhotos ?? 0) > 0
+    ? selectedEvent.row : null;
+  useEffect(() => {
+    if (!photosAcharger) { setPhotosLoad(null); return; }
+    const row = photosAcharger;
+    let alive = true;
+    setPhotosLoad({ row, err: false });
+    fetch(`/api/prestations/${row}/photos?liste=1`)
+      .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok || !Array.isArray(d.photos)) throw new Error(); return d.photos as NonNullable<Prestation["photos"]>; })
+      .then(photos => {
+        if (!alive) return;
+        const merge = (p: Prestation) => (p.row === row ? { ...p, photos, nbPhotos: photos.length } : p);
+        setSelectedEvent(prev => (prev ? merge(prev) : prev));
+        setEditEv(prev => (prev ? merge(prev) : prev));
+        setPrestations(prev => prev.map(merge));
+        setPhotosLoad(null);
+      })
+      .catch(() => { if (alive) setPhotosLoad({ row, err: true }); });
+    return () => { alive = false; };
+  }, [photosAcharger]);
   async function envoyerPhotos(row: string) {
     if (!photosTo.trim()) return;
     setPhotosBusy(true);
@@ -984,8 +1013,8 @@ export default function AgendaPage() {
                         <span className={`font-semibold text-sm truncate ${isArchived ? "line-through text-gray-400" : "text-gray-900"}`}>{ev.prenom} {ev.nom}</span>
                         <span className="text-xs text-gray-500 truncate">{ev.typePresta}{ev.quantite && ev.quantite !== "1" ? ` — ${ev.quantite}` : ""}{ev.prestataire ? ` · ${ev.prestataire}` : ""}</span>
                         {ev.modePaiement && PAYMENT_ICONS[ev.modePaiement] && <span className="text-[11px] mt-0.5">{PAYMENT_ICONS[ev.modePaiement]} {PAYMENT_SHORT[ev.modePaiement] ?? ev.modePaiement}</span>}
-                        {Array.isArray(ev.photos) && ev.photos.length > 0 && (
-                          <span className="text-[11px] mt-0.5 text-gray-600" title={`${ev.photos.length} photo(s) d'intervention`}>📷 {ev.photos.length} photo{ev.photos.length > 1 ? "s" : ""}</span>
+                        {nbPh(ev) > 0 && (
+                          <span className="text-[11px] mt-0.5 text-gray-600" title={`${nbPh(ev)} photo(s) d'intervention`}>📷 {nbPh(ev)} photo{nbPh(ev) > 1 ? "s" : ""}</span>
                         )}
                         {ev.avis === "OUI" && <span className="text-[11px] mt-0.5 text-amber-600" title="Avis laissé">⭐ Avis</span>}
                       </div>
@@ -1152,8 +1181,8 @@ export default function AgendaPage() {
                               zIndex: 10 + ei,
                             }}
                           >
-                            {Array.isArray(ev.photos) && ev.photos.length > 0 && (
-                              <span className="absolute top-0 right-0 z-20 inline-flex items-center rounded-bl-md bg-black/55 text-white text-[9px] font-bold px-1 py-0.5 leading-none" title={`${ev.photos.length} photo(s) d'intervention`}>📷{ev.photos.length}</span>
+                            {nbPh(ev) > 0 && (
+                              <span className="absolute top-0 right-0 z-20 inline-flex items-center rounded-bl-md bg-black/55 text-white text-[9px] font-bold px-1 py-0.5 leading-none" title={`${nbPh(ev)} photo(s) d'intervention`}>📷{nbPh(ev)}</span>
                             )}
                             {ev.avis === "OUI" && (
                               <span className="absolute top-0 left-0 z-20 inline-flex items-center rounded-br-md bg-amber-400 text-white text-[9px] font-bold px-1 py-0.5 leading-none" title="Avis laissé">⭐</span>
@@ -1236,8 +1265,8 @@ export default function AgendaPage() {
                         return (
                           <div key={ev.row} className={`relative w-full rounded overflow-hidden ${isArchived ? "opacity-55" : ""}`}
                             style={{ backgroundColor: isArchived ? "#F3F4F6" : color.light }}>
-                            {Array.isArray(ev.photos) && ev.photos.length > 0 && (
-                              <span className="absolute top-0 right-0 z-20 inline-flex items-center rounded-bl bg-black/55 text-white text-[9px] font-bold px-1 py-0.5 leading-none" title={`${ev.photos.length} photo(s) d'intervention`}>📷{ev.photos.length}</span>
+                            {nbPh(ev) > 0 && (
+                              <span className="absolute top-0 right-0 z-20 inline-flex items-center rounded-bl bg-black/55 text-white text-[9px] font-bold px-1 py-0.5 leading-none" title={`${nbPh(ev)} photo(s) d'intervention`}>📷{nbPh(ev)}</span>
                             )}
                             {ev.avis === "OUI" && (
                               <span className="absolute top-0 left-0 z-20 inline-flex items-center rounded-br bg-amber-400 text-white text-[9px] font-bold px-1 py-0.5 leading-none" title="Avis laissé">⭐</span>
@@ -1665,6 +1694,15 @@ export default function AgendaPage() {
                       )}
 
                       {/* ── Photos de l'intervention (prises par le prestataire) ── */}
+                      {!Array.isArray(ev.photos) && (ev.nbPhotos ?? 0) > 0 && (
+                        <FicheSection id="photos" title="📷 Photos de l'intervention" defaultOpen>
+                          {photosLoad?.row === ev.row && photosLoad.err ? (
+                            <p className="text-[12px] text-red-600">Impossible de charger les photos — ferme et rouvre la fiche pour réessayer.</p>
+                          ) : (
+                            <p className="text-[12px] text-gray-400 flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Chargement des photos…</p>
+                          )}
+                        </FicheSection>
+                      )}
                       {Array.isArray(ev.photos) && ev.photos.length > 0 && (
                         <FicheSection id="photos" title="📷 Photos de l'intervention" defaultOpen>
                           {Array.from(new Set(ev.photos.map(p => p.article))).map(art => (

@@ -116,6 +116,7 @@ export interface Prestation {
   updatedAt?: string;        // dernière mise à jour (pour notifications)
   stripePaymentUrl?: string; // lien de paiement Stripe Checkout
   photos?: PhotoIntervention[]; // photos avant/après par article (prestataire)
+  nbPhotos?: number;            // liste archive (/api/archive) : nombre de photos, chargées à la demande
 }
 
 // Indisponibilité d'un prestataire : un jour, ou un créneau dans ce jour.

@@ -14,6 +14,7 @@ export const maxDuration = 60; // téléchargement des photos + rendu PDF + SMTP
 // Photos d'intervention → compte rendu PDF envoyé au client (depuis l'agenda).
 //   GET              → { email, prenom, nbPhotos, envoi }   (infos de la feuille d'envoi)
 //   GET ?pdf=1       → le PDF (aperçu, inline)
+//   GET ?liste=1     → { photos } de la prestation seule (chargement à la demande)
 //   POST { message?, to? } → envoie le PDF par Gmail ; { ok, email, envoi, journal }
 // Le RDV regroupe les prestations du même client au même créneau (date + heure).
 // Après envoi : réglage `photos_envoyees` { [prestationId]: { le, a } } + ligne au
@@ -113,6 +114,16 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const unauth = await requireAuth();
   if (unauth) return unauth;
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
+
+  // ?liste=1 → { photos } : tableau complet de CETTE prestation (la liste archive
+  // n'envoie que nbPhotos ; l'agenda charge les photos à l'ouverture du RDV).
+  if (new URL(req.url).searchParams.get("liste") === "1") {
+    const { data, error } = await supabase.from("prestations").select("photos").eq("id", params.id).maybeSingle();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!data) return NextResponse.json({ error: "Prestation introuvable" }, { status: 404 });
+    return NextResponse.json({ photos: Array.isArray(data.photos) ? data.photos : [] }, { headers: { "Cache-Control": "no-store" } });
+  }
+
   const ctx = await loadCtx(params.id);
   if (!ctx) return NextResponse.json({ error: "Prestation introuvable" }, { status: 404 });
 
