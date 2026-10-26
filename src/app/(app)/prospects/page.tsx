@@ -18,6 +18,7 @@ import { ClientFicheById } from "@/components/ClientFiche";
 import DevisExternes, { DevisExterne, fmtDevisDate } from "@/components/DevisExternes";
 import { isoParis } from "@/lib/dateParis";
 import { etatAuto, libelleEtatAuto, jjmmIso, prochainPassage, EtatAuto } from "@/lib/prospectRelanceCadence";
+import { waAEnvoyer, waMessage, waLien, waLibelle, waDonneesProspect, WaEtape } from "@/lib/waMessages";
 
 // Formatage FR compact pour le pense-bête d'import.
 function fmtImportDateTime(iso: string): string {
@@ -69,7 +70,7 @@ interface Prospect {
 }
 
 // Suivi commercial d'un prospect (stocké dans settings/prospects_suivi).
-interface Suivi { devisEnvoye?: boolean; devisDate?: string; devisNum?: string; relanceNiveau?: number; relanceDate?: string; relanceDates?: string[]; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number; infoRelanceDates?: string[]; autoRelance?: boolean; autoStop?: string; reponduLe?: string; dernierEnvoiIso?: string }
+interface Suivi { devisEnvoye?: boolean; devisDate?: string; devisNum?: string; relanceNiveau?: number; relanceDate?: string; relanceDates?: string[]; avanceImmediate?: boolean; infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number; infoRelanceDates?: string[]; autoRelance?: boolean; autoStop?: string; reponduLe?: string; dernierEnvoiIso?: string; waEnvois?: Record<string, string> }
 
 // État des relances automatiques d'un prospect (même calcul que le cron).
 const etatAutoDe = (p: Prospect): EtatAuto => etatAuto(p, p.suivi, { global: p.autoGlobal !== false, today: isoParis(0) });
@@ -775,6 +776,26 @@ function ProspectModal({
     finally { setActionBusy(""); }
   }
 
+  // WhatsApp du jour (gratuit, lien wa.me prérempli) : même étape que l'email parti
+  // aujourd'hui. Au clic, le lien s'ouvre ET l'envoi est noté (suivi + journal).
+  const waEtape = waAEnvoyer(p, isoParis(0));
+  function noterWa(etape: WaEtape) {
+    // Optimiste : le bouton disparaît tout de suite.
+    const optimiste: Suivi = { ...(p.suivi || {}), waEnvois: { ...(p.suivi?.waEnvois || {}), [etape]: isoParis(0) } };
+    setP(prev => ({ ...prev, suivi: optimiste }));
+    fetch(`/api/prospects/${p.id}/relance`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "wa_envoye", etape }),
+    }).then(async res => {
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok && !d.suivi) throw new Error(d.error || "Erreur");
+      const commentaires = d.commentaire ? [...(pRef.current.commentaires || []), d.commentaire] : pRef.current.commentaires;
+      setP(prev => ({ ...prev, suivi: d.suivi, commentaires }));
+      onUpdated({ id: p.id, suivi: d.suivi, commentaires });
+      if (d.error) toast.error(d.error); else toast.success(`${waLibelle(etape)} notée comme envoyée par WhatsApp`);
+    }).catch(e => toast.error(e instanceof Error ? e.message : "WhatsApp envoyé, mais non noté dans le suivi"));
+  }
+
   // Relances automatiques (activées par défaut, suivi.autoRelance !== false) — aucun email envoyé.
   async function setAuto(value: boolean) {
     setActionBusy("auto");
@@ -1135,6 +1156,19 @@ function ProspectModal({
             )}
           </div>
         )}
+
+        {/* ── WhatsApp du jour : même relance que l'email parti aujourd'hui ── */}
+        {waEtape && (() => {
+          const lien = waLien(p.tel, waMessage(waEtape, waDonneesProspect(p)));
+          return lien && (
+            <div className="px-5 py-2 border-b border-gray-100 bg-white shrink-0">
+              <a href={lien} target="_blank" rel="noopener noreferrer" onClick={() => noterWa(waEtape)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#25D366] text-white text-sm font-bold hover:brightness-95 active:brightness-90 shadow-sm">
+                💬 Envoyer {waEtape.endsWith("-0") ? (waEtape === "devis-0" ? "l'annonce du devis" : "la demande d'infos") : `la relance ${waEtape.slice(-2)}`} sur WhatsApp
+              </a>
+            </div>
+          );
+        })()}
 
         {/* ── Body scrollable ── */}
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">

@@ -2,7 +2,7 @@
 import {
   Mail, CreditCard, X, Eye, EyeOff, Loader2,
   CheckCircle2, Circle, ExternalLink, Copy, Check,
-  AlertCircle, ChevronRight, Database,
+  AlertCircle, ChevronRight, Database, MessageCircle, Send,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import { useToast } from "@/components/Toast";
@@ -315,6 +315,254 @@ function StripeModal({ currentPubKey, currentWebhookSecret, onClose, onSave }: {
   );
 }
 
+// ─── WhatsApp (API officielle Meta) ───────────────────────────────────────────
+
+type WaStatus = {
+  configured: boolean;
+  source: "env" | "settings" | null;
+  phoneIdFin: string | null;
+  templates: { client: string; prestataire: string; langue: string };
+};
+type WaDernier = {
+  le?: string; demain?: string; mode?: string;
+  envoyes?: number; erreurs?: number; sansMobile?: number; dejaEnvoyes?: number; aEnvoyer?: number;
+  messages?: { dest: string; nom: string; tel: string | null; statut: string; raison?: string }[];
+};
+
+function WhatsAppModal({ onClose, onSave }: {
+  onClose: () => void;
+  onSave: (token: string, phoneId: string) => Promise<void>;
+}) {
+  const [token, setToken]     = useState("");
+  const [phoneId, setPhoneId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token.trim())   { setError("Le token d'accès est requis."); return; }
+    if (!/^\d{6,}$/.test(phoneId.trim())) { setError("Le Phone Number ID est un identifiant numérique (pas le numéro de téléphone)."); return; }
+    setLoading(true);
+    setError("");
+    try { await onSave(token.trim(), phoneId.trim()); onClose(); }
+    catch (err) { setError(err instanceof Error ? err.message : "Erreur inconnue"); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[440px] overflow-hidden">
+        <div className="bg-gradient-to-r from-emerald-500 to-green-600 p-5 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                <MessageCircle size={20} />
+              </div>
+              <div>
+                <h2 className="font-bold text-base">Connexion WhatsApp</h2>
+                <p className="text-emerald-100 text-xs">API officielle Meta (Cloud API)</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="w-8 h-8 bg-white/20 hover:bg-white/30 rounded-lg flex items-center justify-center transition-colors">
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <MaskedField label="Token d'accès permanent (utilisateur système)" value={token} onChange={setToken} placeholder="EAAG..." />
+          <TextField label="Phone Number ID (identifiant du numéro d'envoi)" value={phoneId} onChange={setPhoneId} placeholder="123456789012345" />
+
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-xs text-emerald-800 space-y-2">
+            <p className="font-semibold flex items-center gap-1.5">
+              <AlertCircle size={13} /> Où trouver ces valeurs ?
+            </p>
+            <ol className="list-decimal list-inside space-y-1 text-emerald-700">
+              <li><strong>Meta for Developers</strong> → votre app → WhatsApp → Configuration de l&apos;API : <strong>Phone Number ID</strong></li>
+              <li><strong>Meta Business</strong> → Utilisateurs système → générer un token (permission whatsapp_business_messaging)</li>
+              <li>N&apos;utilisez pas le token temporaire de 24 h</li>
+            </ol>
+            <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-emerald-700 underline font-medium">
+              Ouvrir Meta for Developers <ExternalLink size={11} />
+            </a>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700 flex items-start gap-2">
+              <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+              Annuler
+            </button>
+            <button type="submit" disabled={loading}
+              className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+              {loading ? <><Loader2 size={14} className="animate-spin" /> Connexion…</> : "Connecter WhatsApp"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function WhatsAppCard({ status, settings, tableReady, onEdit, onDisconnect, onToggle }: {
+  status: WaStatus | null;
+  settings: Settings;
+  tableReady: boolean;
+  onEdit: () => void;
+  onDisconnect: () => void;
+  onToggle: (actif: boolean) => Promise<void>;
+}) {
+  const configured = !!status?.configured;
+  const actif = settings.whatsapp_rappels_actif === "true";
+  const [num, setNum]         = useState("");
+  const [sending, setSending] = useState(false);
+  const [result, setResult]   = useState<{ ok: boolean; text: string } | null>(null);
+  let dernier: WaDernier | null = null;
+  try { dernier = settings.whatsapp_rappels_dernier ? JSON.parse(settings.whatsapp_rappels_dernier) : null; } catch { dernier = null; }
+  const tpl = status?.templates ?? { client: "rappel_rdv_client", prestataire: "mission_prestataire", langue: "fr" };
+
+  const envoyerTest = async () => {
+    if (!num.trim()) return;
+    setSending(true);
+    setResult(null);
+    try {
+      const res  = await fetch("/api/whatsapp/test", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: num.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setResult(res.ok && data.ok
+        ? { ok: true, text: `Accepté par Meta (modèle ${data.template}). Vérifiez la réception sur votre téléphone.` }
+        : { ok: false, text: data.error || `Erreur ${res.status}` });
+    } catch (e) {
+      setResult({ ok: false, text: e instanceof Error ? e.message : "Erreur réseau" });
+    } finally { setSending(false); }
+  };
+
+  return (
+    <div className={`rounded-2xl p-5 border-2 space-y-4 ${configured ? "bg-emerald-50 border-emerald-300 shadow-sm" : "bg-white border-gray-100 shadow-sm"}`}>
+      <div className="flex items-start gap-4">
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${configured ? "bg-white shadow-sm" : "bg-emerald-50"}`}>
+          <MessageCircle size={22} className="text-emerald-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <span className={`font-bold text-sm ${configured ? "text-emerald-900" : "text-gray-900"}`}>WhatsApp (API officielle Meta)</span>
+            {configured ? (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full">
+                <CheckCircle2 size={11} /> Configuré
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 bg-gray-100 border border-gray-200 px-2.5 py-0.5 rounded-full">
+                <Circle size={11} /> Non configuré
+              </span>
+            )}
+          </div>
+          <p className={`text-xs mb-3 ${configured ? "text-emerald-700 font-medium" : "text-gray-500"}`}>
+            {configured
+              ? `Phone Number ID …${status?.phoneIdFin ?? ""}${status?.source === "env" ? " (variables d'environnement)" : ""}`
+              : "Envoyer automatiquement les rappels de la veille au client et au prestataire"}
+          </p>
+          {status?.source !== "env" && (
+            <div className="flex gap-2">
+              <button onClick={onEdit} disabled={!tableReady && !configured}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50 ${
+                  configured ? "bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50" : "text-white bg-emerald-600 hover:bg-emerald-700"
+                }`}>
+                {configured ? "Modifier" : <><ChevronRight size={12} /> Se connecter</>}
+              </button>
+              {configured && (
+                <button onClick={onDisconnect}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-red-500 hover:bg-red-50 hover:text-red-700 border border-transparent hover:border-red-200 transition-colors">
+                  Déconnecter
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Interrupteur des rappels automatiques */}
+      <div className="bg-white rounded-xl border border-gray-100 p-3.5 flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="font-semibold text-gray-800 text-sm">Rappels de la veille par WhatsApp (client + prestataire)</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {!configured
+              ? "Disponible une fois WhatsApp configuré."
+              : actif
+                ? "Actifs — chaque soir (cron de 18h), les rappels du lendemain partent automatiquement."
+                : "Désactivés — seul l'email de 18h avec les liens WhatsApp est envoyé."}
+          </p>
+        </div>
+        <button
+          type="button" role="switch" aria-checked={actif}
+          disabled={!configured && !actif}
+          onClick={async () => {
+            if (!actif && !confirm("Activer l'envoi AUTOMATIQUE des rappels WhatsApp aux clients et aux prestataires ?")) return;
+            await onToggle(!actif);
+          }}
+          className={`relative shrink-0 w-12 h-7 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${actif ? "bg-emerald-500" : "bg-gray-300"}`}
+        >
+          <span className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white shadow transition-transform ${actif ? "translate-x-5" : ""}`} />
+        </button>
+      </div>
+
+      {/* Modèles attendus côté Meta */}
+      <div className="text-xs text-gray-600 space-y-1">
+        <p className="font-semibold text-gray-700">Modèles à faire approuver dans WhatsApp Manager (langue « {tpl.langue} », catégorie Utility) :</p>
+        <ul className="list-disc pl-4 space-y-0.5">
+          <li><code className="bg-gray-100 px-1 rounded font-mono">{tpl.client}</code> — client : {"{{1}}"} prénom, {"{{2}}"} prestation(s), {"{{3}}"} date, {"{{4}}"} heure, {"{{5}}"} adresse, {"{{6}}"} prestataire</li>
+          <li><code className="bg-gray-100 px-1 rounded font-mono">{tpl.prestataire}</code> — prestataire : {"{{1}}"} prénom, {"{{2}}"} date, {"{{3}}"} heure, {"{{4}}"} prestation(s), {"{{5}}"} client, {"{{6}}"} adresse, {"{{7}}"} tél. client</li>
+        </ul>
+      </div>
+
+      {/* Dernier passage */}
+      {dernier?.le && (
+        <div className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg px-3 py-2 space-y-1">
+          <p>
+            Dernier passage : {new Date(dernier.le).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })}
+            {dernier.mode === "simulation" && " (simulation)"}
+            {dernier.mode === "non_configure" && " (non configuré : rien envoyé)"}
+            {" — "}{dernier.envoyes ?? 0} envoyé(s), {dernier.erreurs ?? 0} erreur(s), {dernier.sansMobile ?? 0} sans mobile
+            {(dernier.dejaEnvoyes ?? 0) > 0 && `, ${dernier.dejaEnvoyes} déjà envoyé(s)`}
+          </p>
+          {(dernier.messages ?? []).filter(m => m.statut === "erreur").map((m, i) => (
+            <p key={i} className="text-red-700">✗ {m.nom} : {m.raison}</p>
+          ))}
+        </div>
+      )}
+
+      {/* Test manuel */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-gray-500">Envoyer un test à mon numéro (modèle client, valeurs fictives)</p>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="tel" value={num} onChange={e => setNum(e.target.value)} placeholder="06 12 34 56 78"
+            className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-gray-50 focus:bg-white transition-colors"
+          />
+          <button
+            type="button" disabled={!configured || sending || !num.trim()} onClick={envoyerTest}
+            className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 transition-colors inline-flex items-center justify-center gap-2 whitespace-nowrap"
+          >
+            {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Envoyer un test à mon numéro
+          </button>
+        </div>
+        {result && (
+          <p className={`text-xs rounded-lg px-3 py-2 border ${result.ok ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-red-700 bg-red-50 border-red-200"}`}>
+            {result.ok ? "✓ " : "✗ "}{result.text}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Carte intégration ────────────────────────────────────────────────────────
 
 function ServiceCard({
@@ -446,15 +694,20 @@ function SetupBanner() {
 export default function ConfigurationPage() {
   const [settings, setSettings] = useState<Settings>({});
   const [loading, setLoading]   = useState(true);
-  const [modal, setModal]       = useState<"gmail" | "stripe" | null>(null);
+  const [modal, setModal]       = useState<"gmail" | "stripe" | "whatsapp" | null>(null);
+  const [waStatus, setWaStatus] = useState<WaStatus | null>(null);
   // Toast partagé (un seul système de notifications pour toute l'app)
   const toast = useToast();
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/settings");
+      const [res, wa] = await Promise.all([
+        fetch("/api/settings"),
+        fetch("/api/whatsapp/test").catch(() => null),
+      ]);
       if (res.ok) setSettings(await res.json());
+      if (wa?.ok) setWaStatus(await wa.json());
     } finally {
       setLoading(false);
     }
@@ -543,6 +796,28 @@ export default function ConfigurationPage() {
                   disabled={!tableReady && !stripeOk}
                   accentClass="bg-violet-50"
                   connectBtnClass="bg-violet-600 hover:bg-violet-700"
+                />
+
+                {/* WhatsApp (API officielle Meta) */}
+                <WhatsAppCard
+                  status={waStatus}
+                  settings={settings}
+                  tableReady={tableReady}
+                  onEdit={() => setModal("whatsapp")}
+                  onDisconnect={async () => {
+                    if (!confirm("Déconnecter WhatsApp ? Le token sera effacé et les rappels WhatsApp automatiques désactivés.")) return;
+                    try {
+                      await save({ whatsapp_token: "", whatsapp_phone_number_id: "", whatsapp_rappels_actif: "" });
+                      toast.success("WhatsApp déconnecté");
+                    } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur lors de la déconnexion"); }
+                  }}
+                  onToggle={async (actif) => {
+                    try {
+                      // Valeur vide = réglage supprimé = désactivé (défaut).
+                      await save({ whatsapp_rappels_actif: actif ? "true" : "" });
+                      toast.success(actif ? "Rappels WhatsApp automatiques activés" : "Rappels WhatsApp automatiques désactivés");
+                    } catch (e) { toast.error(e instanceof Error ? e.message : "Erreur"); }
+                  }}
                 />
 
               </div>
@@ -734,6 +1009,15 @@ export default function ConfigurationPage() {
             // En cas d'erreur, la modale l'affiche elle-même (pas de toast en double).
             await save({ gmail_user: user, gmail_app_password: pass });
             toast.success("Gmail connecté");
+          }}
+        />
+      )}
+      {modal === "whatsapp" && (
+        <WhatsAppModal
+          onClose={() => setModal(null)}
+          onSave={async (token, phoneId) => {
+            await save({ whatsapp_token: token, whatsapp_phone_number_id: phoneId });
+            toast.success("WhatsApp connecté");
           }}
         />
       )}

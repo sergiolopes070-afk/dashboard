@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   AlertTriangle, Clock, CalendarCheck, UserPlus, UserCheck,
   CalendarDays, ChevronRight, ChevronDown, UserSearch, X, Loader2,
-  Package, Sparkles, Phone, ArrowRight, CheckCircle2, Mail, Download, FileSpreadsheet,
+  Package, Sparkles, Phone, ArrowRight, CheckCircle2, Mail, Download, FileSpreadsheet, MessageCircle,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
 import StatusBadge from "@/components/StatusBadge";
@@ -16,6 +16,7 @@ import { grouperIndispos, libellePlage } from "@/lib/indispos";
 import ClotureModal from "@/components/ClotureModal";
 import { Prestation, Prestataire, Depense, PAIEMENTS_CLOTURE, MOTIF_TERMINEE, TYPES_PRESTATION } from "@/lib/constants";
 import { isoParis } from "@/lib/dateParis";
+import { waAEnvoyer, waMessage, waLien, waLibelle, waDonneesProspect, WaEtape } from "@/lib/waMessages";
 
 // ── Mini agenda helpers ──────────────────────────────────────────────────────
 const PALETTE_MINI = ["#4285F4","#EA4335","#34A853","#FBBC04","#8B5CF6","#F97316","#06B6D4","#EC4899","#10B981","#6366F1"];
@@ -59,8 +60,12 @@ interface Stats {
 interface SuiviProspect {
   devisEnvoye?: boolean; devisDate?: string; devisNum?: string; relanceNiveau?: number; relanceDates?: string[];
   infosEnvoye?: boolean; infosDate?: string; infoRelanceNiveau?: number; infoRelanceDates?: string[];
+  autoStop?: string; dernierEnvoiIso?: string; waEnvois?: Record<string, string>;
 }
-interface Prospect { id: string; prenom: string; nom: string; tel: string; statut: string; dateRelance: string; typePresta: string; createdAt: string; suivi?: SuiviProspect; }
+interface Prospect {
+  id: string; prenom: string; nom: string; genre?: string; tel: string; statut: string; dateRelance: string; typePresta: string; createdAt: string;
+  budget?: string; besoins?: { typePresta?: string; prix?: string }[]; dejaClient?: unknown; suivi?: SuiviProspect;
+}
 
 // Dernier mail envoyé à un prospect (devis, relance devis, demande d'infos, relance infos).
 // Les dates du suivi sont au format JJ/MM/AAAA.
@@ -186,6 +191,10 @@ export default function HomePage() {
   const [relanceOpen, setRelanceOpen]         = useState(false); // modale « relances en retard »
   const [busyId, setBusyId]                   = useState("");    // action en cours sur une ligne
   const [relanceRes, setRelanceRes]           = useState<Record<string, { ok: boolean; msg: string }>>({}); // résultat d'envoi par prospect
+  const [waOpen, setWaOpen]                   = useState(false); // modale « WhatsApp à envoyer aujourd'hui »
+  const [waFait, setWaFait]                   = useState<Record<string, WaEtape>>({}); // envoyés (✓) pendant la session
+  const [waPasse, setWaPasse]                 = useState<string[]>([]);              // « Passer » : masqués pour la session
+  const [waApercu, setWaApercu]               = useState<string>("");                // aperçu du message déplié
   const [clotPay, setClotPay]                 = useState<Record<string, string>>({}); // mode de paiement choisi par RDV
   const [clotDetail, setClotDetail]           = useState<Prestation | null>(null); // clôture complète (motif, satisfaction…)
   const [rentaPeriod, setRentaPeriod]         = useState<"semaine" | "mois">("mois");
@@ -283,6 +292,33 @@ export default function HomePage() {
     [prospects, todayIso],
   );
 
+  // WhatsApp à envoyer aujourd'hui : l'email de l'étape est parti aujourd'hui et
+  // aucun WhatsApp n'est encore noté pour elle. Les lignes envoyées pendant la
+  // session restent affichées (✓ Envoyé) ; « Passer » les masque.
+  const waListe = useMemo(() => {
+    const out: { p: Prospect; etape: WaEtape; fait: boolean }[] = [];
+    for (const p of prospects) {
+      if (waPasse.includes(p.id)) continue;
+      const fait = waFait[p.id];
+      const etape = fait || waAEnvoyer(p, todayIso);
+      if (etape) out.push({ p, etape, fait: !!fait });
+    }
+    return out;
+  }, [prospects, waFait, waPasse, todayIso]);
+  const waRestants = waListe.filter(w => !w.fait).length;
+
+  // Lien wa.me ouvert (le navigateur suit le lien) + étape notée côté serveur.
+  // Optimiste : la ligne passe à « ✓ Envoyé » tout de suite.
+  function noterWa(id: string, etape: WaEtape) {
+    setWaFait(f => ({ ...f, [id]: etape }));
+    fetch(`/api/prospects/${id}/relance`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "wa_envoye", etape }),
+    }).then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.suivi) setProspects(ps => ps.map(p => p.id === id ? { ...p, suivi: d.suivi } : p));
+    }).catch(() => { /* non bloquant : le message est parti, seul le suivi manque */ });
+  }
+
   // Clôture (archive) d'un RDV passé, avec le mode de paiement choisi → MAJ CA/stock.
   async function cloturerRdv(id: string, modePaiement: string) {
     setBusyId(id);
@@ -368,8 +404,8 @@ export default function HomePage() {
   const greeting = (() => { const h = new Date().getHours(); return h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; })();
   const dateLabel = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
-  const COLOR: Record<string, string> = { purple: "bg-purple-50 text-purple-700 border-purple-100", amber: "bg-amber-50 text-amber-700 border-amber-100", blue: "bg-blue-50 text-blue-700 border-blue-100", red: "bg-red-50 text-red-700 border-red-100", sky: "bg-sky-50 text-sky-700 border-sky-100", orange: "bg-orange-50 text-orange-700 border-orange-100" };
-  const ICONBG: Record<string, string> = { purple: "bg-purple-100 text-purple-600", amber: "bg-amber-100 text-amber-600", blue: "bg-blue-100 text-blue-600", red: "bg-red-100 text-red-600", sky: "bg-sky-100 text-sky-600", orange: "bg-orange-100 text-orange-600" };
+  const COLOR: Record<string, string> = { purple: "bg-purple-50 text-purple-700 border-purple-100", amber: "bg-amber-50 text-amber-700 border-amber-100", blue: "bg-blue-50 text-blue-700 border-blue-100", red: "bg-red-50 text-red-700 border-red-100", sky: "bg-sky-50 text-sky-700 border-sky-100", orange: "bg-orange-50 text-orange-700 border-orange-100", green: "bg-green-50 text-green-700 border-green-200" };
+  const ICONBG: Record<string, string> = { purple: "bg-purple-100 text-purple-600", amber: "bg-amber-100 text-amber-600", blue: "bg-blue-100 text-blue-600", red: "bg-red-100 text-red-600", sky: "bg-sky-100 text-sky-600", orange: "bg-orange-100 text-orange-600", green: "bg-green-500 text-white" };
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -445,6 +481,7 @@ export default function HomePage() {
             { count: rdvPasses.length,         sing: "RDV passé à clôturer",        plur: "RDV passés à clôturer",        hint: "pour un CA et un stock justes", icon: CheckCircle2, color: "blue", onClick: () => setClotureOpen(true) },
             { count: rdvAujourdhui.length,     sing: "rendez-vous aujourd'hui",     plur: "rendez-vous aujourd'hui",      icon: CalendarCheck, color: "blue", href: "/agenda" },
             { count: relanceEnRetard.length,   sing: "prospect à relancer",         plur: "prospects à relancer",         hint: relanceRetard.length ? `dont ${relanceRetard.length} en retard` : undefined, icon: Phone, color: "amber", onClick: () => setRelanceOpen(true) },
+            { count: waRestants,               sing: "💬 message WhatsApp à envoyer", plur: "💬 messages WhatsApp à envoyer", hint: "même message que l'email parti aujourd'hui", icon: MessageCircle, color: "green", onClick: () => setWaOpen(true) },
             { count: leadsNouveaux.length,     sing: "nouveau lead à contacter",    plur: "nouveaux leads à contacter",   hint: leadsFroids.length ? `dont ${leadsFroids.length} depuis +3 j` : undefined, icon: Sparkles, color: "purple", href: "/prospects" },
             { count: demandesNouvelles.length, sing: "demande de matériel",         plur: "demandes de matériel",         icon: Package, color: "sky", onClick: () => setDemandesModalOpen(true) },
             { count: produitsAlerte.length,    sing: "produit bientôt épuisé",      plur: "produits bientôt épuisés",     hint: produitsAlerte.slice(0, 2).map(p => p.nom).join(", ") + (produitsAlerte.length > 2 ? "…" : ""), icon: Package, color: "orange", href: "/stock" },
@@ -779,6 +816,67 @@ export default function HomePage() {
         </div>
       )}
 
+      {/* ── Pop-up « WhatsApp à envoyer aujourd'hui » — un geste par prospect ── */}
+      {waOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4" onClick={(e) => { if (e.target === e.currentTarget) setWaOpen(false); }}>
+          <div className="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <h2 className="font-bold text-gray-900 flex items-center gap-2">💬 WhatsApp à envoyer <span className="text-xs font-normal text-gray-400">{waRestants}</span></h2>
+              <button onClick={() => setWaOpen(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"><X size={18} /></button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-4 space-y-2.5">
+              {waListe.length === 0 ? (
+                <div className="text-center py-10 text-gray-400"><CheckCircle2 size={36} className="mx-auto mb-2 opacity-30" /><p className="text-sm">Aucun WhatsApp à envoyer aujourd&apos;hui 🎉</p></div>
+              ) : waListe.map(({ p, etape, fait }) => {
+                const texte = waMessage(etape, waDonneesProspect(p));
+                const lien = waLien(p.tel, texte);
+                const envoi = p.suivi?.dernierEnvoiIso ? new Date(p.suivi.dernierEnvoiIso) : null;
+                const matin = envoi && isoParis() === envoi.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" })
+                  && Number(envoi.toLocaleString("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", hour12: false }).slice(0, 2)) < 12;
+                const ouvert = waApercu === p.id;
+                return (
+                  <div key={p.id} className={`rounded-xl border p-3 ${fait ? "border-green-200 bg-green-50/50" : "border-gray-100"}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-900 truncate">{p.prenom} {p.nom}</p>
+                        <p className="text-[11px] text-gray-500">{waLibelle(etape)} — email parti {matin ? "ce matin" : "aujourd'hui"}{p.typePresta ? ` · ${p.typePresta}` : ""}</p>
+                      </div>
+                      <a href={`/prospects?fiche=${p.id}`} className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline flex-shrink-0">Fiche <ChevronRight size={12} /></a>
+                    </div>
+                    <button type="button" onClick={() => setWaApercu(ouvert ? "" : p.id)} className="mt-2 flex items-center gap-1 text-[11px] font-medium text-gray-500 hover:text-gray-700">
+                      <ChevronDown size={12} className={`transition-transform ${ouvert ? "rotate-180" : ""}`} /> {ouvert ? "Masquer le message" : "Voir le message"}
+                    </button>
+                    {ouvert ? (
+                      <p className="mt-1.5 text-xs text-gray-700 whitespace-pre-line bg-[#E7FFDB] rounded-lg rounded-tl-none px-3 py-2 border border-green-100">{texte}</p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-gray-400 truncate">{texte.replace(/\s+/g, " ")}</p>
+                    )}
+                    <div className="flex gap-2 mt-2.5">
+                      {fait ? (
+                        <p className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-100 text-green-800 text-sm font-semibold"><CheckCircle2 size={15} /> Envoyé</p>
+                      ) : lien && (
+                        <a href={lien} target="_blank" rel="noopener noreferrer" onClick={() => noterWa(p.id, etape)}
+                          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#25D366] text-white text-sm font-bold hover:brightness-95 active:brightness-90 shadow-sm">
+                          <MessageCircle size={16} /> Envoyer sur WhatsApp
+                        </a>
+                      )}
+                      {!fait && (
+                        <button type="button" onClick={() => setWaPasse(x => [...x, p.id])}
+                          className="px-3 py-2.5 rounded-xl border border-gray-200 text-gray-500 text-sm font-medium hover:bg-gray-50 flex-shrink-0">
+                          Passer
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="px-4 py-2.5 border-t border-gray-100 text-center flex-shrink-0">
+              <p className="text-[11px] text-gray-400">Chaque bouton ouvre WhatsApp avec le message prêt : il ne reste qu&apos;à appuyer sur Envoyer.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {loading && !stats && (
         <div className="flex items-center justify-center py-20"><div className="text-center"><div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" /><p className="text-gray-500 text-sm">Chargement…</p></div></div>

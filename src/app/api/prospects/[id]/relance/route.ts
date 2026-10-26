@@ -4,8 +4,9 @@ import { supabase } from "@/lib/supabase";
 import { getSettingJSON, setSettingRaw } from "@/lib/settings";
 import { sendProspectRelanceEmail, sendDevisEmail, sendProspectInfosEmail } from "@/lib/mailer";
 import { buildProspectDevis } from "@/lib/prospectDevis";
-import { frParis } from "@/lib/dateParis";
+import { frParis, isoParis } from "@/lib/dateParis";
 import { prochaineRelanceApresEnvoi } from "@/lib/prospectRelance";
+import { estWaEtape, waLibelle } from "@/lib/waMessages";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // génération PDF (Chromium) incluse
@@ -16,6 +17,8 @@ export const maxDuration = 60; // génération PDF (Chromium) incluse
 //   POST { action: "set_avance", value }   → active/désactive l'avance immédiate (défaut : activée).
 //   POST { action: "relance" }             → envoie la relance suivante (1→2→3), statut → RELANCÉ.
 //   POST { action: "set_auto", value }     → active/désactive les relances AUTOMATIQUES (aucun email).
+//   POST { action: "wa_envoye", etape }    → note qu'un message WhatsApp (lien wa.me) a été envoyé
+//                                            pour l'étape (ex. "devis-R2") + ligne au journal. Aucun email.
 // Après chaque envoi manuel, la prochaine relance (date_relance) = prochaine
 // échéance automatique si les relances auto sont actives pour ce prospect, sinon demain.
 const SUIVI_KEY = "prospects_suivi";
@@ -35,7 +38,8 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[prospects/relance] échec :", msg);
-    return NextResponse.json({ error: `Gmail a refusé l'envoi : ${msg}` }, { status: 502 });
+    // Le plus souvent un refus Gmail (SMTP), mais aussi toute erreur imprévue (ex. wa_envoye).
+    return NextResponse.json({ error: `Action impossible : ${msg}` }, { status: 502 });
   }
 }
 
@@ -45,7 +49,7 @@ async function traiter(req: Request, { params }: { params: { id: string } }) {
   if (!supabase) return NextResponse.json({ error: "Supabase non configuré" }, { status: 503 });
 
   const { id } = params;
-  const body = await req.json() as { action?: string; value?: boolean; unmark?: boolean };
+  const body = await req.json() as { action?: string; value?: boolean; unmark?: boolean; etape?: string };
   const { action } = body;
 
   const all = await getSettingJSON<Record<string, Suivi>>(SUIVI_KEY, {});
@@ -70,6 +74,27 @@ async function traiter(req: Request, { params }: { params: { id: string } }) {
     const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(all));
     if (errSet) return NextResponse.json({ error: errSet }, { status: 500 });
     return NextResponse.json({ suivi: all[id] });
+  }
+
+  // WhatsApp envoyé à la main (lien wa.me prérempli) : on le note dans le suivi
+  // (waEnvois[etape] = jour) et au journal. Aucun email, aucune reprogrammation.
+  if (action === "wa_envoye") {
+    const etape = body.etape;
+    if (!estWaEtape(etape)) return NextResponse.json({ error: "étape WhatsApp invalide" }, { status: 400 });
+    // Relecture juste avant l'écriture : le cron a pu modifier le suivi entre-temps.
+    const fresh = await getSettingJSON<Record<string, Suivi>>(SUIVI_KEY, {});
+    const freshCur: Suivi = fresh[id] || {};
+    fresh[id] = { ...freshCur, waEnvois: { ...(freshCur.waEnvois || {}), [etape]: isoParis() } };
+    const errSet = await setSettingRaw(SUIVI_KEY, JSON.stringify(fresh));
+    if (errSet) return NextResponse.json({ error: errSet }, { status: 500 });
+    // Journal (commentaires) — sans toucher à la date de relance ni au statut.
+    const note = { id: crypto.randomUUID(), date: maintenant, texte: `💬 ${waLibelle(etape)} envoyée par WhatsApp` };
+    const { data: row } = await supabase.from("prospects").select("commentaires").eq("id", id).limit(1);
+    const existing = Array.isArray(row?.[0]?.commentaires) ? row![0].commentaires : [];
+    const { error } = await supabase.from("prospects")
+      .update({ commentaires: [...existing, note], updated_at: maintenant }).eq("id", id);
+    if (error) return NextResponse.json({ suivi: fresh[id], error: `Suivi noté mais journal non enregistré : ${error.message}` }, { status: 500 });
+    return NextResponse.json({ suivi: fresh[id], commentaire: note });
   }
 
   // Envoie le devis par email (document joint), puis marque « devis envoyé ».
