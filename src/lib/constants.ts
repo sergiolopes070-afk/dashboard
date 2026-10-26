@@ -143,8 +143,6 @@ export const STATUT_COLORS: Record<string, string> = {
   "PAYÉ": "bg-emerald-100 text-emerald-800",
 };
 
-export const LOGO_URL = "https://lh3.googleusercontent.com/d/1JeOWpfLrxjZqlglaN7ayL460GTET432f";
-
 export interface Depense {
   id: string;
   nom: string;

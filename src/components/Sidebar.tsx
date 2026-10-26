@@ -3,32 +3,32 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSidebar } from "./SidebarContext";
 import {
-  LayoutDashboard, Users, Briefcase, Archive,
-  FileText, Settings, ChevronRight, Wrench, CalendarDays, TrendingDown, LogOut, X, UserSearch, Package, BarChart3,
+  LayoutDashboard, Users, Archive,
+  Settings, ChevronRight, Wrench, CalendarDays, LogOut, X, UserSearch, Package, BarChart3,
 } from "lucide-react";
 import { prefetchPage } from "@/lib/dataCache";
 
 // Prefetch des données (prefetchPage) au survol, au toucher (mobile : touchstart
 // part avant le clic) ou au focus clavier : réchauffe le cache avant la navigation.
 
-// Menu par usage : le quotidien en haut, les finances ensemble, les réglages en bas.
-const sections = [
+// Menu par usage : le quotidien en haut, la gestion (dont les finances) ensuite.
+// `aussi` : autres routes qui allument l'entrée (vues rattachées, URL conservées) :
+//  - Agenda   ← /prestations (vue « Liste » de l'agenda)
+//  - Finances ← /depenses (onglet de Finances, à côté de Pilotage)
+// /devis n'est plus au menu (doublon de la fiche client / Prospects) mais la page reste accessible.
+type Item = { href: string; label: string; icon: React.ElementType; aussi?: string[] };
+const sections: { titre: string; items: Item[] }[] = [
   { titre: "Quotidien", items: [
     { href: "/",              label: "Tableau de bord",  icon: LayoutDashboard },
-    { href: "/agenda",        label: "Agenda",           icon: CalendarDays },
+    { href: "/agenda",        label: "Agenda",           icon: CalendarDays, aussi: ["/prestations"] },
     { href: "/prospects",     label: "Prospects",        icon: UserSearch },
     { href: "/clients",       label: "Clients",          icon: Users },
-    { href: "/prestations",   label: "Prestations",      icon: Briefcase },
   ]},
   { titre: "Gestion", items: [
-    { href: "/devis",         label: "Devis",            icon: FileText },
+    { href: "/pilotage",      label: "Finances",         icon: BarChart3, aussi: ["/depenses"] },
     { href: "/prestataires",  label: "Prestataires",     icon: Wrench },
     { href: "/stock",         label: "Stock",            icon: Package },
     { href: "/archive",       label: "Historique",       icon: Archive },
-  ]},
-  { titre: "Finances", items: [
-    { href: "/depenses",      label: "Dépenses",         icon: TrendingDown },
-    { href: "/pilotage",      label: "Pilotage",         icon: BarChart3 },
   ]},
 ];
 
@@ -93,8 +93,8 @@ export default function Sidebar() {
             <div key={titre}>
               <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">{titre}</p>
               <div className="space-y-0.5">
-                {items.map(({ href, label, icon: Icon }) => {
-                  const active = estActif(pathname, href);
+                {items.map(({ href, label, icon: Icon, aussi }) => {
+                  const active = [href, ...(aussi ?? [])].some(h => estActif(pathname, h));
                   return (
                     <Link
                       key={href}

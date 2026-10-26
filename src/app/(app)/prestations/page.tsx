@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Search, Filter, Download, Trash2, Loader2, Inbox, Plus, ArrowUpDown } from "lucide-react";
+import { Search, Filter, Download, Trash2, Loader2, Inbox, Plus, ArrowUpDown, ChevronLeft } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Topbar from "@/components/Topbar";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
@@ -31,6 +33,15 @@ function statutDepuisUrl(v: string | null): string | null {
   return STATUTS.find(s => normStatut(s) === n) ?? STATUT_ALIAS[n] ?? null;
 }
 
+// Vues de l'agenda : cette page sert de vue « Liste ». Jour / Sem. / Mois renvoient
+// vers /agenda en pré-enregistrant la vue choisie (même clé localStorage que l'agenda).
+const AGENDA_VIEW_KEY = "agenda:viewMode";
+const VUES_AGENDA = [
+  { v: "day",   label: "Jour" },
+  { v: "week",  label: "Sem." },
+  { v: "month", label: "Mois" },
+] as const;
+
 // Tris proposés
 const TRIS = [
   { value: "date_asc",  label: "Intervention ↑ (plus proche)" },
@@ -40,6 +51,7 @@ const TRIS = [
 type Tri = typeof TRIS[number]["value"];
 
 export default function PrestationsPage() {
+  const router = useRouter();
   const [data, setData]                   = useState<Prestation[]>(() => cacheGet<Prestation[]>(CACHE_KEYS.prestations) ?? []);
   const [prestataires, setPrestataires]   = useState<Prestataire[]>(() => cacheGet<Prestataire[]>(CACHE_KEYS.prestataires) ?? []);
   const [loading, setLoading]             = useState(() => !cacheHas(CACHE_KEYS.prestations));
@@ -218,6 +230,23 @@ export default function PrestationsPage() {
           </div>
         }
       />
+      {/* Barre « vue de l'agenda » : retour Agenda + même sélecteur Jour / Sem. / Mois / Liste */}
+      <div className="bg-white border-b border-gray-200 px-2 sm:px-4 py-2 flex items-center gap-2">
+        <Link href="/agenda"
+          className="h-9 px-2 flex items-center gap-1 rounded-lg text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors">
+          <ChevronLeft size={18} /> Agenda
+        </Link>
+        <div className="ml-auto flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium shrink-0">
+          {VUES_AGENDA.map(({ v, label }, i) => (
+            <button key={v}
+              onClick={() => { try { localStorage.setItem(AGENDA_VIEW_KEY, v); } catch { /* stockage indisponible */ } router.push("/agenda"); }}
+              className={`h-9 px-2 sm:px-3 bg-white text-gray-600 hover:bg-gray-50 transition-colors ${i > 0 ? "border-l border-gray-200" : ""}`}>
+              {label}
+            </button>
+          ))}
+          <span aria-current="page" className="h-9 px-2 sm:px-3 border-l border-gray-200 flex items-center bg-blue-600 text-white">Liste</span>
+        </div>
+      </div>
       <div className="flex-1 p-3 sm:p-6 space-y-3 sm:space-y-4">
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">{error}</div>

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo, useRef } from "react";
-import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, SlidersHorizontal, CheckCircle2, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Plus, X, SlidersHorizontal, CheckCircle2, Loader2, List } from "lucide-react";
 import { Prestation, Prestataire, TYPES_PRESTATION } from "@/lib/constants";
 import { useToast } from "@/components/Toast";
 import dynamic from "next/dynamic";
@@ -8,7 +8,8 @@ import type { LightboxPhoto } from "@/components/PhotoLightbox";
 import Topbar from "@/components/Topbar";
 import { useAvanceInscrits } from "@/components/AvanceBadge";
 import { matchInscrit } from "@/lib/avanceMatch";
-import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
+import { cacheGet, cacheSet, cacheHas, CACHE_KEYS, prefetchPage } from "@/lib/dataCache";
+import Link from "next/link";
 import { fetchJsonOk } from "@/lib/fetchOk";
 import { useRouter } from "next/navigation";
 import { waLien, waMobile, waTexteAvis } from "@/lib/waMessages";
@@ -909,7 +910,7 @@ export default function AgendaPage() {
             <ChevronLeft size={20} className="text-gray-600" />
           </button>
           <button onClick={navToday}
-            className="h-9 px-2.5 sm:px-3 text-xs sm:text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition-colors shrink-0">
+            className="h-9 px-2 sm:px-3 text-xs sm:text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition-colors shrink-0">
             Aujourd&apos;hui
           </button>
           <button onClick={navNext} aria-label="Suivant"
@@ -925,19 +926,28 @@ export default function AgendaPage() {
           <div className="ml-auto sm:ml-0 flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium shrink-0">
             <button
               onClick={() => setViewMode("day")}
-              className={`h-9 px-2 sm:px-3 transition-colors ${viewMode==="day" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+              className={`h-9 px-1.5 sm:px-3 transition-colors ${viewMode==="day" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
               Jour
             </button>
             <button
               onClick={() => setViewMode("week")}
-              className={`h-9 px-2 sm:px-3 border-l border-gray-200 transition-colors ${viewMode==="week" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+              className={`h-9 px-1.5 sm:px-3 border-l border-gray-200 transition-colors ${viewMode==="week" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
               Sem.
             </button>
             <button
               onClick={() => { setViewMode("month"); setMonthDate(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1)); }}
-              className={`h-9 px-2 sm:px-3 border-l border-gray-200 transition-colors ${viewMode==="month" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+              className={`h-9 px-1.5 sm:px-3 border-l border-gray-200 transition-colors ${viewMode==="month" ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
               Mois
             </button>
+            {/* Liste : la page Prestations (filtres par statut, export CSV) sert de vue liste */}
+            <Link href="/prestations"
+              onMouseEnter={() => prefetchPage("/prestations")}
+              onTouchStart={() => prefetchPage("/prestations")}
+              aria-label="Vue liste" title="Vue liste (Prestations)"
+              className="h-9 px-1.5 sm:px-3 border-l border-gray-200 flex items-center gap-1 bg-white text-gray-600 hover:bg-gray-50 transition-colors">
+              <List size={14} />
+              <span className="hidden sm:inline">Liste</span>
+            </Link>
           </div>
         </div>
 
@@ -1599,14 +1609,8 @@ export default function AgendaPage() {
 
                       {/* ── Mode de paiement (visible + modifiable même archivé) ── */}
                       {(() => {
-                        const PAYMENT_OPTIONS = [
-                          { label: "Espèces",           icon: "💵" },
-                          { label: "Virement bancaire",  icon: "🏦" },
-                          { label: "Lien de paiement",   icon: "🔗" },
-                          { label: "Chèque",             icon: "📄" },
-                          { label: "Carte sur place",    icon: "💳" },
-                          { label: "Avance immédiate", icon: "⚡" },
-                        ];
+                        // Même liste (valeurs, icônes, ordre) que PAYMENT_ICONS en tête de fichier.
+                        const PAYMENT_OPTIONS = Object.entries(PAYMENT_ICONS).map(([label, icon]) => ({ label, icon }));
                         return (
                           <FicheSection id="paiement" title="Mode de paiement"
                             aside={paymentSaving ? <span className="text-[10px] text-blue-400 normal-case font-normal">Enregistrement…</span>

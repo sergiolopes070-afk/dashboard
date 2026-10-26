@@ -61,7 +61,8 @@ export default function BottomNav({ onDataChanged }: { onDataChanged?: () => voi
   };
 
   const onglet = ({ href, label, icon: Icon }: { href: string; label: string; icon: React.ElementType }) => {
-    const actif = estActif(pathname, href);
+    // /prestations = vue « Liste » de l'agenda → l'onglet Agenda reste allumé.
+    const actif = estActif(pathname, href) || (href === "/agenda" && estActif(pathname, "/prestations"));
     return (
       <Link
         key={href}

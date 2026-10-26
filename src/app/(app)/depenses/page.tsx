@@ -6,6 +6,7 @@ import {
   TrendingUp, BadgeEuro,
 } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import FinancesTabs from "@/components/FinancesTabs";
 import { SkeletonList } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import { cacheGet, cacheSet, cacheHas, CACHE_KEYS } from "@/lib/dataCache";
@@ -494,6 +495,7 @@ export default function DepensesPage() {
           </div>
         }
       />
+      <FinancesTabs />
 
       <div className="flex-1 p-3 sm:p-6 space-y-4 sm:space-y-6">
 

@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { TrendingUp, TrendingDown, BadgeEuro, Package, Target, Crown, Boxes } from "lucide-react";
 import Topbar from "@/components/Topbar";
+import FinancesTabs from "@/components/FinancesTabs";
 import { Skeleton } from "@/components/Skeleton";
 import { Prestation, Depense } from "@/lib/constants";
 import { bilanPeriode, caRealise, estRealisee, prixPresta, isoLocal, formatMontant } from "@/lib/finance";
@@ -81,6 +82,7 @@ export default function PilotagePage() {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       <Topbar title="Pilotage" subtitle="Statistiques & performance" onRefresh={load} loading={loading} />
+      <FinancesTabs />
       <div className="flex-1 p-3 sm:p-6 space-y-4">
 
         {/* KPIs année */}

@@ -209,9 +209,6 @@ export function confirmationObjet(rdvFixe: boolean): string {
     ? "✅ Votre rendez-vous KinouClean est confirmé"
     : "✅ Votre demande est bien enregistrée — KinouClean";
 }
-// Rétrocompat : objet par défaut.
-export const CONFIRMATION_OBJET = confirmationObjet(false);
-
 export function buildConfirmationHtml(d: {
   prenom: string; typePresta: string; quantite: string;
   adresse: string; date: string; heure: string; prix: string; modePaiement?: string; avanceInscrit?: boolean;

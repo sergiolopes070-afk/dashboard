@@ -7,6 +7,7 @@ import {
 import { Prestataire, ClientNote, TYPES_PRESTATION } from "@/lib/constants";
 import { getSchema } from "@/lib/prestationSchema";
 import PrestationFields from "@/components/PrestationFields";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
 
 // ─── Options ─────────────────────────────────────────────────────────────────
 
@@ -40,90 +41,8 @@ function useVilleFromCP(cp: string) {
   return { villes, loading };
 }
 
-// ─── Autocomplete adresse (Base Adresse Nationale) ───────────────────────────
-
-interface BanFeature {
-  properties: { label: string; name: string; postcode: string; city: string };
-}
-
-function useAddressSearch(query: string) {
-  const [suggestions, setSuggestions] = useState<BanFeature[]>([]);
-  const [loading, setLoading] = useState(false);
-  useEffect(() => {
-    if (query.length < 4) { setSuggestions([]); return; }
-    const timer = setTimeout(() => {
-      setLoading(true);
-      fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=6`)
-        .then(r => r.json())
-        .then((d: { features: BanFeature[] }) => setSuggestions(d.features || []))
-        .catch(() => setSuggestions([]))
-        .finally(() => setLoading(false));
-    }, 280);
-    return () => clearTimeout(timer);
-  }, [query]);
-  return { suggestions, loading };
-}
-
-interface AddressAutocompleteProps {
-  value: string;
-  onChange: (raw: string) => void;
-  onSelect: (adresse: string, cp: string, ville: string) => void;
-  className?: string;
-}
-
-function AddressAutocomplete({ value, onChange, onSelect, className }: AddressAutocompleteProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const { suggestions, loading } = useAddressSearch(value);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  const inputCls =
-    "w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white";
-
-  return (
-    <div ref={ref} className="relative">
-      <input
-        type="text"
-        value={value}
-        onChange={e => { onChange(e.target.value); setOpen(true); }}
-        onFocus={() => value.length >= 4 && setOpen(true)}
-        className={className ?? inputCls}
-        placeholder="12 rue de la Paix, Paris…"
-        autoComplete="off"
-      />
-      {loading && (
-        <div className="absolute right-3 top-2.5">
-          <Loader2 size={14} className="animate-spin text-gray-400" />
-        </div>
-      )}
-      {open && suggestions.length > 0 && (
-        <ul className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-          {suggestions.map((s, i) => (
-            <li
-              key={i}
-              onMouseDown={e => e.preventDefault()}
-              onClick={() => {
-                onSelect(s.properties.name, s.properties.postcode, s.properties.city);
-                setOpen(false);
-              }}
-              className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer flex items-start gap-2"
-            >
-              <MapPin size={13} className="text-gray-400 mt-0.5 flex-shrink-0" />
-              <span>{s.properties.label}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
+// Autocomplete adresse (Base Adresse Nationale) : composant partagé
+// src/components/AddressAutocomplete (même logique que l'ancienne copie locale).
 
 // ─── Client existant (recherche globale /api/search) ─────────────────────────
 // Le POST /api/clients rattache déjà le RDV à la fiche existante (email, puis
@@ -749,6 +668,7 @@ export default function NewClientModal({ prestataires, onClose, onSaved, initial
                 onSelect={(adresse, cp, ville) => {
                   setForm(f => ({ ...f, adresse, codePostal: cp, ville }));
                 }}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
               />
               <p className="text-xs text-gray-400 mt-1">Tapez au moins 4 caractères pour rechercher une adresse française</p>
             </Field>
