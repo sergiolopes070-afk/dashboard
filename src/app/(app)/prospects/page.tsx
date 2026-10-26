@@ -78,7 +78,8 @@ const etatAutoDe = (p: Prospect): EtatAuto => etatAuto(p, p.suivi, { global: p.a
 // Une prestation souhaitée notée sur le prospect (même forme que les articles client).
 // `details` = valeurs structurées des champs intelligents (tissu, places…), pour
 // les reporter tels quels à la conversion en client.
-interface Besoin { typePresta: string; quantite: string; prix: string; details?: Record<string, string> }
+// quantite = description (taille, places…) ; nombre = articles identiques ; prix = TOTAL de la ligne.
+interface Besoin { typePresta: string; quantite: string; prix: string; details?: Record<string, string>; nombre?: string }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const STATUTS = ["NOUVEAU", "CONTACTÉ", "RELANCÉ", "CONVERTI", "PERDU"] as const;
@@ -280,24 +281,51 @@ function StatutBadge({ statut, small }: { statut: string; small?: boolean }) {
   );
 }
 
+// ─── Prestations souhaitées : helpers (prix = TOTAL de la ligne, nombre = nb d'unités) ──
+const toNum = (s?: string) => parseFloat(String(s ?? "").replace(",", ".")) || 0;
+const nbOf  = (s?: string) => Math.max(1, parseInt(String(s ?? "")) || 1);
+const fmtEur = (n: number) => String(Number(n.toFixed(2)));
+
+interface LigneSaisie { id: number; typePresta: string; details: Record<string, string>; resume: string; unit: string; nb: string }
+let ligneSeq = 0;
+const nouvelleLigne = (): LigneSaisie => ({ id: ++ligneSeq, typePresta: "", details: {}, resume: "", unit: "", nb: "1" });
+
+// Stepper −/+ (cibles ≥ 40px pour le mobile).
+// `fixe` : pas de saisie clavier (fiche : chaque changement est enregistré).
+function NbStepper({ value, onChange, disabled, fixe }: { value: string; onChange: (v: string) => void; disabled?: boolean; fixe?: boolean }) {
+  const n = nbOf(value);
+  const btn = "w-10 h-10 rounded-lg border border-gray-200 bg-white text-gray-700 text-lg leading-none hover:bg-gray-50 disabled:opacity-40";
+  return (
+    <div className="flex items-center gap-1">
+      <button type="button" aria-label="Diminuer" disabled={disabled || n <= 1} onClick={() => onChange(String(n - 1))} className={btn}>–</button>
+      {fixe ? <span className="w-9 text-center text-sm font-semibold text-gray-800">{n}</span> : <input type="number" inputMode="numeric" min={1} value={value} disabled={disabled}
+        onChange={e => onChange(e.target.value)}
+        onBlur={e => onChange(String(nbOf(e.target.value)))}
+        className="w-12 h-10 text-center border border-gray-200 rounded-lg px-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />}
+      <button type="button" aria-label="Augmenter" disabled={disabled} onClick={() => onChange(String(n + 1))} className={btn}>+</button>
+    </div>
+  );
+}
+
 // ─── Composant : Formulaire ajout prospect ────────────────────────────────────
 function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: (p: Prospect) => void }) {
   const [form, setForm] = useState({
     genre: "", prenom: "", nom: "", tel: "", email: "",
     source: "Réseaux sociaux", typePresta: "", adresse: "", budget: "", notes: "",
   });
-  // Prestation souhaitée détaillée (comme à la création d'un client) : détails
-  // structurés (tissu, places…) + montant, mémorisés dans besoins[0] à la création.
-  const [prestaDetails, setPrestaDetails] = useState<Record<string, string>>({});
-  const [prestaResume,  setPrestaResume]  = useState(""); // résumé lisible des détails (= quantite)
-  const [montant,       setMontant]       = useState("");   // TOTAL (prix unitaire × nombre)
-  const [montantUnit,   setMontantUnit]   = useState("");   // prix unitaire
-  const [montantNb,     setMontantNb]     = useState("1");  // nombre d'unités (ex. 4 tapis)
-  const applyMontant = (unit: string, nb: string) => {
-    setMontantUnit(unit); setMontantNb(nb);
-    const u = parseFloat(unit.replace(",", ".")) || 0; const n = Math.max(1, parseInt(nb) || 1);
-    setMontant(u > 0 ? String(Number((u * n).toFixed(2))) : "");
+  // Prestations souhaitées détaillées (comme à la création d'un client) : une ligne
+  // par prestation (type + détails structurés + prix unitaire × nombre), mémorisées
+  // dans `besoins` à la création. La 1re ligne reprend form.typePresta (détection DM).
+  const [lignes, setLignes] = useState<LigneSaisie[]>([nouvelleLigne()]);
+  const majLigne = (id: number, upd: Partial<LigneSaisie>) =>
+    setLignes(ls => ls.map(l => l.id === id ? { ...l, ...upd } : l));
+  const setTypeLigne = (id: number, t: string, idx: number) => {
+    majLigne(id, { typePresta: t, details: {}, resume: "" });
+    if (idx === 0) set("typePresta", t);
   };
+  const totalLigne = (l: LigneSaisie) => toNum(l.unit) * nbOf(l.nb);
+  const lignesValides = lignes.filter(l => l.typePresta);
+  const totalGeneral = lignesValides.reduce((s, l) => s + totalLigne(l), 0);
   const [saving,    setSaving]    = useState(false);
   const [extracted, setExtracted] = useState(false);
   const [error,     setError]     = useState("");
@@ -339,6 +367,8 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
         typePresta: d.typePresta || f.typePresta,
         notes    : d.notes     || f.notes,
       }));
+      // Prestation détectée → 1re ligne (si son type n'est pas encore choisi).
+      if (d.typePresta) setLignes(ls => ls.map((l, i) => i === 0 && !l.typePresta ? { ...l, typePresta: d.typePresta, details: {}, resume: "" } : l));
       setExtracted(true);
     }, 0);
   }
@@ -348,14 +378,16 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
     if (!form.prenom) { setError("Le prénom est requis."); return; }
     setSaving(true); setError("");
     try {
-      // Si une prestation est renseignée, on la mémorise comme 1er besoin
-      // (type + détails + montant) afin de pouvoir générer un devis sans ressaisir.
-      const besoins = form.typePresta
-        ? [{ typePresta: form.typePresta, quantite: prestaResume || "1", prix: montant || "", details: prestaDetails }]
-        : [];
+      // Chaque ligne renseignée devient un besoin (type + détails + total)
+      // afin de pouvoir générer un devis sans ressaisir. prix = TOTAL de la ligne.
+      const besoins: Besoin[] = lignesValides.map(l => {
+        const t = totalLigne(l);
+        return { typePresta: l.typePresta, quantite: l.resume || "1", prix: t > 0 ? fmtEur(t) : "", details: l.details, nombre: String(nbOf(l.nb)) };
+      });
+      const typePresta = lignesValides[0]?.typePresta || form.typePresta;
       const res = await fetch("/api/prospects", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, budget: montant || form.budget, besoins }),
+        body: JSON.stringify({ ...form, typePresta, budget: totalGeneral > 0 ? fmtEur(totalGeneral) : form.budget, besoins }),
       });
       if (!res.ok) throw new Error((await res.json()).error || "Erreur");
       onSaved(await res.json());
@@ -421,39 +453,60 @@ function AddProspectModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
 
           {/* Prestation souhaitée — comme à la création d'un client */}
           <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-3 space-y-3">
-            <p className="text-xs font-semibold text-gray-600">Prestation souhaitée</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Type</label>
-                <select value={form.typePresta} onChange={e => { set("typePresta", e.target.value); setPrestaDetails({}); setPrestaResume(""); }} className={inputCls}>
-                  <option value="">— Type —</option>
-                  {TYPES_PRESTA.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Prix unitaire (€)</label>
-                <input type="number" inputMode="decimal" value={montantUnit} onChange={e => applyMontant(e.target.value, montantNb)} className={inputCls} placeholder="ex : 190" />
-              </div>
-            </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">Nombre</label>
-                <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => applyMontant(montantUnit, String(Math.max(1, (parseInt(montantNb) || 1) - 1)))} className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">–</button>
-                  <input type="number" min={1} value={montantNb} onChange={e => applyMontant(montantUnit, e.target.value)} className="w-14 text-center border border-gray-200 rounded-lg px-1 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                  <button type="button" onClick={() => applyMontant(montantUnit, String((parseInt(montantNb) || 1) + 1))} className="w-8 h-8 rounded-lg border border-gray-200 text-gray-600 text-lg leading-none hover:bg-gray-50">+</button>
+            <p className="text-xs font-semibold text-gray-600">Prestations souhaitées</p>
+            {lignes.map((l, idx) => {
+              const t = totalLigne(l);
+              return (
+                <div key={l.id} className="rounded-lg border border-gray-200 bg-white p-2.5 space-y-2.5">
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1 min-w-0">
+                      <label className="text-xs text-gray-500 mb-1 block">{lignes.length > 1 ? `Prestation ${idx + 1}` : "Type"}</label>
+                      <select value={l.typePresta} onChange={e => setTypeLigne(l.id, e.target.value, idx)} className={`${inputCls} min-h-[40px]`}>
+                        <option value="">— Type —</option>
+                        {TYPES_PRESTA.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </div>
+                    {lignes.length > 1 && (
+                      <button type="button" title="Retirer cette prestation" aria-label="Retirer cette prestation"
+                        onClick={() => { setLignes(ls => ls.filter(x => x.id !== l.id)); if (idx === 0) set("typePresta", lignes[1]?.typePresta || ""); }}
+                        className="w-10 h-10 shrink-0 flex items-center justify-center rounded-lg border border-gray-200 text-gray-400 hover:text-red-600 hover:border-red-200">
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                  {l.typePresta && getSchema(l.typePresta).length > 0 && (
+                    <PrestationFields
+                      key={`${l.id}-${l.typePresta}`}
+                      typePresta={l.typePresta}
+                      initialValues={l.details}
+                      onDetailChange={(resume, values) => majLigne(l.id, { resume, details: values })}
+                    />
+                  )}
+                  <div className="flex items-end gap-2 flex-wrap">
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Prix unitaire (€)</label>
+                      <input type="number" inputMode="decimal" value={l.unit} onChange={e => majLigne(l.id, { unit: e.target.value })} className={`${inputCls} w-28 min-h-[40px]`} placeholder="ex : 190" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Nombre</label>
+                      <NbStepper value={l.nb} onChange={nb => majLigne(l.id, { nb })} />
+                    </div>
+                    {t > 0 && (
+                      <div className="text-sm text-gray-600 pb-2.5">= <strong className="text-gray-900">{fmtEur(t)} €</strong>{nbOf(l.nb) > 1 && <span className="text-xs text-gray-400"> ({nbOf(l.nb)} × {fmtEur(toNum(l.unit))} €)</span>}</div>
+                    )}
+                  </div>
                 </div>
+              );
+            })}
+            <button type="button" onClick={() => setLignes(ls => [...ls, nouvelleLigne()])}
+              className="w-full min-h-[40px] rounded-lg border border-dashed border-blue-300 text-blue-700 text-sm font-semibold hover:bg-blue-50 flex items-center justify-center gap-1.5">
+              <Plus size={15} /> Ajouter une prestation
+            </button>
+            {lignesValides.length > 1 && totalGeneral > 0 && (
+              <div className="flex items-center justify-between text-sm pt-1 border-t border-gray-200">
+                <span className="text-gray-600">Total ({lignesValides.length} prestations)</span>
+                <strong className="text-gray-900">{fmtEur(totalGeneral)} €</strong>
               </div>
-              {(parseInt(montantNb) || 1) > 1 && montant && (
-                <div className="text-sm text-gray-600 pb-0.5">= <strong className="text-gray-900">{montant} €</strong> <span className="text-xs text-gray-400">({montantNb} × {montantUnit} €)</span></div>
-              )}
-            </div>
-            {form.typePresta && getSchema(form.typePresta).length > 0 && (
-              <PrestationFields
-                typePresta={form.typePresta}
-                initialValues={prestaDetails}
-                onDetailChange={(resume, values) => { setPrestaResume(resume); setPrestaDetails(values); }}
-              />
             )}
           </div>
 
@@ -744,7 +797,7 @@ function ProspectModal({
   function addBesoin() {
     if (!draft.typePresta) return;
     const updates: Record<string, unknown> = {
-      besoins: [...(p.besoins || []), { typePresta: draft.typePresta, quantite: draft.quantite || "1", prix: draft.prix || "", details: draft.details }],
+      besoins: [...(p.besoins || []), { typePresta: draft.typePresta, quantite: draft.quantite || "1", prix: draft.prix || "", details: draft.details, nombre: String(Math.max(1, parseInt(besoinNb) || 1)) }],
     };
     // Dès qu'on note un besoin, le prospect n'est plus « Nouveau ».
     if (p.statut === "NOUVEAU") { updates.statut = "CONTACTÉ"; setDraftStatut("CONTACTÉ"); }
@@ -754,6 +807,38 @@ function ProspectModal({
   }
   function removeBesoin(i: number) {
     patch({ besoins: (p.besoins || []).filter((_, j) => j !== i) });
+  }
+  // Modification d'une ligne existante : nombre (stepper) et prix unitaire.
+  // prix = TOTAL de la ligne ; par défaut on garde le prix unitaire.
+  const [nbChoix,  setNbChoix]  = useState<{ i: number; nb: number } | null>(null); // ancienne ligne sans `nombre`
+  const [prixEdit, setPrixEdit] = useState<{ i: number; val: string } | null>(null);
+  function majBesoin(i: number, upd: Partial<Besoin>) {
+    const list = [...(p.besoins || [])];
+    if (!list[i]) return;
+    list[i] = { ...list[i], ...upd };
+    patch({ besoins: list });
+  }
+  function appliquerNombre(i: number, nb: number, garderTotal: boolean) {
+    const b = (p.besoins || [])[i]; if (!b) return;
+    const prix = toNum(b.prix);
+    const nouveauPrix = prix > 0 && !garderTotal ? fmtEur(prix / nbOf(b.nombre) * nb) : b.prix;
+    setNbChoix(null);
+    majBesoin(i, { nombre: String(nb), prix: nouveauPrix });
+  }
+  function changerNombre(i: number, nb: number) {
+    const b = (p.besoins || [])[i]; if (!b || nb < 1) return;
+    // Ancienne ligne (pas de `nombre`) avec un prix : on demande si le prix était déjà le total.
+    if (!b.nombre && toNum(b.prix) > 0 && nb > 1) { setNbChoix({ i, nb }); return; }
+    appliquerNombre(i, nb, false);
+  }
+  function validerPrixUnit() {
+    if (!prixEdit) return;
+    const b = (p.besoins || [])[prixEdit.i];
+    const u = toNum(prixEdit.val);
+    setPrixEdit(null);
+    if (!b) return;
+    const nouveau = u > 0 ? fmtEur(u * nbOf(b.nombre)) : "";
+    if (nouveau !== (b.prix || "")) majBesoin(prixEdit.i, { prix: nouveau });
   }
 
   // ── Suivi commercial : envoi du devis + relances (mails manuels) ──
@@ -1392,16 +1477,69 @@ function ProspectModal({
             {/* Liste des prestations déjà notées */}
             {(p.besoins && p.besoins.length > 0) ? (
               <div className="space-y-1.5">
-                {p.besoins.map((b, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">{b.typePresta || "—"}</p>
-                      {b.quantite && b.quantite !== "1" && <p className="text-xs text-gray-500 truncate">{b.quantite}</p>}
+                {p.besoins.map((b, i) => {
+                  const nb = nbOf(b.nombre);
+                  const total = toNum(b.prix);
+                  const unit = total > 0 ? fmtEur(total / nb) : "";
+                  const choix = nbChoix?.i === i ? nbChoix : null;
+                  return (
+                    <div key={i} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800">
+                            {nb} × {b.typePresta || "—"}
+                            {b.quantite && b.quantite !== "1" && <span className="text-gray-500 font-normal"> — {b.quantite}</span>}
+                            {b.prix && <span className="text-green-700 font-semibold"> — {b.prix} €</span>}
+                          </p>
+                        </div>
+                        <button onClick={() => removeBesoin(i)} title="Retirer" aria-label="Retirer"
+                          className="w-10 h-10 -my-2 -mr-2 flex items-center justify-center text-gray-300 hover:text-red-600 shrink-0"><Trash2 size={15} /></button>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <NbStepper fixe value={String(choix ? choix.nb : nb)} disabled={saving || !!choix}
+                          onChange={v => changerNombre(i, nbOf(v))} />
+                        {prixEdit?.i === i ? (
+                          <div className="flex items-center gap-1">
+                            <input autoFocus type="number" inputMode="decimal" min={0} step="0.01" value={prixEdit.val}
+                              onChange={e => setPrixEdit({ i, val: e.target.value })}
+                              onBlur={validerPrixUnit}
+                              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); validerPrixUnit(); } if (e.key === "Escape") setPrixEdit(null); }}
+                              className="w-24 h-10 bg-white border border-gray-200 rounded-lg px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                            <span className="text-xs text-gray-500">€ / unité</span>
+                          </div>
+                        ) : (
+                          <button type="button" disabled={saving || !!choix} onClick={() => setPrixEdit({ i, val: unit })}
+                            className="h-10 px-3 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-1.5 disabled:opacity-50">
+                            <Pencil size={13} className="text-gray-400" />
+                            {unit ? `${unit} € / unité` : "Prix unitaire"}
+                          </button>
+                        )}
+                      </div>
+                      {choix && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-2">
+                          <p className="text-xs text-amber-900">Le prix {b.prix} € est-il le total pour {choix.nb} ?</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                            <button type="button" onClick={() => appliquerNombre(i, choix.nb, true)}
+                              className="min-h-[40px] px-2 rounded-lg bg-white border border-amber-300 text-xs font-semibold text-amber-900 hover:bg-amber-100">
+                              Oui (garder {b.prix} € → {choix.nb} × {fmtEur(total / choix.nb)} €)
+                            </button>
+                            <button type="button" onClick={() => appliquerNombre(i, choix.nb, false)}
+                              className="min-h-[40px] px-2 rounded-lg bg-white border border-amber-300 text-xs font-semibold text-amber-900 hover:bg-amber-100">
+                              Non (prix unitaire → {choix.nb} × {b.prix} € = {fmtEur(total * choix.nb)} €)
+                            </button>
+                          </div>
+                          <button type="button" onClick={() => setNbChoix(null)} className="text-[11px] text-amber-700 underline">Annuler</button>
+                        </div>
+                      )}
                     </div>
-                    {b.prix && <span className="text-sm font-semibold text-green-700 shrink-0">{b.prix} €</span>}
-                    <button onClick={() => removeBesoin(i)} title="Retirer" className="text-gray-300 hover:text-red-600 shrink-0"><Trash2 size={14} /></button>
+                  );
+                })}
+                {p.besoins.length > 1 && p.besoins.some(b => toNum(b.prix) > 0) && (
+                  <div className="flex items-center justify-between text-sm px-1 pt-0.5">
+                    <span className="text-gray-500">Total</span>
+                    <strong className="text-gray-900">{fmtEur(p.besoins.reduce((s, b) => s + toNum(b.prix), 0))} €</strong>
                   </div>
-                ))}
+                )}
               </div>
             ) : (
               <p className="text-xs text-gray-400">Aucune prestation notée. Ajoute ce que le prospect souhaite (canapé, matelas, chaises…), avec les détails et le prix.</p>

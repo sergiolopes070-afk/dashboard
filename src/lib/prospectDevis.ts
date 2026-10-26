@@ -37,8 +37,17 @@ export async function buildProspectDevis(id: string): Promise<Result> {
   // Lignes du devis à partir des prestations souhaitées (prix TTC > 0).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const besoins: any[] = Array.isArray(p.besoins) ? p.besoins : [];
+  // Un besoin : `quantite` = DESCRIPTION (taille, places… ex. « 2 places (140×190) »),
+  // `nombre` = nombre d'articles identiques, `prix` = prix TOTAL de la ligne (déjà
+  // multiplié). Le nombre va dans `qte` → colonne Qté et prix unitaire justes du PDF.
+  // Anciens besoins sans `nombre` : 1 (on ne sait pas s'ils avaient été multipliés).
   let lignes: DevisLigne[] = besoins
-    .map(b => ({ typePresta: b.typePresta as string, detail: b.quantite as string, prixTTC: toNum(b.prix) }))
+    .map(b => ({
+      typePresta: b.typePresta as string,
+      detail    : typeof b.quantite === "string" ? b.quantite : "",
+      qte       : Math.max(1, parseInt(String(b.nombre ?? "1"), 10) || 1),
+      prixTTC   : toNum(b.prix),
+    }))
     .filter(l => l.prixTTC > 0);
   if (lignes.length === 0) {
     const prix = toNum(p.budget);
