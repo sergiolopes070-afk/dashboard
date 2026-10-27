@@ -21,6 +21,7 @@ import { isoParis } from "@/lib/dateParis";
 import { etatAuto, libelleEtatAuto, jjmmIso, prochainPassage, EtatAuto } from "@/lib/prospectRelanceCadence";
 import { waAEnvoyer, waMessage, waLien, waLibelle, waDonneesProspect, WaEtape } from "@/lib/waMessages";
 import { montantRemise, type DevisRemise } from "@/lib/devisKinou";
+import UrlParamWatcher from "@/components/UrlParamWatcher";
 
 // Formatage FR compact pour le pense-bête d'import.
 function fmtImportDateTime(iso: string): string {
@@ -1784,14 +1785,20 @@ export default function ProspectsPage() {
 
   // Ouverture directe d'une fiche depuis la recherche globale (?fiche=<id>),
   // quel que soit le statut (y compris PERDU / converti).
-  const ficheOpenedRef = useRef(false);
+  // Suivi par UrlParamWatcher : marche aussi si on est déjà sur /prospects (navigation
+  // sans rechargement). Une fois ouverte, ?fiche= est retiré de l'URL pour qu'une
+  // nouvelle recherche (même sur le même prospect) rouvre bien la fiche.
+  const [ficheParam, setFicheParam] = useState<string | null>(null);
   useEffect(() => {
-    if (ficheOpenedRef.current || prospects.length === 0) return;
-    const id = new URLSearchParams(window.location.search).get("fiche");
-    if (!id) return;
-    const p = prospects.find(x => x.id === id);
-    if (p) { setSelected(p); ficheOpenedRef.current = true; }
-  }, [prospects]);
+    if (!ficheParam || prospects.length === 0) return;
+    const p = prospects.find(x => x.id === ficheParam);
+    if (!p) return;
+    setSelected(p);
+    setFicheParam(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("fiche");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }, [ficheParam, prospects]);
 
   // Liste des prestataires (pour pouvoir en affecter un lors de la conversion en client).
   useEffect(() => {
@@ -1943,6 +1950,7 @@ export default function ProspectsPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
+      <UrlParamWatcher name="fiche" onChange={v => { if (v) setFicheParam(v); }} />
       <Topbar
         title="Prospects"
         subtitle="Suivi et relance des contacts entrants"

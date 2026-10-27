@@ -16,6 +16,7 @@ import { formatMontant } from "@/lib/finance";
 import { fetchJsonOk } from "@/lib/fetchOk";
 import { waMobile, waLien, waTexteAvis } from "@/lib/waMessages";
 import { Prestation, Prestataire, ClientNote, estAnnulation } from "@/lib/constants";
+import UrlParamWatcher from "@/components/UrlParamWatcher";
 
 const TAGS_PRESET = ["Régulier", "VIP", "Difficile", "Sensible", "Pro", "Fidèle"];
 const TAG_COLORS: Record<string, string> = {
@@ -149,13 +150,9 @@ export default function ClientsPage() {
   const [modal, setModal]             = useState<"add" | null>(null);
   // Fiche client : TOUJOURS la version complète (ClientFicheById), quelle que soit l'entrée.
   // Ouverture directe d'une fiche depuis la recherche globale (?fiche=<clientId>).
-  // Lu dans un effet (côté client uniquement) — pas dans un initialiseur useState,
-  // sinon la valeur serveur (null) fige l'état et la fiche ne s'ouvre jamais.
+  // Suivi par UrlParamWatcher (rendu plus bas) : la fiche s'ouvre aussi quand on
+  // choisit un client dans la recherche alors qu'on est déjà sur /clients.
   const [ficheById, setFicheById] = useState<string | null>(null);
-  useEffect(() => {
-    const f = new URLSearchParams(window.location.search).get("fiche");
-    if (f) setFicheById(f);
-  }, []);
   // Fermeture : on retire ?fiche= de l'URL (sinon la fiche se rouvre au rechargement).
   const closeFiche = useCallback(() => {
     setFicheById(null);
@@ -677,6 +674,7 @@ export default function ClientsPage() {
         </div>
       )}
 
+      <UrlParamWatcher name="fiche" onChange={v => { if (v) setFicheById(v); }} />
       {ficheById && (
         <ClientFicheById
           clientId={ficheById}

@@ -140,13 +140,13 @@ function GlobalSearch({ onChanged }: { onChanged?: () => void }) {
               if ((r.type === "client" || r.type === "prestation") && r.clientId) {
                 return (
                   <button key={i} className={cls}
-                    onClick={() => { setFicheClientId(r.clientId!); setOpen(false); }}>
+                    onClick={() => { setFicheClientId(r.clientId!); setOpen(false); setQuery(""); }}>
                     {inner}
                   </button>
                 );
               }
               return (
-                <Link key={i} href={r.href} onClick={() => setOpen(false)} className={cls}>
+                <Link key={i} href={r.href} onClick={() => { setOpen(false); setQuery(""); }} className={cls}>
                   {inner}
                 </Link>
               );
