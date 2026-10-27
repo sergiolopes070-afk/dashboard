@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useSidebar } from "./SidebarContext";
 import {
   LayoutDashboard, Users, Archive,
@@ -38,13 +38,13 @@ const estActif = (pathname: string, href: string) =>
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
   const { open, close } = useSidebar();
 
+  // Rechargement complet vers /login : aucun écran mis en cache côté navigateur
+  // (routeur client) ne survit d'une session à la suivante dans le même onglet.
   async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
+    try { await fetch("/api/auth/logout", { method: "POST" }); }
+    finally { window.location.assign("/login"); }
   }
 
   return (

@@ -45,13 +45,36 @@ export async function middleware(request: NextRequest) {
     if (!autorise) return NextResponse.redirect(new URL("/espace-pro", request.url));
   }
 
-  // Session glissante : ré-émettre un jeton frais (même rôle/pid) à chaque requête.
-  const response = NextResponse.next();
+  // Espace réservé à la session patron privée : pour toute autre session, on sert
+  // EXACTEMENT la même réponse qu'une URL inexistante (réécriture vers un chemin
+  // qui n'existe pas → 404 standard de Next), sans redirection ni message dédié.
+  // Chemin normalisé (décodage %xx répété, « // », « / » final, casse) pour que
+  // /%62anque, /BANQUE, /banque// … soient traités comme /banque.
+  const chemin = cheminNormalise(pathname);
+  const zoneReservee =
+    chemin === "/banque" || chemin.startsWith("/banque/") ||
+    chemin === "/api/banque" || chemin.startsWith("/api/banque/");
+  const introuvable = zoneReservee && !(sess && sess.role === "owner" && sess.prive === true);
+
+  // Session glissante : ré-émettre un jeton frais (même rôle/pid/drapeau) à chaque requête.
+  const response = introuvable
+    ? NextResponse.rewrite(new URL(chemin.startsWith("/api/") ? "/api/__introuvable" : "/__introuvable", request.url))
+    : NextResponse.next();
   if (sess && secret) {
-    const fresh = await createSessionToken(secret, { role: sess.role, pid: sess.pid });
+    const fresh = await createSessionToken(secret, { role: sess.role, pid: sess.pid, prive: sess.prive === true });
     response.cookies.set(SESSION_COOKIE, fresh, sessionCookieOptions());
   }
   return response;
+}
+
+function cheminNormalise(p: string): string {
+  let s = p;
+  for (let i = 0; i < 3; i++) {
+    try { const d = decodeURIComponent(s); if (d === s) break; s = d; } catch { break; }
+  }
+  s = s.replace(/\\/g, "/").replace(/\/{2,}/g, "/").toLowerCase();
+  if (s.length > 1) s = s.replace(/\/+$/, "");
+  return s || "/";
 }
 
 export const config = {

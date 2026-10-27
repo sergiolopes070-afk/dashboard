@@ -61,18 +61,24 @@ function safeEqual(a: string, b: string): boolean {
 
 // Identité portée par le jeton : rôle (patron/prestataire) + id prestataire.
 export type SessionRole = "owner" | "presta";
-export interface Session { role: SessionRole; pid: string; }
+// `prive` : session patron « privée » (2e identifiant patron, cf. AUTH_PRIVE_*).
+// Absent = session patron partagée (comportement historique, inchangé).
+export interface Session { role: SessionRole; pid: string; prive?: boolean; }
 
 // Crée un jeton signé valable SESSION_DAYS jours. Le rôle + l'id prestataire
 // font partie de la charge signée (les modifier invalide la signature).
 // Format de charge : "<expMs>:<role>:<pid>" (aucun point → sépare proprement du sig).
+// Session patron privée : un 4e champ signé ":p" est ajouté. Sans lui, le jeton
+// est OCTET POUR OCTET celui d'avant (session partagée et prestataires inchangés).
 export async function createSessionToken(
   secret: string,
-  opts: { role?: SessionRole; pid?: string } = {},
+  opts: { role?: SessionRole; pid?: string; prive?: boolean } = {},
   now: number = Date.now(),
 ): Promise<string> {
   const exp = now + SESSION_MS;
-  const payload = `${exp}:${opts.role || "owner"}:${opts.pid || ""}`;
+  const role = opts.role || "owner";
+  const flag = opts.prive === true && role === "owner" ? ":p" : "";
+  const payload = `${exp}:${role}:${opts.pid || ""}${flag}`;
   const sig = await hmacHex(secret, payload);
   return `${payload}.${sig}`;
 }
@@ -98,6 +104,9 @@ export async function readSessionToken(
   if (!Number.isFinite(exp) || exp <= now) return null;
   const role = (parts[1] === "presta" ? "presta" : "owner") as SessionRole;
   const pid  = parts[2] || "";
+  // Rétro-compatible : jetons à 3 champs = session partagée. Le drapeau n'est
+  // reconnu que sur un jeton patron (jamais prestataire).
+  if (role === "owner" && parts[3] === "p") return { role, pid, prive: true };
   return { role, pid };
 }
 
@@ -108,6 +117,13 @@ export async function verifySessionToken(
   now: number = Date.now(),
 ): Promise<boolean> {
   return (await readSessionToken(token, secret, now)) !== null;
+}
+
+// Comparaison de deux chaînes quelconques à temps constant (y compris la longueur) :
+// on compare leurs HMAC (longueur fixe) au lieu des chaînes elles-mêmes.
+export async function constantTimeEqual(a: string, b: string, secret: string): Promise<boolean> {
+  const [ha, hb] = await Promise.all([hmacHex(secret, `cmp:${a}`), hmacHex(secret, `cmp:${b}`)]);
+  return safeEqual(ha, hb);
 }
 
 // Hash déterministe d'un code d'accès prestataire (peppéré par AUTH_SECRET).
