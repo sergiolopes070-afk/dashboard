@@ -195,6 +195,20 @@ export default function BanqueView() {
     return { sorties, entrees };
   }, [moisData]);
 
+  // ── Bénéfice réel = CA réalisé du dashboard − sorties bancaires (hors virements internes).
+  // Les sorties remplacent les Dépenses saisies et les commissions (déjà payées par la
+  // banque) : rien n'est compté deux fois. Seuls les mois ayant des opérations importées
+  // comptent, sinon un mois vide afficherait tout le CA comme bénéfice.
+  const benefice = useMemo(() => {
+    if (!resume) return null;
+    const calc = (m: MoisBanque) => m.nb > 0 && m.caDashboard != null ? { ca: m.caDashboard, sorties: m.sorties, net: m.caDashboard - m.sorties } : null;
+    const duMois = moisData ? calc(moisData) : null;
+    const jusqua = resume.annee === new Date().getFullYear() ? moisCourant() : `${resume.annee}-12`;
+    const annuels = resume.mois.filter(m => m.mois <= jusqua).map(calc).filter((x): x is NonNullable<typeof x> => !!x);
+    const annee = annuels.length ? annuels.reduce((s, x) => ({ ca: s.ca + x.ca, sorties: s.sorties + x.sorties, net: s.net + x.net }), { ca: 0, sorties: 0, net: 0 }) : null;
+    return { duMois, annee, nbMois: annuels.length };
+  }, [resume, moisData]);
+
   const tablesAbsentes = /Tables bancaires absentes/.test(erreur);
 
   return (
@@ -270,6 +284,35 @@ export default function BanqueView() {
         )}
         {resume && resume.devisesAutres.length > 0 && (
           <p className="text-xs text-amber-700">Attention : opérations en {resume.devisesAutres.join(", ")} additionnées telles quelles (sans conversion).</p>
+        )}
+
+        {/* ── Bénéfice réel (CA dashboard − sorties bancaires) ── */}
+        {benefice && (
+          <Card className="!p-0 overflow-hidden">
+            <div className="px-4 sm:px-5 pt-4 sm:pt-5">
+              <h3 className="font-semibold text-gray-800">Bénéfice réel</h3>
+              <p className="text-xs text-gray-400 mt-0.5">CA réalisé du dashboard − sorties bancaires (virements internes exclus). Les dépenses saisies et les commissions ne sont pas recomptées : elles sont déjà dans les sorties.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-gray-100 mt-3 border-t border-gray-100">
+              {([
+                { titre: <span className="capitalize">{libelleMois(mois)}</span>, v: benefice.duMois, vide: "Aucun relevé importé pour ce mois" },
+                { titre: <>Année {annee}{benefice.nbMois > 0 && <span className="text-gray-400 font-normal"> · {benefice.nbMois} mois importé{benefice.nbMois > 1 ? "s" : ""}</span>}</>, v: benefice.annee, vide: "Aucun relevé importé cette année" },
+              ]).map((b, i) => (
+                <div key={i} className="p-4 sm:p-5">
+                  <p className="text-xs text-gray-500 font-medium">{b.titre}</p>
+                  {b.v ? (
+                    <>
+                      <p className={`text-2xl font-bold mt-1 ${b.v.net >= 0 ? "text-emerald-700" : "text-orange-700"}`}>{eur(b.v.net, true)}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        CA {eur(b.v.ca)} − sorties {eur(b.v.sorties)}
+                        {b.v.ca > 0 && <> · marge {Math.round((b.v.net / b.v.ca) * 100)} %</>}
+                      </p>
+                    </>
+                  ) : <p className="text-sm text-gray-400 mt-2">{b.vide}</p>}
+                </div>
+              ))}
+            </div>
+          </Card>
         )}
 
         {/* ── Année + répartition ── */}
