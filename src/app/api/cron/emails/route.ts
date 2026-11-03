@@ -190,13 +190,6 @@ export async function GET(req: Request) {
     catch (e) { inboxImport = { erreur: e instanceof Error ? e.message : "import inbox échoué" }; }
   }
 
-  // Détection des inscriptions à l'Avance Immédiate (marque les clients concernés).
-  let avanceScan: unknown = "non exécuté (simulation)";
-  if (mode !== "simulation") {
-    try { const r = await scanAvanceInscrits({ days: 60 }); avanceScan = { trouves: r.trouves, ajoutes: r.ajoutes }; }
-    catch (e) { avanceScan = { erreur: e instanceof Error ? e.message : "scan avance échoué" }; }
-  }
-
   // Relances AUTOMATIQUES des prospects (R1 J+2, R2 J+5, R3 J+9, pas le dimanche,
   // clôture PERDU 3 j après R3, arrêt si le prospect a répondu) — voir
   // src/lib/prospectRelance.ts. Simulation = liste seulement ; test = non exécuté.
@@ -208,6 +201,19 @@ export async function GET(req: Request) {
     await finaliserRelancesAuto(rp, { baseUrl });   // + liste WhatsApp du jour (après les envois auto)
     relancesProspects = rp;
   } catch (e) { relancesProspects = { erreur: e instanceof Error ? e.message : "relances prospects échouées" }; }
+
+  // Détection des inscriptions à l'Avance Immédiate (marque les clients concernés).
+  // APRÈS les relances : ce scan télécharge chaque mail un par un (~1 s/mail) et,
+  // placé avant, il consommait tout le budget temps → plus aucune relance ne partait.
+  // Fenêtre courte (cron quotidien) ; le bouton manuel garde la fenêtre longue.
+  let avanceScan: unknown = "non exécuté (simulation)";
+  if (mode !== "simulation") {
+    if (Date.now() - debutMs > 25_000) avanceScan = "reporté (temps d'exécution) → prochain passage";
+    else {
+      try { const r = await scanAvanceInscrits({ days: 10 }); avanceScan = { trouves: r.trouves, ajoutes: r.ajoutes }; }
+      catch (e) { avanceScan = { erreur: e instanceof Error ? e.message : "scan avance échoué" }; }
+    }
+  }
 
   const { data, error } = await supabase
     .from("prestations")
