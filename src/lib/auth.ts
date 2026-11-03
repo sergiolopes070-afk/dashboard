@@ -107,8 +107,15 @@ export async function readSessionToken(
   // Rétro-compatible : jetons à 3 champs = session partagée. Le drapeau n'est
   // reconnu que sur un jeton patron (jamais prestataire).
   if (role === "owner" && parts[3] === "p") return { role, pid, prive: true };
+  // Accès patron partagé suspendu → ses sessions ouvertes ne valent plus rien.
+  if (role === "owner" && ACCES_PARTAGE_SUSPENDU) return null;
   return { role, pid };
 }
+
+// Suspension TEMPORAIRE de l'identifiant patron partagé (AUTH_EMAIL / AUTH_PASSWORD) :
+// connexion refusée avec le message d'erreur habituel, sessions déjà ouvertes
+// renvoyées vers /login. Accès privé et prestataires inchangés. false = rétabli.
+export const ACCES_PARTAGE_SUSPENDU = true;
 
 // Vérifie la signature ET l'expiration. Renvoie false si absent / falsifié / expiré.
 export async function verifySessionToken(

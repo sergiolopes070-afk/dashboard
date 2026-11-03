@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionToken, sessionCookieOptions, SESSION_COOKIE, hashCode, constantTimeEqual } from "@/lib/auth";
+import { createSessionToken, sessionCookieOptions, SESSION_COOKIE, hashCode, constantTimeEqual, ACCES_PARTAGE_SUSPENDU } from "@/lib/auth";
 import { getPrestataireByLogin } from "@/lib/sheets";
 
 export async function POST(request: NextRequest) {
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   }
 
   // 1) Patron : email + mot de passe (variables d'env).
-  if (id && code && id === process.env.AUTH_EMAIL && code === process.env.AUTH_PASSWORD) {
+  if (!ACCES_PARTAGE_SUSPENDU && id && code && id === process.env.AUTH_EMAIL && code === process.env.AUTH_PASSWORD) {
     const token = await createSessionToken(secret, { role: "owner" });
     const res = NextResponse.json({ success: true, role: "owner" });
     res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
