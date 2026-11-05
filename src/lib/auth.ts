@@ -115,7 +115,7 @@ export async function readSessionToken(
 // Suspension TEMPORAIRE de l'identifiant patron partagé (AUTH_EMAIL / AUTH_PASSWORD) :
 // connexion refusée avec le message d'erreur habituel, sessions déjà ouvertes
 // renvoyées vers /login. Accès privé et prestataires inchangés. false = rétabli.
-export const ACCES_PARTAGE_SUSPENDU = true;
+export const ACCES_PARTAGE_SUSPENDU = false;
 
 // Vérifie la signature ET l'expiration. Renvoie false si absent / falsifié / expiré.
 export async function verifySessionToken(
