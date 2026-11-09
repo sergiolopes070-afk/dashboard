@@ -442,7 +442,7 @@ export const PROSPECT_INFOS_OBJET: Record<number, string> = {
 };
 
 // Numéro affiché dans les demandes d'infos (= numéro du site kinouclean.fr).
-const TEL_SITE = "01 7541 12 48";
+const TEL_SITE = "01 75 41 12 48";
 
 // Bloc « infos nécessaires » (centré textile/mobilier) réutilisé partout.
 function blocInfos(): string {
